@@ -3,10 +3,13 @@ export const appUpdateSettings = {
   timeoutMs: 120_000, messageTimeoutMs: 5_000
 } as const;
 
-export interface AppBuild { version: string; buildId: string }
-export type UpdateStage = 'checking' | 'downloading' | 'activating' | 'reloading';
+import type { ReleaseNote } from '../shared/release-notes';
+
+export interface AppBuild { version: string; buildId: string; releases?: ReleaseNote[] }
+export type UpdateStage = 'checking' | 'current' | 'downloading' | 'activating' | 'reloading';
 export const updateStageLabels: Record<UpdateStage, string> = {
-  checking: '正在检查最新版本…', downloading: '正在下载新版本，请保持页面打开…',
+  checking: '正在检查最新版本…', current: '已是最新版本，无需刷新。',
+  downloading: '正在下载新版本，请保持页面打开…',
   activating: '正在启用新版本…', reloading: '更新完成，正在刷新页面…'
 };
 
@@ -17,7 +20,54 @@ function readBuild(value: unknown): AppBuild {
     typeof buildId !== 'string' || !/^assets\/[\w-]+\.js$/.test(buildId) || buildId.length > 160) {
     throw new Error('版本信息无效，请稍后重试。');
   }
-  return { version, buildId };
+  const releases = (value as AppBuild).releases;
+  return { version, buildId, ...(Array.isArray(releases) ? { releases: releases.slice(0, 32).flatMap(note =>
+    note && typeof note.version === 'string' && /^\d+\.\d+\.\d+$/.test(note.version) &&
+      Array.isArray(note.changes) ? [{
+        version: note.version, changes: note.changes.filter((text): text is string =>
+          typeof text === 'string' && text.length > 0 && text.length <= 500).slice(0, 16)
+      }] : []) } : {}) };
+}
+
+export function currentPageBuild(): AppBuild | null {
+  if (typeof document === 'undefined') return null;
+  const script = [...document.querySelectorAll<HTMLScriptElement>('script[src]')].find(element =>
+    /\/assets\/index-[\w-]+\.js(?:\?|$)/.test(element.src));
+  return script ? { version: import.meta.env.VITE_APP_VERSION,
+    buildId: new URL(script.src).pathname.slice(1) } : null;
+}
+
+export function changesSince(build: AppBuild, currentVersion?: string): ReleaseNote[] {
+  const notes = build.releases ?? [];
+  const current = notes.findIndex(note => note.version === currentVersion);
+  return (current <= 0 ? notes.filter(note => note.version === build.version) : notes.slice(0, current));
+}
+
+export async function checkAppVersion(signal?: AbortSignal, current = currentPageBuild()) {
+  const response = await fetch(`${appUpdateSettings.manifest}?check=${Date.now()}`, {
+    cache: 'no-store', credentials: 'omit',
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000)
+  });
+  if (!response.ok) throw new Error(`版本检查失败（${response.status}），请稍后重试。`);
+  const latest = readBuild(await response.json());
+  if (!current && navigator.serviceWorker?.controller) {
+    current = await workerBuild(navigator.serviceWorker.controller, signal ?? AbortSignal.timeout(5000));
+  }
+  return { current, latest, updateAvailable: !current || current.buildId !== latest.buildId || current.version !== latest.version };
+}
+
+const receiptKey = 'app-update-receipt';
+export function takeUpdateReceipt(): AppBuild | null {
+  try {
+    const raw = sessionStorage.getItem(receiptKey);
+    if (!raw) return null;
+    const build = readBuild(JSON.parse(raw));
+    if (build.version !== import.meta.env.VITE_APP_VERSION) return null;
+    return build;
+  } catch { return null; }
+}
+export function clearUpdateReceipt() {
+  try { sessionStorage.removeItem(receiptKey); } catch { /* Optional notice only. */ }
 }
 
 function abortError(signal: AbortSignal): Error {
@@ -80,10 +130,12 @@ interface UpdateOptions {
   signal?: AbortSignal;
   onStage: (stage: UpdateStage, build?: AppBuild) => void;
   returnToApp?: boolean;
+  currentBuild?: AppBuild | null;
+  expectedBuild?: AppBuild;
 }
 
 /** Explicit user action: preserve private state and subscriptions, activate a fully cached build. */
-export async function refreshAppVersion({ signal, onStage, returnToApp = false }: UpdateOptions): Promise<void> {
+export async function refreshAppVersion({ signal, onStage, returnToApp = false, currentBuild, expectedBuild }: UpdateOptions): Promise<'current' | 'updated'> {
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', abort, { once: true });
@@ -95,11 +147,12 @@ export async function refreshAppVersion({ signal, onStage, returnToApp = false }
   };
   try {
     stage('checking');
-    const response = await fetch(`${appUpdateSettings.manifest}?check=${Date.now()}`, {
-      cache: 'no-store', credentials: 'omit', signal: controller.signal
-    });
-    if (!response.ok) throw new Error(`版本检查失败（${response.status}），请稍后重试。`);
-    const build = readBuild(await response.json());
+    const check = await checkAppVersion(controller.signal, currentBuild === undefined ? currentPageBuild() : currentBuild);
+    const build = check.latest;
+    if (!check.updateAvailable) { stage('current', build); return 'current'; }
+    if (expectedBuild && (expectedBuild.version !== build.version || expectedBuild.buildId !== build.buildId)) {
+      throw new Error('服务器版本正在变化，请重新检查更新摘要。');
+    }
     if ('serviceWorker' in navigator) {
       stage('downloading', build);
       const registration = await abortable(navigator.serviceWorker.register(appUpdateSettings.script, {
@@ -120,8 +173,12 @@ export async function refreshAppVersion({ signal, onStage, returnToApp = false }
       await controlled;
     }
     if (controller.signal.aborted) throw abortError(controller.signal);
+    try { sessionStorage.setItem(receiptKey, JSON.stringify({
+      ...build, releases: changesSince(build, check.current?.version)
+    })); } catch { /* Updating remains available without session storage. */ }
     stage('reloading', build);
     if (returnToApp) location.replace('/'); else location.reload();
+    return 'updated';
   } catch (error) {
     const failure = controller.signal.aborted ? abortError(controller.signal) : error;
     console.warn('[app-update] failed', failure);

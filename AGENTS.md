@@ -301,6 +301,18 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 - After completing and validating project changes, push the public repository
   by default unless the user explicitly asks not to. Never push the separate
   private deployment checkout or its runtime data.
+- Publish a GitHub Release for each validated functional batch, with a matching
+  version tag, exact source commit and concise change summary. Keep the public
+  release metadata in src/shared/release-notes.ts aligned with that release.
+- The conversation summary panel reads native PR attachments and projected
+  artifacts/sources on demand. Keep its history cursor independent of chat
+  history; routine native events refresh the head until known items, never
+  restart a complete scan. Bound automatic batches and expose remaining pages.
+  Never return raw tool results or reasoning through summary responses.
+  Wide desktop may pin a 300px panel; narrow desktop and mobile use a modal.
+- Version checks compare the loaded shell's version and build ID. If current,
+  leave the page, drafts and service worker untouched. Show release summaries
+  before a confirmed update and acknowledge completion after reload.
 - Restart the local Remote service after every application update, including
   frontend-only updates. Verify its old listener and owned process exited before
   starting once; then verify ready Desktop transport without stopping Desktop.

@@ -1,4 +1,5 @@
 import type { Plugin } from 'vite';
+import { releaseNotes } from '../src/shared/release-notes';
 
 export function serviceWorkerSource(files: string[], version: string, appVersion = '0.0.0'): string {
   return `
@@ -100,7 +101,9 @@ export function pwaPlugin(appVersion: string): Plugin {
       const files = ['/', '/codex-mark.svg', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest',
         ...Object.keys(bundle).filter(name => /\.(js|css)$/.test(name) && !/^assets\/(?:TerminalPanel|FilePreview|PdfPreview)/.test(name))
           .map(name => `/${name}`)];
-      this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version: appVersion, buildId: entry.fileName }) });
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({
+        version: appVersion, buildId: entry.fileName, releases: releaseNotes
+      }) });
       this.emitFile({ type: 'asset', fileName: 'sw.js', source: serviceWorkerSource(files, entry.fileName, appVersion) });
     }
   };

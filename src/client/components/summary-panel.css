@@ -1,0 +1,61 @@
+.summary-panel {
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 80px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 3px 18px rgb(0 0 0 / .07);
+  font-size: 13px;
+  text-align: left;
+}
+.app-shell[data-layout="desktop"] .workspace-main { position: relative; }
+.summary-panel--inline { position: absolute; right: 16px; top: 12px; z-index: 4; display: flex; flex-direction: column; }
+.summary-panel--overlay { position: fixed; inset: 64px 12px auto auto; margin: 0; }
+.summary-panel--overlay[open] { display: flex; flex-direction: column; }
+.summary-panel--overlay::backdrop { background: rgb(0 0 0 / .12); }
+.summary-header { display: flex; flex: none; align-items: center; gap: 2px; padding: 6px 8px 0 18px; }
+.summary-header strong { flex: 1; font-size: 13px; font-weight: 500; }
+.summary-header .icon-button { width: 32px; height: 32px; flex: none; }
+.summary-content { min-height: 0; overflow-y: auto; padding: 0 16px 12px; overscroll-behavior: contain; }
+.summary-section { padding: 10px 0; }
+.summary-section + .summary-section { border-top: 1px solid var(--line); }
+.summary-section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 30px; gap: 8px; }
+.summary-section-heading h2 { margin: 0; font-size: 13px; line-height: 22px; color: var(--muted); font-weight: 400; }
+.summary-section-heading .icon-button { width: 28px; height: 28px; color: var(--muted); }
+.summary-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 5px 0; border: 0;
+  border-radius: 4px; background: transparent; color: inherit; text-align: left; font-size: 13px; text-decoration: none; }
+.summary-row:hover { background: var(--surface-hover); }
+.summary-row:focus-visible { outline: 2px solid var(--ink-soft); outline-offset: 2px; }
+.summary-row > svg { flex: none; color: var(--muted); }
+.summary-row > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.summary-resource--pullRequest .summary-row > svg { color: #9564df; }
+.summary-resource--file .summary-row > svg { color: #1684dc; }
+.summary-resource-detail { padding-left: 26px; overflow-wrap: anywhere; color: var(--muted); font-size: 12px; }
+.summary-empty-action, .summary-show-all { color: var(--muted); }
+.summary-agents .summary-agent-icons { display: flex; flex: none; gap: 4px; }
+.summary-agent-icons svg:nth-child(3n+1) { color: #db8a32; }
+.summary-agent-icons svg:nth-child(3n+2) { color: #9869d8; }
+.summary-agent-icons svg:nth-child(3n) { color: #3198a9; }
+.summary-menu-anchor { position: relative; }
+.summary-menu { position: relative; width: 190px; padding: 4px; z-index: 5; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--surface); box-shadow: 0 3px 18px rgb(0 0 0 / .12); }
+.summary-menu button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 6px 8px;
+  border: 0; border-radius: 4px; background: transparent; text-align: left; font-size: 13px; }
+.summary-menu button:hover { background: var(--surface-hover); }
+.summary-loading, .summary-error { display: flex; align-items: center; gap: 8px; padding-top: 8px; color: var(--muted); font-size: 12px; }
+.summary-error { color: var(--danger); overflow-wrap: anywhere; }
+.workspace-main:has(> .summary-panel--inline) .thread-screen { margin-right: 324px; }
+.app-shell[data-layout="mobile"] .summary-panel--overlay { inset: calc(54px + env(safe-area-inset-top)) 12px auto auto;
+  max-height: calc(var(--mobile-viewport-height, 100dvh) - 80px - env(safe-area-inset-top)); width: min(340px, calc(100vw - 24px)); }
+.app-shell[data-layout="mobile"] .summary-panel .icon-button,
+.app-shell[data-layout="mobile"] .summary-row,
+.app-shell[data-layout="mobile"] .summary-menu button { min-height: 44px; }
+.app-shell[data-layout="mobile"] .summary-panel .icon-button { width: 44px; height: 44px; }
+.summary-file-picker { max-width: calc(100vw - 24px); }
+@media (pointer: coarse) {
+  .summary-panel .icon-button, .summary-row, .summary-menu button { min-height: 44px; }
+  .summary-panel .icon-button { width: 44px; height: 44px; }
+}

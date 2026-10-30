@@ -22,7 +22,22 @@ async function fixture(read: (method: string, params: unknown) => Promise<unknow
   const server = http.createServer(app); servers.push(server); server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/dock`;
-  return { native, get: (path: string, auth = true) => fetch(base + path, { headers: auth ? { Cookie: 'session=operator' } : {} }) };
+  // OS-assigned test ports can be on fetch's browser-reserved port list.
+  const get = (path: string, auth = true) => new Promise<Response>((resolve, reject) => {
+    http.get(base + path, { headers: auth ? { Cookie: 'session=operator' } : {} }, response => {
+      const chunks: Buffer[] = [];
+      response.on('data', chunk => chunks.push(Buffer.from(chunk)));
+      response.on('error', reject);
+      response.on('end', () => {
+        const headers = new Headers();
+        for (const [name, values] of Object.entries(response.headers)) {
+          for (const value of Array.isArray(values) ? values : values === undefined ? [] : [values]) headers.append(name, value);
+        }
+        resolve(new Response(Buffer.concat(chunks), { status: response.statusCode!, headers }));
+      });
+    }).on('error', reject);
+  });
+  return { native, get };
 }
 
 describe('early thread dock reads', () => {

@@ -25,6 +25,7 @@ interface ComposerProps {
   selectedProjectId?: string;
   activeTurnId?: string | null;
   focusRequest?: number;
+  insertRequest?: { id: number; text: string } | null;
   draftKey?: string;
   temporary?: boolean;
   queueMessages?: boolean;
@@ -47,7 +48,7 @@ interface ComposerProps {
 
 export function Composer({
   variant, layout, model, effort, models, permissions, permissionProfiles, onPermissionsChange,
-  projects = [], selectedProjectId = '', activeTurnId, focusRequest = 0,
+  projects = [], selectedProjectId = '', activeTurnId, focusRequest = 0, insertRequest,
   draftKey = variant, disabled = false, placeholder, onProjectChange,
   onModelChange, onEffortChange, onSubmit, onStop, onError, contextUsage,
   onCommand, loadSkills, skillScope, hasSavedThread, mode, temporary = false, initialInput, queueMessages = false
@@ -69,6 +70,7 @@ export function Composer({
   const [menu, setMenu] = useState<'settings' | 'models' | 'permissions' | 'projects' | null>(null);
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties>({});
   const draftRef = useRef(draft);
+  const inserted = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -123,6 +125,12 @@ export function Composer({
       current.setSelectionRange(next.caret, next.caret);
     });
   };
+  useEffect(() => {
+    if (!insertRequest || inserted.current === insertRequest.id) return;
+    inserted.current = insertRequest.id;
+    updateDraft([draftRef.current, insertRequest.text].filter(Boolean).join('\n'));
+    textareaRef.current?.focus({ preventScroll: true });
+  }, [insertRequest]);
   useEffect(() => {
     const textarea = textareaRef.current;
     if (layout !== 'mobile' || !textarea) return;

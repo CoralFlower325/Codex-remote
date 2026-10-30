@@ -30,22 +30,26 @@ interface InspectorProps {
   layout: 'desktop' | 'mobile';
   view: 'launcher' | 'changes' | 'activity' | 'files';
   remote: RemoteState;
-  sideChatRequest: { id: number; input?: ChatInput } | null;
+  sideChatRequest: { id: number; input?: ChatInput; chatId?: string } | null;
   previewRequest: { id: number; target: PreviewTarget } | null;
   cwd?: string | undefined;
   subagentChats: ReturnType<typeof useSubagentChats>;
   subagentRequest: { id: number; threadId: string } | null;
+  sideChats: ReturnType<typeof useSideChats>;
 }
 
 export function Inspector({ open, thread, items, onClose, layout, view, remote, sideChatRequest, previewRequest, cwd,
-  subagentChats, subagentRequest }: InspectorProps) {
+  subagentChats, subagentRequest, sideChats }: InspectorProps) {
   const [tab, setTab] = useState<string>('changes');
   const [expanded, setExpanded] = useState(false);
   const [previews, setPreviews] = useState<Array<{ id: string; target: PreviewTarget }>>([]);
-  const sideChats = useSideChats(remote.chatTransport, remote.connected);
   const inspectorRef = useRef<HTMLElement>(null);
   useEffect(() => { setTab(view); }, [view]);
-  useEffect(() => { if (sideChatRequest) addSideChat(sideChatRequest.input); }, [sideChatRequest]);
+  useEffect(() => {
+    if (!sideChatRequest) return;
+    if (sideChatRequest.chatId) setTab(sideChatRequest.chatId);
+    else addSideChat(sideChatRequest.input);
+  }, [sideChatRequest]);
   useEffect(() => { if (subagentRequest) setTab(`agent-${subagentRequest.threadId}`); }, [subagentRequest]);
   useEffect(() => {
     if (!previewRequest) return;

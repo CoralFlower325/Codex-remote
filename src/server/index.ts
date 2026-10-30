@@ -41,6 +41,7 @@ import { httpConnections, type RemotePeer } from './http-connections.js';
 import { metadataRouter } from './metadata-router.js';
 import { threadDockRouter } from './thread-dock-router.js';
 import { historyItemRouter } from './history-item-router.js';
+import { readThreadSummaryPage } from './thread-summary.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -321,6 +322,17 @@ app.get(
     if (!res.destroyed) res.json(result);
   })
 );
+
+app.get('/api/thread/summary', requireAuth, asyncRoute(async (req, res) => {
+  const threadId = typeof req.query.threadId === 'string' ? req.query.threadId.trim() : '';
+  if (!threadId) { res.status(400).json({ error: 'threadId is required.' }); return; }
+  const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : null;
+  const attachmentCursor = typeof req.query.attachmentsCursor === 'string' ? req.query.attachmentsCursor : null;
+  res.json(await withReadDeadline(readThreadSummaryPage(
+    (method, params) => codexBridge.request(method, params), threadId, cursor, attachmentCursor,
+    req.query.attachmentsOnly === '1'
+  )));
+}));
 
 app.get('/api/thread/timings', requireAuth, asyncRoute(async (req, res) => {
   const threadId = typeof req.query.threadId === 'string' ? req.query.threadId.trim() : '';

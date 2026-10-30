@@ -11,6 +11,7 @@ import { WorkspaceFolderDialog } from './WorkspaceFolderDialog';
 import { api } from '../api';
 import { NotificationSettings } from './NotificationSettings';
 import { AppUpdateDialog } from './AppUpdateDialog';
+import { clearUpdateReceipt, takeUpdateReceipt } from '../app-update';
 
 interface SidebarProps {
   remote: RemoteState;
@@ -37,7 +38,8 @@ export function Sidebar({
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [updateOpen, setUpdateOpen] = useState(false);
+  const [completedUpdate, setCompletedUpdate] = useState(takeUpdateReceipt);
+  const [updateOpen, setUpdateOpen] = useState(() => Boolean(completedUpdate));
   const [expansion, setExpansion] = useState<Record<string, boolean>>(() => {
     try { return JSON.parse(localStorage.getItem('sidebar-project-expansion') ?? '{}') as Record<string, boolean>; }
     catch { return {}; }
@@ -209,7 +211,9 @@ export function Sidebar({
       )}
       {folderDialogOpen && <WorkspaceFolderDialog remote={remote} onSelect={onNewTask} onClose={() => setFolderDialogOpen(false)} />}
       {notificationsOpen && <NotificationSettings onClose={() => setNotificationsOpen(false)} />}
-      {updateOpen && <AppUpdateDialog onClose={() => setUpdateOpen(false)} />}
+      {updateOpen && <AppUpdateDialog completed={completedUpdate} onClose={() => {
+        setUpdateOpen(false); setCompletedUpdate(null); clearUpdateReceipt();
+      }} />}
     </aside>
   );
 }

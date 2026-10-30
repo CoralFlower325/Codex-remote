@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { appUpdateSettings, refreshAppVersion, type AppBuild, type UpdateStage } from './app-update';
+import { appUpdateSettings, changesSince, checkAppVersion, refreshAppVersion, type AppBuild, type UpdateStage } from './app-update';
 
 const latest: AppBuild = { version: '0.1.8', buildId: 'assets/index-latest.js' };
 class Port {
@@ -95,14 +95,63 @@ describe('explicit version refresh', () => {
     expect(f.reload).toHaveBeenCalledOnce();
   });
 
-  it('refreshes an already current page without activating or replacing subscriptions', async () => {
+  it('leaves an already current page mounted without registering, activating or reloading', async () => {
     const f = fixture();
     f.registration.waiting = null; f.registration.active = f.worker;
     f.worker.state = 'activated'; f.container.controller = f.worker;
-    await refreshAppVersion({ onStage: () => {} });
+    const stages: UpdateStage[] = [];
+    expect(await refreshAppVersion({ onStage: stage => stages.push(stage) })).toBe('current');
     expect(f.worker.postMessage).not.toHaveBeenCalledWith({ type: 'codex-update:activate' });
     expect(f.registration.unregister).not.toHaveBeenCalled();
+    expect(stages).toEqual(['checking', 'current']);
+    expect(f.container.register).not.toHaveBeenCalled();
+    expect(f.registration.update).not.toHaveBeenCalled();
+    expect(f.reload).not.toHaveBeenCalled();
+    expect(f.replace).not.toHaveBeenCalled();
+  });
+
+  it('updates an old loaded shell even when another tab has already replaced its controller', async () => {
+    const f = fixture();
+    f.registration.waiting = null; f.registration.active = f.worker;
+    f.worker.state = 'activated'; f.container.controller = f.worker;
+    expect(await refreshAppVersion({ currentBuild: f.oldWorker.build, onStage: () => {} })).toBe('updated');
     expect(f.reload).toHaveBeenCalledOnce();
+  });
+
+  it('recognizes a different build within the same package version', async () => {
+    const f = fixture();
+    expect((await checkAppVersion(undefined, { ...latest, buildId: 'assets/index-previous.js' })).updateAvailable).toBe(true);
+    expect((await checkAppVersion(undefined, latest)).updateAvailable).toBe(false);
+    expect(f.container.register).not.toHaveBeenCalled();
+  });
+
+  it('requires another review when the deployment changes after the displayed release summary', async () => {
+    const f = fixture();
+    await expect(refreshAppVersion({ currentBuild: f.oldWorker.build,
+      expectedBuild: { ...latest, buildId: 'assets/index-reviewed.js' }, onStage: () => {} }))
+      .rejects.toThrow('重新检查更新摘要');
+    expect(f.container.register).not.toHaveBeenCalled(); expect(f.reload).not.toHaveBeenCalled();
+  });
+
+  it('does not navigate from recovery when the controlling build is already current', async () => {
+    const f = fixture(); f.container.controller = f.worker;
+    expect(await refreshAppVersion({ returnToApp: true, onStage: () => {} })).toBe('current');
+    expect(f.replace).not.toHaveBeenCalled(); expect(f.reload).not.toHaveBeenCalled();
+  });
+
+  it('validates release summaries and includes only changes after the loaded version', async () => {
+    const f = fixture();
+    f.fetcher.mockResolvedValue(new Response(JSON.stringify({ ...latest, releases: [
+      { version: '0.1.8', changes: ['Summary panel', 7, '', 'x'.repeat(501)] },
+      { version: '0.1.7', changes: ['Mobile index'] },
+      { version: '0.1.6', changes: ['Sidebar'] }, { version: 'bad', changes: ['discard'] }
+    ] })));
+    const { latest: build } = await checkAppVersion(undefined, f.oldWorker.build);
+    expect(build.releases).toHaveLength(3);
+    expect(changesSince(build, '0.1.6')).toEqual([
+      { version: '0.1.8', changes: ['Summary panel'] }, { version: '0.1.7', changes: ['Mobile index'] }
+    ]);
+    expect(changesSince(build, '0.1.8')).toEqual([{ version: '0.1.8', changes: ['Summary panel'] }]);
   });
 
   it('returns to the application from the standalone recovery page', async () => {

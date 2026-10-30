@@ -1,5 +1,23 @@
 # Manual version update investigation
 
+## 0.1.8 Behavior
+
+The loaded main-entry script identifies the page build. A fresh `/version.json`
+comparison uses both package version and build ID; the current service-worker
+controller is only a fallback when no main shell exists (the recovery page).
+An already current check returns without registration, activation or reload.
+An old page under an already new controller still reloads after explicit update.
+
+Settings and recovery use two steps: check, show release summaries, then confirm
+the real update. Installation/build verification and failure preservation remain.
+A tab-session receipt displays the completed summary after reload and clears on
+acknowledgement; no conversation or authentication data is in this receipt.
+Public bounded release metadata comes from `src/shared/release-notes.ts` and
+is included in the uncached version manifest. Same-version rebuilds are detected.
+
+The dated investigation below describes the original implementation; references
+to latest-version refresh are historical and superseded by this behavior.
+
 ## Bug summary and call chain
 
 An already installed client can continue displaying the old app after deployment

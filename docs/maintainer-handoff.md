@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-10-29.
+Last reconciled: 2026-10-30.
 
 ## Authority
 
@@ -12,7 +12,13 @@ a merge or successful CI alone does not establish deployment.
 The README languages describe supported behavior. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The 0.1.7 functional batch integrates PR #5's phone conversation-index sheet
+The 0.1.8 functional batch adds an on-demand native conversation summary panel
+and checks the loaded build before offering a confirmed update with release notes.
+Already current checks preserve the page. See [summary scope](native-summary-panel.md)
+and [the update investigation](manual-version-update.md). Functional batches now
+publish a matching GitHub Release, source commit and change summary.
+
+The preceding 0.1.7 functional batch integrates PR #5's phone conversation-index sheet
 refinements and independent sidebar spinner layer. Maintainer corrections scope
 the trigger background/focus changes to mobile and preserve the next patch
 version. Physical iOS animation smoothness is not confirmed. See
@@ -40,7 +46,7 @@ do not create real model turns or notifications just to verify layout.
 Mobile composer controls intentionally use 36px sizing on small screens.
 Preserve desktop sizing and corners; mobile adaptation must not become a global
 style change. Main and side-chat controls must have matching mobile geometry.
-The manual update refreshes the page: main-chat text drafts persist, while
+Only an actual manual update refreshes the page: main-chat text drafts persist, while
 temporary side chats, unsent images and skill selections are cleared.
 
 Outstanding acceptance:
@@ -77,7 +83,8 @@ run as the host user outside model permission profiles.
    authentication, notification keys/subscriptions and retained attachments.
 6. Publish only the reviewed public files, verify remote revision and CI, and
    install matching built assets. Upload assets before switching the shell.
-   Keep older chunks for existing clients.
+   Keep older chunks for existing clients. Publish a matching GitHub Release
+   with version tag, exact source commit and changes; align release-notes.ts.
 7. For configured static-edge installations, use the existing authenticated
    `cf` workflow in the README. Private API, socket and health routes stay on
    the origin. Restarting the origin does not update edge assets.

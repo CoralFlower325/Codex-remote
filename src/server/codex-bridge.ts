@@ -36,6 +36,7 @@ const READ_METHODS = new Set<ClientRpcMethod>([
   'thread/turns/list',
   'thread/items/list',
   'thread/items/read',
+  'thread/attachment/list',
   'thread/queue/list',
   'model/list',
   'permissionProfile/list',

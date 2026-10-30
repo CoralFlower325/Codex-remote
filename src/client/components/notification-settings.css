@@ -86,6 +86,9 @@
 .notification-feedback { min-height: 26px; margin-top: 8px; color: var(--muted); font-size: 13px; }
 .notification-feedback p { margin: 0; overflow-wrap: anywhere; }
 .notification-feedback .notification-error { color: var(--danger); }
+.app-update-notes { margin-bottom: 16px; overflow-wrap: anywhere; font-size: 13px; }
+.app-update-notes p { margin: 10px 0 4px; color: var(--muted); }
+.app-update-notes ul { margin: 0; padding-left: 20px; line-height: 1.7; }
 @media (max-width: 360px) {
   .notification-settings-body { padding-inline: 16px; }
   .notification-settings > header { padding-left: 16px; }

@@ -69,7 +69,8 @@ describe('explicit application update', () => {
       'assets/index-main.js': { type: 'chunk', name: 'index', isEntry: true, fileName: 'assets/index-main.js' }
     } as never, false);
     const manifest = emitFile.mock.calls.map(([file]) => file).find(file => file.fileName === 'version.json');
-    expect(JSON.parse(manifest.source)).toEqual({ version: '0.1.8', buildId: 'assets/index-main.js' });
+    expect(JSON.parse(manifest.source)).toMatchObject({ version: '0.1.8', buildId: 'assets/index-main.js',
+      releases: expect.arrayContaining([expect.objectContaining({ version: '0.1.8', changes: expect.any(Array) })]) });
   });
 
   it('activates only on an explicit message from its own origin', async () => {

@@ -4,6 +4,7 @@ import {
   PanelRight,
   PanelLeft,
   PanelBottom,
+  SlidersHorizontal,
   Info,
   MoreHorizontal,
   Pencil,
@@ -13,7 +14,7 @@ import {
   Check,
   X
 } from 'lucide-react';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as randomUUID } from 'uuid';
 
 import { api } from './api';
@@ -44,6 +45,8 @@ import { markStartup } from './startup';
 import { unlinkDeviceNotifications } from './push-notifications';
 import { toggleInspectorLauncher, type InspectorView } from './inspector-state';
 import { GoalStatus } from './components/GoalStatus';
+import { SummaryPanel } from './components/SummaryPanel';
+import { useSideChats } from './useSideChats';
 
 interface WorkspaceProps {
   authenticated: boolean;
@@ -79,7 +82,36 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const [newTaskMode, setNewTaskMode] = useState<'default' | 'plan'>('default');
   const [commandDialog, setCommandDialog] = useState<CommandDialogState | null>(null);
   const [commandNotice, setCommandNotice] = useState<string | null>(null);
-  const [sideChatRequest, setSideChatRequest] = useState<{ id: number; input?: ChatInput } | null>(null);
+  const [sideChatRequest, setSideChatRequest] = useState<{ id: number; input?: ChatInput; chatId?: string } | null>(null);
+  const sideChats = useSideChats(remote.chatTransport, remote.connected);
+  const [summaryPinned, setSummaryPinned] = useState(() => {
+    try { return localStorage.getItem('summary-panel-pinned') === 'true'; } catch { return false; }
+  });
+  const [summaryOverlayOpen, setSummaryOverlayOpen] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+  const [mainWidth, setMainWidth] = useState(0);
+  const summaryInline = layout === 'desktop' && mainWidth >= 1096;
+  const summaryOpen = !inspectorOpen && Boolean(remote.activeThread) && (summaryInline ? summaryPinned : summaryOverlayOpen);
+  const [draftRequest, setDraftRequest] = useState<{ threadId: string; id: number; text: string } | null>(null);
+  useEffect(() => {
+    const observer = new ResizeObserver(([entry]) => { if (entry) setMainWidth(entry.contentRect.width); });
+    if (mainRef.current) observer.observe(mainRef.current);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => { setSummaryOverlayOpen(false); }, [remote.activeThreadId, summaryInline]);
+  useEffect(() => { setDraftRequest(null); }, [remote.activeThreadId]);
+  function closeSummary() {
+    if (summaryInline) {
+      setSummaryPinned(false);
+      try { localStorage.setItem('summary-panel-pinned', 'false'); } catch { /* Keep the control usable. */ }
+    }
+    setSummaryOverlayOpen(false);
+  }
+  function insertSummaryDraft(text: string) {
+    if (!remote.activeThreadId) return;
+    setDraftRequest(previous => ({ threadId: remote.activeThreadId!, id: (previous?.id ?? 0) + 1, text }));
+    setSummaryOverlayOpen(false);
+  }
   const [previewRequest, setPreviewRequest] = useState<{ id: number; target: PreviewTarget } | null>(null);
   const [notificationThreadId, setNotificationThreadId] = useState(() =>
     new URLSearchParams(location.search).get('thread'));
@@ -109,6 +141,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     subagentChats.open(agent);
     setSelectedSubagent(previous => ({ id: (previous?.id ?? 0) + 1, threadId: agent.threadId }));
     setInspectorOpen(true);
+    setSummaryOverlayOpen(false);
   }, [subagentChats.open]);
   const subagentsContext = useMemo(() => ({ open: openSubagent,
     states: Object.fromEntries(subagentChats.chats.map(chat => [chat.id, subagentChatStatus(chat)])),
@@ -117,6 +150,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const openPreview = useCallback((target: PreviewTarget) => {
     setPreviewRequest(previous => ({ id: (previous?.id ?? 0) + 1, target }));
     setInspectorOpen(true);
+    setSummaryOverlayOpen(false);
   }, []);
 
   const activeThread = remote.activeThread;
@@ -343,7 +377,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         <button type="button" className="mobile-backdrop" aria-label="关闭侧边栏" onClick={() => setSidebarOpen(false)} />
       )}
 
-      <main className="workspace-main" id="main-content">
+      <main ref={mainRef} className="workspace-main" id="main-content">
         <header className={`workspace-header${activeThread ? '' : ' workspace-header--home'}`}>
           <div className="workspace-header-start">
             {layout === 'mobile' && (
@@ -416,6 +450,17 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
               aria-pressed={inspectorOpen && inspectorView === 'files'} onClick={() => {
                 setInspectorView('files'); setInspectorOpen((value) => inspectorView === 'files' ? !value : true);
               }}><Info size={16} /></button>
+            {activeThread && <button type="button" className="icon-button" aria-label="切换摘要面板固定状态"
+              title="切换摘要面板固定状态" aria-pressed={summaryOpen} aria-haspopup={!summaryInline ? 'dialog' : undefined}
+              onClick={event => {
+                event.currentTarget.focus({ preventScroll: true });
+                setInspectorOpen(false);
+                if (summaryInline) {
+                  const next = !summaryPinned;
+                  setSummaryPinned(next);
+                  try { localStorage.setItem('summary-panel-pinned', String(next)); } catch { /* Optional preference. */ }
+                } else setSummaryOverlayOpen(value => !value);
+              }}><SlidersHorizontal size={16} /></button>}
             <button
               type="button"
               className={`icon-button${inspectorOpen ? ' is-active' : ''}`}
@@ -472,6 +517,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
             onError={showError}
             commandProps={commandProps}
             onOpenSideChat={openSideChat}
+            insertRequest={draftRequest?.threadId === activeThread.id ? draftRequest : null}
           />
         ) : (
           <HomeView
@@ -498,6 +544,14 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         {terminalOpen && <Suspense fallback={<div className="terminal-loading" role="status">加载终端…</div>}>
           <TerminalPanel cwd={permissionCwd} onClose={() => setTerminalOpen(false)} />
         </Suspense>}
+        <SummaryPanel key={`summary:${activeThread?.id ?? 'empty'}`} remote={remote} open={summaryOpen} pinned={summaryPinned}
+          inline={summaryInline} onClose={closeSummary}
+          sideChats={sideChats.chats.filter(chat => chat.sourceThreadId === activeThread?.id)}
+          onSideChat={chatId => {
+            setSideChatRequest(previous => ({ id: (previous?.id ?? 0) + 1, ...(chatId ? { chatId } : {}) }));
+            setSummaryOverlayOpen(false); setInspectorOpen(true);
+          }}
+          onDraft={insertSummaryDraft} onServers={() => { setSummaryOverlayOpen(false); setCommandDialog({ type: 'mcp' }); }} />
       </main>
 
       <Inspector
@@ -513,6 +567,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         previewRequest={previewRequest}
         subagentChats={subagentChats}
         subagentRequest={selectedSubagent}
+        sideChats={sideChats}
       />
       {commandDialog && <CommandDialog key={`${activeThread?.id ?? 'home'}:${commandDialog.type}`}
         state={commandDialog}
@@ -619,7 +674,8 @@ function ThreadScreen({
   onSubmit,
   onError,
   commandProps,
-  onOpenSideChat
+  onOpenSideChat,
+  insertRequest
 }: {
   remote: ReturnType<typeof useRemote>;
   thread: Thread;
@@ -634,6 +690,7 @@ function ThreadScreen({
   onError: (error: unknown) => void;
   commandProps: Pick<Parameters<typeof Composer>[0], 'onCommand' | 'loadSkills' | 'skillScope' | 'hasSavedThread' | 'mode'>;
   onOpenSideChat: (input: ChatInput) => void;
+  insertRequest: { id: number; text: string } | null;
 }) {
   const [queueEnabled, setQueueEnabled] = useState(true);
   const forkReply = useCallback((turnId: string) => remote.forkThread(thread.id, turnId), [remote.forkThread, thread.id]);
@@ -687,6 +744,7 @@ function ThreadScreen({
           {...commandProps}
           variant="thread"
           draftKey={thread.id}
+          insertRequest={insertRequest}
           disabled={!remote.connected || !remote.threadReady || remote.showArchived}
           layout={layout}
           model={model}
