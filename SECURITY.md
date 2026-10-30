@@ -29,10 +29,11 @@ through Remote, excluding subagent and ephemeral chats.
 
 Encrypted push payloads pass through Apple or the browser vendor's push service.
 They contain the conversation title, status, chat identifier and up to 100
-characters of the final reply. The title can fall back to the native conversation
-preview. This content can appear on the device's lock screen; it can include
-sensitive text or file names from that title or reply. Tool and command output
-are excluded from the preview. Remote and its native Desktop connection must
+characters of the final reply or pending question. The title can fall back to
+the native conversation preview. This content can appear on the device's lock
+screen; it can include sensitive text or file names from that title, reply or
+question. Tool and command output are excluded from the preview. Remote and its
+native Desktop connection must
 remain running. Closing the page does not cancel notifications. Successful
 logout removes this device's subscription first; session expiry alone does not
 revoke OS push. Disable device notifications or revoke the site's notification

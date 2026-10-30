@@ -321,6 +321,9 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 - Keep documentation examples generic. Use synthetic data for screenshots.
 - Preserve upstream copyright and notices.
 - README.md and README.zh-CN.md must describe the same behavior and limitations.
+  Keep their overviews concise; detailed setup and operating contracts belong in
+  docs/guide.md and docs/guide.zh-CN.md, with both languages updated together.
+  docs/README.md indexes current guides separately from historical evidence.
 - Model/project metadata currently reads its first requested page; model defaults
   can differ from global configuration overrides. Do not imply otherwise.
 - Remote terminals are separate from Desktop shells and bypass model permission

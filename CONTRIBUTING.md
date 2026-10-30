@@ -41,7 +41,11 @@ see [SECURITY.md](SECURITY.md).
 ## Pull Requests
 
 Keep changes focused. Explain the problem, the resulting behavior, and the
-verification performed. Update both README languages when setup or behavior
-changes. Preserve upstream notices and identify any additional third-party code.
+verification performed. Update both [README](README.md) languages and the
+[English](docs/guide.md) / [Chinese](docs/guide.zh-CN.md) guides when setup or
+behavior changes. Keep overview text concise and preserve detailed operating
+limits in the guides. Check relative links, heading anchors and image paths after
+moving documentation. Preserve upstream notices and identify any additional
+third-party code.
 
 Contributions are submitted under this repository's [MIT License](LICENSE).

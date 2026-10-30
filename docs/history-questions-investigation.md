@@ -4,6 +4,10 @@ Date: 2026-10-29. All recorded content samples are counts/timings; private
 conversation bodies, machine identifiers, session credentials and screenshots
 are excluded.
 
+This is historical 0.1.4 evidence. Its latest-turn question limitation is
+superseded by the observed cross-turn question index in [0.1.9](pr-6-review.md).
+For supported behavior, read the [current guide](guide.md#native-questions-and-history-details).
+
 ## Reproduction and expected behavior
 
 The reported regression affects chat switching, older history, and outline
