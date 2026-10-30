@@ -176,8 +176,8 @@ try {
   if (failed.ok) throw new Error('Synthetic network failure was ignored');
   await page.evaluate(() => window.manager.refresh());
   const failure = await page.evaluate(async () => (await window.manager.get()).value);
-  if (failure.error !== 'Synthetic release network failure' || failure.healthError ||
-    !failure.events.some((event) => event.message.includes('Synthetic release network failure'))) {
+  if (!failure.error.includes('检查版本未完成') || failure.healthError ||
+    !failure.events.some((event) => event.message.includes('检查版本未完成'))) {
     throw new Error('Operation error lost during health refresh');
   }
   if (await page.locator('.actions button').first().isDisabled()) throw new Error('Operation error blocked recovery controls');
@@ -198,6 +198,33 @@ try {
   if (!checked.ok) throw new Error(checked.error);
   if (await page.evaluate(() => window.__managerMarker) !== 'retained') throw new Error('Current-version check reloaded');
   results.currentCheckPreservesWindow = true;
+  const actual = await page.evaluate(async () => (await window.manager.get()).value);
+  await application.evaluate(({ BrowserWindow }, value) =>
+    BrowserWindow.getAllWindows()[0].webContents.send('manager:state', value),
+  { ...actual, busy: '下载并安装依赖', updateProgress: { percent: 18, step: 'dependencies',
+    title: '下载并安装依赖', detail: '正在临时目录安装依赖；网络较慢时此步骤可能持续数分钟。',
+    startedAt: Date.now() - 90_000, stepStartedAt: Date.now() - 70_000,
+    lastOutputAt: Date.now() - 40_000, endedAt: null, status: 'running',
+    logs: [{ time: Date.now(), message: 'npm http fetch synthetic dependency' }] } });
+  await page.getByRole('progressbar', { name: '更新进度' }).waitFor();
+  for (const [width, height] of [[400, 550], [480, 690], [780, 800]]) {
+    await application.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setSize(...size), [width, height]);
+    if (await page.getByRole('progressbar').getAttribute('value') !== '18') throw new Error('Wrong progress value');
+    const visible = await page.evaluate(() => {
+      const content = document.querySelector('.content').getBoundingClientRect();
+      const bar = document.querySelector('progress').getBoundingClientRect();
+      return bar.top >= content.top && bar.bottom <= content.bottom &&
+        document.documentElement.scrollWidth <= innerWidth &&
+        document.querySelector('footer').getBoundingClientRect().bottom <= innerHeight + 1;
+    });
+    if (!visible) throw new Error('Update progress hidden or overflowing');
+    if (!await page.locator('.actions button').first().isDisabled()) throw new Error('Update controls not locked');
+    await page.screenshot({ path: path.join(root, `output/manager-smoke/${process.platform}-${packaged ? 'packaged' : 'source'}-progress-${width}.png`) });
+  }
+  await application.evaluate(({ BrowserWindow }, value) =>
+    BrowserWindow.getAllWindows()[0].webContents.send('manager:state', value), actual);
+  await page.getByRole('progressbar').waitFor({ state: 'detached' });
+  results.updateProgressVisible = true;
   for (const operation of ['minimize', 'close']) {
     await application.evaluate(({ BrowserWindow }, action) => BrowserWindow.getAllWindows()[0][action](), operation);
     await until(() => application.evaluate(({ BrowserWindow }) => !BrowserWindow.getAllWindows()[0].isVisible()), true, operation);

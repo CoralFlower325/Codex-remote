@@ -103,7 +103,9 @@ After setup, the host's `Start Remote.cmd` / `Stop Remote.cmd` or `.command` fil
 
 The optional [Desktop Manager](docs/desktop-manager.md) detects installed hosts and adds local start/stop,
 health checks and confirmed version updates, with a Windows notification-area icon
-or macOS top menu-bar icon. Choose the existing installation; closing the window
+or macOS top menu-bar icon. Updates show Chinese stages, percentage progress and elapsed
+time; dependency downloads retry transient failures before offline installation.
+Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
 remains pending.
 

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { health, installation, control, serviceStatus, portListening, startupReady } from './controller.mjs';
 import { latestRelease, prepareUpdate, installUpdate } from './updater.mjs';
 import { discoverInstallations, preferredInstallation } from './discovery.mjs';
+import { updateError } from './update-progress.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const labels = {
@@ -17,7 +18,8 @@ let showingDock = null;
 let suppressActivationUntil = 0;
 let healthError = '';
 let settings = { root: '', launchAtLogin: false };
-let state = { status: null, busy: '', error: '', release: null, result: '', events: [], installations: [] };
+let state = { status: null, busy: '', error: '', release: null, result: '', events: [], installations: [],
+  updateProgress: null };
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 function event(message) {
   state.events = [{ time: Date.now(), message }, ...state.events].slice(0, 60);
@@ -109,7 +111,7 @@ async function exclusive(label, fn) {
   // A read already in progress must finish before a mutation uses its snapshot.
   if (polling) await polling;
   if (state.busy) throw new Error('已有操作正在进行。');
-  state.busy = label; state.error = ''; state.result = ''; event(label); publish();
+  state.busy = label; state.error = ''; state.result = ''; state.updateProgress = null; event(label); publish();
   try { return await fn(); }
   catch (error) { showError(error); throw error; }
   finally { state.busy = ''; await refresh(); publish(); }
@@ -155,7 +157,8 @@ async function openRemote() {
 async function checkUpdate() {
   return exclusive('正在检查更新', async () => {
     const info = await installation(settings.root);
-    state.release = await latestRelease(info.version);
+    try { state.release = await latestRelease(info.version); }
+    catch (error) { throw new Error(`检查版本未完成。${updateError(error)}`, { cause: error }); }
     state.result = state.release.available ? '' : `本机 ${info.version} 已是最新版本。`;
     event(state.release.available ? `发现新版本 ${state.release.version}` : '本机已是最新版本');
   });
@@ -173,7 +176,11 @@ async function update() {
   return exclusive('正在准备更新', async () => {
     const current = await health(settings.root);
     if (['conflict', 'unowned'].includes(current.state)) throw new Error('请先解决服务归属或端口冲突。');
-    const progress = (message) => { state.busy = message; event(message); publish(); };
+    const progress = (message, detail) => {
+      state.busy = message; state.updateProgress = detail;
+      if (detail?.kind !== 'output') event(message);
+      publish();
+    };
     const prepared = await prepareUpdate(settings.root, release, progress);
     let requireDesktop = current.desktop;
     const result = await installUpdate(prepared, {
@@ -188,7 +195,8 @@ async function update() {
     state.result = `已安装 ${result.version}。备份：${result.backup}` +
       (result.preservedFiles.length ? `\n已保留本机文档：${result.preservedFiles.join('、')}。新版副本位于备份的 incoming 目录。` : '') +
       (result.wasRunning ? '' : '\nRemote 保持关闭。') +
-      (result.edgeSyncRequired ? '\n若使用外部静态托管，请同步新版前端资源。' : '');
+      (result.edgeSyncRequired ? '\n若使用外部静态托管，请同步新版前端资源。' : '') +
+      (result.cleanupWarning ? `\n${result.cleanupWarning}` : '');
     event(`本机已更新到 ${result.version}`);
   });
 }

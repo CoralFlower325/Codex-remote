@@ -15,7 +15,18 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The 0.1.12 batch isolates npm caches for update preparation, installation and
+The 0.1.13 batch exposes Chinese update stages, completed-step percentages,
+elapsed times and bounded raw command output. Long steps do not fake progress.
+Transient downloads retry within finite limits; the original registry/proxy
+configuration remains authoritative. Preparation validates an actual offline
+install before stopping service. Installation retains old dependencies for
+network-independent recovery and uses the prepared cache offline.
+Reports distinguish preparation failure, recovered old versions and incomplete
+recovery; successful installs are not reported failed solely for cleanup errors.
+Release titles, headings and summaries use Chinese, preserving necessary names
+and identifiers. The manager executable updates separately from host files.
+
+The preceding 0.1.12 batch isolates npm caches for update preparation, installation and
 rollback, bypassing user-cache permission failures without modifying that cache.
 Install the new manager executable before retrying a host update. Desktop
 diagnostics distinguish endpoint/page/bridge readiness and clear on recovery;
@@ -124,7 +135,8 @@ run as the host user outside model permission profiles.
 6. Publish only the reviewed public files, verify remote revision and CI, and
    install matching built assets. Upload assets before switching the shell.
    Keep older chunks for existing clients. Publish a matching GitHub Release
-   with version tag, exact source commit and changes; align release-notes.ts.
+   with version tag, exact source commit and Chinese titles, headings and changes;
+   align release-notes.ts.
 7. For configured static-edge installations, use the existing authenticated
    `cf` workflow in the [operations guide](guide.md#optional-static-edge-hosting).
    Private API, socket and health routes stay on
@@ -148,9 +160,9 @@ before claiming that rollback is complete.
 
 The earlier 2026-10-30 README closeout reorganized both languages, moved detailed
 instructions into bilingual guides and preserved 0.1.9 at that checkpoint.
-The subsequent manager release is 0.1.10. Its functional source and installers
-are recorded by the v0.1.10 tag and Release; each installation's private
-acceptance record remains the authority for its deployed version.
+Subsequent manager changes are recorded by their matching tags and Releases;
+each installation's private acceptance record remains the authority for its
+deployed version. Do not use this historical README checkpoint as a release pin.
 Documentation-only closeouts do not increment the application version, rebuild,
 restart services or publish another Release.
 

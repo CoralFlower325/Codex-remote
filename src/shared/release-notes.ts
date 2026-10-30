@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.1.13', changes: [
+    '本机更新增加百分比进度、中文步骤、总耗时与当前步骤耗时，并保留最近命令输出。',
+    '依赖下载连接中断时有限重试，准备阶段继续运行旧服务，不自动修改依赖源或代理。',
+    '停服前验证离线安装，正式安装使用本次缓存；失败时优先直接恢复旧依赖，减少对网络的依赖。',
+    '明确区分准备失败、已恢复旧版和恢复未完成；临时文件清理失败不再误报安装失败。'
+  ] },
   { version: '0.1.12', changes: [
     '管理器自动识别本机安装目录，优先保存记录和已注册服务，多个候选可手动选择。',
     '本机更新全程使用独立 npm 缓存，避免 macOS 用户缓存权限错误，并在完成或失败后清理。',

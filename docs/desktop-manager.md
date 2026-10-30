@@ -75,6 +75,16 @@ Check the release in **Version updates**, read its summary and confirm installat
 in the native dialog. Already current checks leave the service and window intact.
 Node.js 22.19+, npm and Git must be on PATH, including standard Homebrew locations.
 
+The progress display uses Chinese stage labels, a percentage based on completed
+steps, total/stage elapsed time and bounded recent command output. Percentages
+do not estimate download bytes or time remaining. A long step holds its percentage;
+after thirty seconds without output, the display explicitly says it is waiting.
+Raw dependency/test output retains its original language. Network errors get a
+Chinese explanation rather than replacing the whole screen with npm output.
+Downloads use bounded npm request retries and at most one command retry for
+transient network failures, preserving configured registries and proxies.
+Each npm command has a ten-minute deadline; source fetches have three minutes.
+
 1. Fetch official version tags into an isolated temporary directory.
 2. Compare upstream-changed files with the installed release's originals. CRLF
    differences are accepted. Unrelated edits remain. Conflicting local Markdown
@@ -85,17 +95,24 @@ Node.js 22.19+, npm and Git must be on PATH, including standard Homebrew locatio
 3. Combine the incoming changes with preserved local `src/`, `public/`, `scripts/`
    and standard build configuration in the isolated directory. Install dependencies,
    typecheck, test and build while the existing service runs. Runtime `.env` and
-   private data are not copied into staging. Recheck build input hashes before install.
+   private data are not copied into staging. Reinstall dependencies offline in staging
+   to confirm the owned cache is usable before stopping anything.
+   Recheck build input hashes before install.
 4. Back up affected sources and builds under `output/manager-backup-*`. Stop Remote
    and wait for the old backend to exit before replacing files.
    Retained documentation has local copies under `source/`, incoming copies under
    `incoming/`, and deletion/retention entries in `receipt.json`. Completion lists
    the retained paths for manual reconciliation; local rules are never overwritten
    to resolve a conflict automatically.
-5. Install sources/builds and locked dependencies. Restart and verify a previously
+5. Retain the original dependency directory in the backup, then install sources,
+   builds and locked dependencies offline from the validated cache. Restart and verify a previously
    running service; an explicitly stopped installation stays stopped.
-6. Attempt backup recovery on installation/startup failure. Failed recovery displays
-   the backup location and requires manual attention.
+6. Attempt backup recovery on installation/startup failure. Restore original
+   dependencies directly when available, without a network request; an installation
+   lacking dependencies must reinstall the old lockfile. Failed recovery displays
+   the backup location and requires manual attention. Recovery has its own percentage
+   and outcome; restored old versions are not presented as successful updates.
+   Cleanup failures after a successful installation are warnings, not failed updates.
 
 Preparation, live dependency installation and rollback share one updater-owned
 temporary npm cache, including nested npm commands. The updater neither uses

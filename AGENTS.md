@@ -243,6 +243,9 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Installation discovery is read-only. Preserve a valid saved selection; prefer
   registered services over guessed paths, and let users choose ambiguous roots.
   Serialize directory changes with service actions and preserve manual browsing.
+  Update progress reflects completed stages, not invented download percentages.
+  Validate offline dependencies before stopping; preserve old dependencies for
+  recovery. Keep raw bounded tool output separate from Chinese status messages.
 - Windows Tunnel tasks run the owned Node supervisor. Restart exited cloudflared
   after one second, backing off repeated crashes to five seconds. Poll readiness
   every two seconds and wake on native address/availability events. Rebuild only

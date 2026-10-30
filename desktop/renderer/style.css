@@ -75,5 +75,20 @@ h3 { font-size: 13px; font-weight: 600; }
 .update-heading button { font-size: 12px; }
 .release-title { margin-top: 24px; }
 .notes { max-height: 260px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #454545; margin: 12px 0 18px; }
+.update-progress { padding: 14px 0; border-bottom: 1px solid #ebebeb; }
+.progress-heading { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.percentage { font-size: 13px; font-variant-numeric: tabular-nums; color: #2466a4; flex: 0 0 auto; }
+.update-progress progress { display: block; width: 100%; height: 7px; margin: 10px 0; border: 0; border-radius: 3px; overflow: hidden; background: #ededed; accent-color: #2466a4; }
+.update-progress progress::-webkit-progress-bar { background: #ededed; }
+.update-progress progress::-webkit-progress-value { background: #2466a4; }
+.progress-detail,.progress-wait { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
+.progress-detail { color: #454545; }
+.progress-time { margin-top: 7px; font-size: 11px; color: #626262; font-variant-numeric: tabular-nums; }
+.progress-wait { color: #925415; margin-top: 7px; }
+.update-output { margin-top: 10px; padding-top: 0; border: 0; }
+.update-output pre { max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.6 ui-monospace, monospace; color: #626262; margin-bottom: 0; }
+.update-progress.failed .percentage,.update-progress.recovery-failed .percentage { color: #a33232; }
+.update-progress.completed .percentage { color: #247543; }
+.update-progress.recovering .percentage,.update-progress.recovered .percentage { color: #925415; }
 @media (max-width: 410px) { header,.installation,.overview,footer { padding-left: 18px; padding-right: 18px; }.content { padding-left: 18px; padding-right: 18px; }.overview { gap: 8px; }.status-symbol { width: 36px; height: 36px; } h2 { font-size: 14px; } }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation: none !important; transition: none !important; } }

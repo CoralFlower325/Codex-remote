@@ -116,6 +116,51 @@ async function prepared() {
     release: { version: '0.1.10' }, execute: vi.fn().mockResolvedValue('') };
 }
 describe('installation transaction', () => {
+  it('installs offline from the prepared cache, streams output and completes after verification', async () => {
+    const item = await prepared();
+    const updates = [];
+    item.execute.mockImplementationOnce(async (_file, args, options) => {
+      expect(args).toContain('--offline');
+      expect(options.env.npm_config_offline).toBe('true');
+      options.onLine('dependencies installed'); return '';
+    });
+    await installUpdate(item, { stop: vi.fn(), start: vi.fn(), verify: vi.fn(),
+      isRunning: async () => false, progress: (title, state) => updates.push({ title, ...state }) });
+    expect(item.execute).toHaveBeenCalledTimes(1);
+    expect(updates.some((state) => state.logs.some((line) => line.message.includes('dependencies installed')))).toBe(true);
+    expect(updates.at(-1)).toMatchObject({ percent: 100, status: 'completed' });
+    expect(updates.map((state) => state.percent)).toEqual([...updates.map((state) => state.percent)].sort((a, b) => a - b));
+  });
+  it('restores the original dependencies without network after failed offline installation', async () => {
+    const item = await prepared();
+    await write(item.info.root, 'node_modules/old-dependency/sentinel', 'working old dependency');
+    item.execute.mockImplementationOnce(async () => {
+      await write(item.info.root, 'node_modules/partial-new-package/index.js', 'partial install');
+      throw new Error('ENOTCACHED offline dependency missing');
+    });
+    const verify = vi.fn();
+    await expect(installUpdate(item, { stop: vi.fn(), start: vi.fn(), verify,
+      isRunning: async () => true, progress: () => {} })).rejects.toThrow('已恢复旧版');
+    expect(item.execute).toHaveBeenCalledTimes(1);
+    expect(verify).toHaveBeenCalledOnce();
+    expect(await fs.readFile(path.join(item.info.root, 'node_modules/old-dependency/sentinel'), 'utf8')).toBe('working old dependency');
+    await expect(fs.access(path.join(item.info.root, 'node_modules/partial-new-package'))).rejects.toThrow();
+  });
+  it('reports failed recovery honestly without claiming completion', async () => {
+    const item = await prepared(); const updates = [];
+    item.execute.mockRejectedValue(new Error('dependency install failed'));
+    await expect(installUpdate(item, { stop: vi.fn(), start: vi.fn(), verify: vi.fn(),
+      isRunning: async () => true, progress: (_title, state) => updates.push(state) })).rejects.toThrow('自动恢复也未能完成');
+    expect(item.execute).toHaveBeenCalledTimes(2);
+    expect(updates.at(-1)).toMatchObject({ status: 'recovery-failed', percent: 40 });
+  });
+  it('attempts recovery when stop partially changes service state before rejecting', async () => {
+    const item = await prepared(); const start = vi.fn(); const verify = vi.fn();
+    await expect(installUpdate(item, { stop: vi.fn().mockRejectedValue(new Error('stop did not finish')),
+      start, verify, isRunning: async () => true, progress: () => {} })).rejects.toThrow('尚未替换');
+    expect(start).toHaveBeenCalledOnce(); expect(verify).toHaveBeenCalledOnce();
+    expect(item.execute).not.toHaveBeenCalled();
+  });
   it('preserves edited and deleted documentation, backs up both versions, and records retention', async () => {
     const item = await prepared();
     await write(item.info.root, 'AGENTS.md', 'private rules');
@@ -143,7 +188,7 @@ describe('installation transaction', () => {
       remove: false, preserve: true }];
     item.execute.mockRejectedValueOnce(new Error('failed install')).mockResolvedValueOnce('');
     await expect(installUpdate(item, { stop: vi.fn(), start: vi.fn(), verify: vi.fn(),
-      isRunning: async () => false, progress: () => {} })).rejects.toThrow('restored');
+      isRunning: async () => false, progress: () => {} })).rejects.toThrow('已恢复旧版');
     expect(await fs.readFile(path.join(item.info.root, 'AGENTS.md'), 'utf8')).toBe('private rules');
   });
   it('backs up before stopping, installs, restarts and verifies without touching private data', async () => {
@@ -170,7 +215,7 @@ describe('installation transaction', () => {
     const item = await prepared();
     const verify = vi.fn().mockRejectedValueOnce(new Error('not ready')).mockResolvedValueOnce(undefined);
     await expect(installUpdate(item, { stop: vi.fn(), start: vi.fn(), verify,
-      isRunning: async () => true, progress: () => {} })).rejects.toThrow('restored');
+      isRunning: async () => true, progress: () => {} })).rejects.toThrow('已恢复旧版');
     expect(await fs.readFile(path.join(item.info.root, 'dist/client/index.html'), 'utf8')).toBe('old');
     expect(item.execute).toHaveBeenCalledTimes(2);
     expect(verify).toHaveBeenCalledTimes(2);
@@ -186,7 +231,7 @@ describe('installation transaction', () => {
     await write(item.info.root, 'source.txt', 'new local edit');
     item.plan = [{ relative: 'source.txt', before: 'previous hash', remove: false }];
     await expect(installUpdate(item, { stop, start: vi.fn(), verify: vi.fn(),
-      isRunning: async () => true, progress: () => {} })).rejects.toThrow('changed');
+      isRunning: async () => true, progress: () => {} })).rejects.toThrow('尚未替换');
     expect(stop).not.toHaveBeenCalled();
     expect(await fs.readFile(path.join(item.info.root, 'source.txt'), 'utf8')).toBe('new local edit');
   });
@@ -195,7 +240,7 @@ describe('installation transaction', () => {
     await write(item.info.root, 'src/custom.ts', 'edited after build');
     item.inputs = [{ relative: 'src/custom.ts', before: 'previous hash' }];
     await expect(installUpdate(item, { stop, start: vi.fn(), verify: vi.fn(),
-      isRunning: async () => true, progress: () => {} })).rejects.toThrow('changed');
+      isRunning: async () => true, progress: () => {} })).rejects.toThrow('尚未替换');
     expect(stop).not.toHaveBeenCalled();
   });
   it('recovers changed and newly added sources after a failed dependency install', async () => {
@@ -209,7 +254,7 @@ describe('installation transaction', () => {
     ];
     item.execute.mockRejectedValueOnce(new Error('dependency failure')).mockResolvedValueOnce('');
     await expect(installUpdate(item, { stop: vi.fn(), start: vi.fn(), verify: vi.fn(),
-      isRunning: async () => true, progress: () => {} })).rejects.toThrow('restored');
+      isRunning: async () => true, progress: () => {} })).rejects.toThrow('已恢复旧版');
     expect(await fs.readFile(path.join(item.info.root, 'source.txt'), 'utf8')).toBe('old source');
     await expect(fs.access(path.join(item.info.root, 'addition.txt'))).rejects.toThrow();
   });
@@ -217,7 +262,7 @@ describe('installation transaction', () => {
     const item = await prepared(); const outside = await directory(); const stop = vi.fn();
     await fs.symlink(outside, path.join(item.info.root, 'output'), process.platform === 'win32' ? 'junction' : 'dir');
     await expect(installUpdate(item, { stop, start: vi.fn(), verify: vi.fn(),
-      isRunning: async () => true, progress: () => {} })).rejects.toThrow('Unsafe');
+      isRunning: async () => true, progress: () => {} })).rejects.toThrow('尚未替换');
     expect(stop).not.toHaveBeenCalled();
     expect(await fs.readdir(outside)).toEqual([]);
   });
@@ -234,7 +279,8 @@ describe('isolated update preparation', () => {
     await write(userCache, 'preserved.txt', 'user cache');
     vi.stubEnv('NPM_CONFIG_CACHE', userCache);
     vi.stubEnv('npm_config_cache', userCache);
-    let stage; let cache;
+    let stage; let cache; let installs = 0;
+    const updates = [];
     const execute = vi.fn(async (file, args, options) => {
       if (file === 'git') {
         stage = args[1];
@@ -256,11 +302,16 @@ describe('isolated update preparation', () => {
         expect(options.env.NPM_CONFIG_CACHE).toBeUndefined();
         expect(args.slice(1, 3)).toEqual(['--cache', cache]);
         await write(cache, 'writable.txt', 'isolated cache');
+        if (args.includes('ci') && ++installs === 1) throw new Error('ECONNRESET socket hang up');
       }
       if (args.includes('typecheck')) throw new Error('validation failure');
       return '';
     });
-    await expect(prepareUpdate(root, { tag: 'v0.1.10', version: '0.1.10' }, () => {}, execute)).rejects.toThrow('validation failure');
+    await expect(prepareUpdate(root, { tag: 'v0.1.10', version: '0.1.10' },
+      (_title, state) => updates.push(state), execute)).rejects.toThrow('尚未安装');
+    expect(installs).toBe(2);
+    expect(updates.some((state) => state.detail.includes('最后一次重试'))).toBe(true);
+    expect(updates.at(-1)).toMatchObject({ status: 'failed', percent: 43 });
     expect(await fs.readFile(path.join(root, 'source.txt'), 'utf8')).toBe('old source');
     expect(await fs.readFile(path.join(root, 'dist-server/server/index.js'), 'utf8')).toBe('old build');
     await expect(fs.access(stage)).rejects.toThrow();

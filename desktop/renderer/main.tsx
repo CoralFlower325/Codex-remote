@@ -18,6 +18,12 @@ type State = {
   release: { available: boolean; version: string; notes: string } | null;
   events: { time: number; message: string }[];
   installations: { root: string; version: string; source: string }[];
+  updateProgress: {
+    percent: number; step: string; title: string; detail: string; startedAt: number;
+    stepStartedAt: number; lastOutputAt: number | null; endedAt: number | null;
+    status: 'running' | 'recovering' | 'completed' | 'recovered' | 'failed' | 'recovery-failed';
+    logs: { time: number; message: string }[];
+  } | null;
 };
 type Result = { ok: boolean; value?: State; error?: string };
 interface Bridge {
@@ -29,7 +35,8 @@ interface Bridge {
 }
 declare global { interface Window { manager: Bridge } }
 const initial: State = { root: '', version: '', platform: '', packaged: false, launchAtLogin: false,
-  status: null, busy: '', error: '', healthError: '', result: '', release: null, events: [], installations: [] };
+  status: null, busy: '', error: '', healthError: '', result: '', release: null, events: [], installations: [],
+  updateProgress: null };
 const labels = { healthy: '运行正常', degraded: '需要检查', stopped: '已关闭',
   conflict: '安装目录冲突', unowned: '端口被占用' };
 function App() {
@@ -108,6 +115,7 @@ function App() {
       <button aria-current={tab === 'update' ? 'page' : undefined} onClick={() => setTab('update')}><ArrowUpToLine size={15} />版本更新{state.release?.available && <span className="new-dot" />}</button>
     </nav>
     <div className="content">
+      {state.updateProgress && <UpdateProgress progress={state.updateProgress} now={now} />}
       {tab === 'status' ? <>
         {!stale && status?.diagnostics?.map((message) =>
           <div className="message" role="status" key={message}>{message}</div>)}
@@ -139,6 +147,30 @@ function App() {
       <button disabled={disabled} onClick={() => void perform(window.manager.quit)}>退出管理器</button>
     </footer>
   </main>;
+}
+function duration(milliseconds: number) {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  return seconds < 60 ? `${seconds} 秒` : `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+}
+function UpdateProgress({ progress, now }: { progress: NonNullable<State['updateProgress']>; now: number }) {
+  const running = progress.status === 'running' || progress.status === 'recovering';
+  const quiet = now - (progress.lastOutputAt || progress.stepStartedAt);
+  return <section className={`update-progress ${progress.status}`} aria-label="更新进度">
+    <div className="progress-heading"><h3>{progress.title}</h3>
+      <span className="percentage">{progress.percent}%</span></div>
+    <progress aria-label={progress.status === 'recovering' || progress.status === 'recovered' ? '旧版恢复进度' : '更新进度'}
+      max="100" value={progress.percent} />
+    <p className="progress-detail" role="status">{progress.detail}</p>
+    <p className="progress-time">总耗时 {duration((running ? now : progress.endedAt || now) - progress.startedAt)}
+      {running && <> · 本步骤 {duration(now - progress.stepStartedAt)}</>}</p>
+    {running && quiet >= 30_000 && <p className="progress-wait">
+      {duration(quiet)}未收到新输出，仍在等待当前命令完成；超过最长等待时间会停止并报告结果。
+    </p>}
+    {progress.logs.length > 0 && <details className="update-output">
+      <summary>最近输出 <span>{progress.logs.length}</span></summary>
+      <pre>{progress.logs.map((line) => `${new Date(line.time).toLocaleTimeString('zh-CN', { hour12: false })} ${line.message}`).join('\n')}</pre>
+    </details>}
+  </section>;
 }
 function Row({ name, value, good, stale }: { name: string; value: string; good?: boolean; stale: boolean }) {
   return <div><dt>{name}</dt><dd className={!stale && good !== undefined ? good ? 'ok' : 'warn' : ''}><span className="dot" />{stale ? '等待检测' : value}</dd></div>;

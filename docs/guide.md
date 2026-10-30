@@ -2,6 +2,9 @@
 
 For local GUI controls, tray/menu-bar status and confirmed updates, see the optional
 [Desktop Manager](desktop-manager.md). It requires an already configured installation.
+Host updates show Chinese stages, completed-step percentages, elapsed times and
+recent output, validate offline installation before stopping and retain original
+dependencies for failure recovery.
 
 [Overview](../README.md) / [Documentation](README.md) / [简体中文](guide.zh-CN.md)
 
