@@ -1,32 +1,35 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, ArrowUpToLine, ExternalLink, FolderOpen, Play, Power, RefreshCw, RotateCw, Square, X } from 'lucide-react';
+import { Activity, ArrowUpToLine, ExternalLink, FolderOpen, Play, Power, RefreshCw, RotateCw, ScanSearch, Square, X } from 'lucide-react';
 import './style.css';
 
 type Status = {
   root: string; version: string; localUrl: string; publicUrl: string; checkedAt: number;
   state: 'healthy' | 'degraded' | 'stopped' | 'conflict' | 'unowned';
   service: { running: boolean; enabled: boolean; installed: boolean };
-  backend: { reachable: boolean; ms: number }; desktop: boolean; passwordConfigured: boolean;
+  backend: { reachable: boolean; ready: boolean; ms: number }; desktop: boolean; passwordConfigured: boolean;
+  diagnostics: string[];
   tunnel: { managed: boolean; ready: boolean };
   publicEntry: { configured: boolean; reachable: boolean };
 };
 type State = {
   root: string; version: string; platform: string; packaged: boolean; launchAtLogin: boolean;
-  status: Status | null; busy: string; error: string; result: string;
+  status: Status | null; busy: string; error: string; healthError: string; result: string;
   release: { available: boolean; version: string; notes: string } | null;
   events: { time: number; message: string }[];
+  installations: { root: string; version: string; source: string }[];
 };
 type Result = { ok: boolean; value?: State; error?: string };
 interface Bridge {
-  get(): Promise<Result>; refresh(): Promise<Result>; choose(): Promise<Result>;
+  get(): Promise<Result>; refresh(): Promise<Result>; dismiss(): Promise<Result>; choose(): Promise<Result>;
+  detect(): Promise<Result>; select(directory: string): Promise<Result>;
   action(action: string): Promise<Result>; open(): Promise<Result>; folder(): Promise<Result>;
   check(): Promise<Result>; update(): Promise<Result>; login(value: boolean): Promise<Result>;
   quit(): Promise<Result>; subscribe(listener: (state: State) => void): () => void;
 }
 declare global { interface Window { manager: Bridge } }
 const initial: State = { root: '', version: '', platform: '', packaged: false, launchAtLogin: false,
-  status: null, busy: '', error: '', result: '', release: null, events: [] };
+  status: null, busy: '', error: '', healthError: '', result: '', release: null, events: [], installations: [] };
 const labels = { healthy: '运行正常', degraded: '需要检查', stopped: '已关闭',
   conflict: '安装目录冲突', unowned: '端口被占用' };
 function App() {
@@ -44,7 +47,11 @@ function App() {
   async function perform(fn: () => Promise<Result>) {
     if (pending || state.busy) return;
     setPending(true); setError('');
-    try { const result = await fn(); if (!result.ok) setError(result.error || '操作失败'); }
+    try {
+      const result = await fn();
+      if (result.value) setState(result.value);
+      else if (!result.ok) setError(result.error || '操作失败');
+    }
     catch { setError('无法连接本机管理器。'); }
     finally { setPending(false); }
   }
@@ -52,9 +59,9 @@ function App() {
   const disabled = pending || Boolean(state.busy);
   const conflict = status && ['conflict', 'unowned'].includes(status.state);
   const stale = !status || now - status.checkedAt > 20_000;
-  const canControl = Boolean(status) && !conflict && !state.error && !stale;
-  const text = state.busy || (state.error ? '状态检测失败' : status ? labels[status.state] : state.root ? '正在检测' : '选择安装目录');
-  const issue = error || state.error;
+  const canControl = Boolean(status) && !conflict && !state.healthError && !stale;
+  const text = state.busy || (state.healthError ? '状态检测失败' : status ? labels[status.state] : state.root ? '正在检测' : '选择安装目录');
+  const issue = error || state.error || state.healthError;
   return <main>
     <header>
       <img src="./app.png" width="32" height="32" alt="" />
@@ -64,11 +71,22 @@ function App() {
     </header>
     <section className="installation">
       <div><span className="caption">安装目录</span><span className="path" title={state.root}>{state.root || '尚未选择'}</span></div>
+      <button className="icon" title="自动探测安装目录" aria-label="自动探测安装目录" disabled={disabled}
+        onClick={() => void perform(window.manager.detect)}><ScanSearch size={18} /></button>
       <button className="icon" title="选择安装目录" aria-label="选择安装目录" disabled={disabled}
         onClick={() => void perform(window.manager.choose)}><FolderOpen size={18} /></button>
     </section>
+    {state.installations.length > 1 && <section className="installation-choices">
+      <select aria-label="选择探测到的安装目录" disabled={disabled} value={state.root}
+        onChange={(event) => void perform(() => window.manager.select(event.target.value))}>
+        <option value="" disabled>请选择安装目录</option>
+        {state.installations.map((item) => <option key={item.root} value={item.root}>
+          {item.root} · v{item.version}{item.source === 'service' ? ' · 系统服务' : ''}
+        </option>)}
+      </select>
+    </section>}
     <section className="overview">
-      <div className={`status-symbol ${state.busy ? 'working' : issue || stale ? 'unknown' : status?.state || ''}`}>
+      <div className={`status-symbol ${state.busy ? 'working' : state.healthError || stale ? 'unknown' : status?.state || ''}`}>
         <Power size={23} />
       </div>
       <div className="status-copy"><h2 aria-live="polite">{text}</h2>
@@ -80,7 +98,10 @@ function App() {
           onClick={() => void perform(() => window.manager.action('Restart'))}><RotateCw size={17} /></button>
       </div>
     </section>
-    {issue && <div className="message error" role="alert"><span>{issue}</span><button className="icon" title="清除操作提示" aria-label="清除操作提示" onClick={() => setError('')}><X size={16} /></button></div>}
+    {issue && <div className="message error" role="alert"><span>{issue}</span>
+      {(error || state.error) && <button className="icon" title="清除操作提示" aria-label="清除操作提示" disabled={disabled}
+        onClick={() => { setError(''); void perform(window.manager.dismiss); }}><X size={16} /></button>}
+    </div>}
     {state.result && <div className="message" role="status">{state.result}</div>}
     <nav aria-label="管理视图">
       <button aria-current={tab === 'status' ? 'page' : undefined} onClick={() => setTab('status')}><Activity size={15} />健康状态</button>
@@ -88,6 +109,8 @@ function App() {
     </nav>
     <div className="content">
       {tab === 'status' ? <>
+        {!stale && status?.diagnostics?.map((message) =>
+          <div className="message" role="status" key={message}>{message}</div>)}
         <dl className="health">
           <Row name="本地服务" value={status ? status.backend.reachable ? `${status.backend.ms} ms` : '未响应' : '等待检测'} good={status?.backend.reachable} stale={stale} />
           <Row name="Desktop 同步" value={status ? status.desktop ? '已连接' : '未就绪' : '等待检测'} good={status?.desktop} stale={stale} />

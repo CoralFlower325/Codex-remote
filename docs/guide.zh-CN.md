@@ -60,6 +60,10 @@ cd Codex-remote
 
 先保存工作并完全退出 Codex Desktop，再使用调试参数启动。正常使用过程中，Remote 不需要重启桌面客户端。
 
+普通启动不保证开启 9229。Codex++ 等启动器可能已代为传入调试参数；
+Remote 与启动器可以使用同一个 Desktop 调试端点，它与启动器自己的本地服务不同。
+如果端点已经就绪，保持当前 Desktop 运行即可。
+
 Windows 商店安装版，可在 PowerShell 中执行：
 
 ```powershell

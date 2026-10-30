@@ -2,8 +2,9 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, dialog, shell } f
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { health, installation, control, serviceStatus, portListening } from './controller.mjs';
+import { health, installation, control, serviceStatus, portListening, startupReady } from './controller.mjs';
 import { latestRelease, prepareUpdate, installUpdate } from './updater.mjs';
+import { discoverInstallations, preferredInstallation } from './discovery.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const labels = {
@@ -13,8 +14,10 @@ const labels = {
 let win; let tray; let timer; let quitting = false; let polling = null;
 let dockTimer; let lastDockChange = 0;
 let showingDock = null;
+let suppressActivationUntil = 0;
+let healthError = '';
 let settings = { root: '', launchAtLogin: false };
-let state = { status: null, busy: '', error: '', release: null, result: '', events: [] };
+let state = { status: null, busy: '', error: '', release: null, result: '', events: [], installations: [] };
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 function event(message) {
   state.events = [{ time: Date.now(), message }, ...state.events].slice(0, 60);
@@ -25,7 +28,7 @@ function publish() {
 }
 function snapshot() {
   return { ...state, root: settings.root, launchAtLogin: settings.launchAtLogin,
-    packaged: app.isPackaged, version: app.getVersion(), platform: process.platform };
+    packaged: app.isPackaged, version: app.getVersion(), platform: process.platform, healthError };
 }
 async function saveSettings() {
   await fs.mkdir(path.dirname(settingsFile()), { recursive: true });
@@ -37,9 +40,9 @@ async function refresh() {
   polling = (async () => {
     try {
       state.status = await health(settings.root);
-      state.error = '';
+      healthError = '';
     } catch (error) {
-      state.error = error.message;
+      healthError = error.message;
       state.status = null;
     } finally { polling = null; publish(); }
   })();
@@ -58,6 +61,7 @@ function showWindow() {
 }
 function hideWindow() {
   if (!tray) return;
+  if (process.platform === 'darwin') suppressActivationUntil = Date.now() + 2500;
   win.hide();
   if (process.platform === 'darwin') {
     clearTimeout(dockTimer);
@@ -66,16 +70,20 @@ function hideWindow() {
     void Promise.resolve(showingDock).then(() => {
       if (win.isDestroyed() || win.isVisible()) return;
       dockTimer = setTimeout(() => {
-        if (!win.isDestroyed() && !win.isVisible()) { app.dock.hide(); lastDockChange = Date.now(); }
+        if (!win.isDestroyed() && !win.isVisible()) {
+          suppressActivationUntil = Date.now() + 1200;
+          lastDockChange = Date.now();
+          app.dock.hide();
+        }
       }, Math.max(0, 1100 - (Date.now() - lastDockChange)));
     });
   }
 }
 function updateTray() {
   if (!tray) return;
-  const text = state.error ? '状态检测失败' : labels[state.status?.state] || '未选择安装目录';
+  const text = healthError ? '状态检测失败' : labels[state.status?.state] || '未选择安装目录';
   tray.setToolTip(`Codex Remote · ${state.busy || text}`);
-  const ready = Boolean(settings.root) && !state.busy && !state.error &&
+  const ready = Boolean(settings.root) && !state.busy && !healthError &&
     !['conflict', 'unowned'].includes(state.status?.state);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: `Codex Remote · ${state.busy || text}`, enabled: false },
@@ -94,7 +102,7 @@ function updateTray() {
   ]));
 }
 function showError(error) {
-  state.error = error.message; event('操作未完成'); publish();
+  state.error = error.message; event(`操作未完成：${error.message.slice(0, 500)}`); publish();
 }
 async function exclusive(label, fn) {
   if (state.busy) throw new Error('已有操作正在进行。');
@@ -116,13 +124,15 @@ async function waitStopped() {
   throw new Error('旧 Remote 仍在运行，已停止后续操作。');
 }
 async function stop() { await control(settings.root, 'Stop'); await waitStopped(); }
-async function verify() {
+async function verify({ requireDesktop = true } = {}) {
+  let status;
   for (let i = 0; i < 6; i++) {
-    const status = await health(settings.root);
-    if (status.state === 'healthy') return;
+    status = await health(settings.root);
+    if (startupReady(status, true)) return status;
     if (i < 5) await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  throw new Error('Remote 已启动，但健康检测尚未通过。');
+  if (startupReady(status, requireDesktop)) return status;
+  throw new Error(status.diagnostics.join('\n') || 'Remote 本地健康检测尚未通过。');
 }
 async function action(kind) {
   if (!settings.root) throw new Error('请先选择安装目录。');
@@ -130,8 +140,12 @@ async function action(kind) {
   return exclusive(kind === 'Start' ? '正在开启 Remote' : kind === 'Stop' ? '正在关闭 Remote' : '正在重启 Remote',
     async () => {
       if (kind !== 'Start') await stop();
-      if (kind !== 'Stop') { await control(settings.root, 'Start'); await verify(); }
-      event(kind === 'Stop' ? 'Remote 已关闭' : 'Remote 已启动');
+      if (kind === 'Stop') event('Remote 已关闭');
+      else {
+        await control(settings.root, 'Start');
+        const status = await verify({ requireDesktop: false });
+        event(status.desktop ? 'Remote 已启动' : 'Remote 已启动，Desktop 同步待就绪');
+      }
     });
 }
 async function openRemote() {
@@ -161,9 +175,14 @@ async function update() {
     if (['conflict', 'unowned'].includes(current.state)) throw new Error('请先解决服务归属或端口冲突。');
     const progress = (message) => { state.busy = message; event(message); publish(); };
     const prepared = await prepareUpdate(settings.root, release, progress);
+    let requireDesktop = current.desktop;
     const result = await installUpdate(prepared, {
-      stop, start: () => control(settings.root, 'Start'), verify,
-      isRunning: async () => (await health(settings.root)).service.running, progress
+      stop, start: () => control(settings.root, 'Start'), verify: () => verify({ requireDesktop }),
+      isRunning: async () => {
+        const status = await health(settings.root);
+        requireDesktop = status.desktop;
+        return status.service.running;
+      }, progress
     });
     state.release = null;
     state.result = `已安装 ${result.version}。备份：${result.backup}` +
@@ -174,13 +193,48 @@ async function update() {
   });
 }
 async function chooseDirectory() {
-  if (state.busy || polling) throw new Error('请等待当前操作完成。');
+  if (state.busy) throw new Error('请等待当前操作完成。');
   const chosen = await dialog.showOpenDialog(win, { properties: ['openDirectory'],
     title: '选择已安装并构建的 Codex Remote 目录' });
   if (chosen.canceled) return;
-  const info = await installation(chosen.filePaths[0]);
-  settings.root = info.root; state.release = null; state.status = null; state.result = '';
-  await saveSettings(); await refresh();
+  await selectDirectory(chosen.filePaths[0]);
+}
+async function selectDirectory(directory, discoveredOnly = false) {
+  return exclusive('正在选择安装目录', async () => {
+    if (discoveredOnly && !state.installations.some((item) => item.root === directory)) {
+      throw new Error('请重新探测安装目录。');
+    }
+    const info = await installation(directory);
+    settings.root = info.root; state.release = null; state.status = null; state.result = ''; state.error = '';
+    healthError = '';
+    if (!discoveredOnly) state.installations = [];
+    await saveSettings();
+    event('已选择本机安装目录');
+  });
+}
+async function detectDirectory() {
+  return exclusive('正在探测安装目录', async () => {
+    state.installations = await discoverInstallations({
+      nearby: [settings.root, process.cwd(), path.dirname(process.execPath), ...(!app.isPackaged ? [path.dirname(here)] : [])]
+    });
+    const selected = preferredInstallation(state.installations, settings.root);
+    if (settings.root !== (selected?.root || '')) {
+      state.release = null; state.status = null; healthError = '';
+    }
+    settings.root = selected?.root || '';
+    await saveSettings();
+    if (selected) {
+      event('已识别本机安装目录');
+    }
+    state.result = state.installations.length ? '' : '未发现已构建的安装，请手动选择安装目录。';
+  });
+}
+async function restoreDirectory() {
+  if (settings.root) {
+    try { await installation(settings.root); return; }
+    catch { settings.root = ''; state.release = null; state.status = null; healthError = ''; }
+  }
+  await detectDirectory();
 }
 function trusted(event) {
   return win && event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame &&
@@ -191,7 +245,10 @@ function handle(name, fn) {
   ipcMain.handle(`manager:${name}`, async (event, ...args) => {
     if (!trusted(event)) throw new Error('Untrusted IPC sender.');
     try { const result = await fn(...args); return { ok: true, value: result ?? snapshot() }; }
-    catch (error) { return { ok: false, error: error.message }; }
+    catch (error) {
+      if (state.error !== error.message) showError(error);
+      return { ok: false, error: error.message, value: snapshot() };
+    }
   });
 }
 
@@ -199,9 +256,9 @@ if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', showWindow);
   app.on('activate', () => {
-    // Hiding the Dock can itself activate the application on macOS. An
-    // intentionally hidden tray window must stay hidden during that transition.
-    if (!tray || !win || win.isVisible()) showWindow();
+    // Ignore activation caused by our Dock transition, then allow the normal
+    // Finder/Spotlight/Dock entry points to restore a hidden window.
+    if (Date.now() >= suppressActivationUntil) showWindow();
   });
   app.on('window-all-closed', () => {});
   app.on('before-quit', (e) => {
@@ -215,7 +272,6 @@ else {
   if (!app.isPackaged) {
     const rootArg = process.argv.find((arg) => arg.startsWith('--installation='));
     if (rootArg) settings.root = rootArg.slice('--installation='.length);
-    else if (!settings.root) settings.root = path.dirname(here);
   }
   const image = nativeImage.createFromPath(path.join(here, 'assets', 'app.png'));
   win = new BrowserWindow({
@@ -240,7 +296,10 @@ else {
   win.on('close', (e) => { if (!quitting && tray) { e.preventDefault(); hideWindow(); } });
   handle('get', snapshot);
   handle('refresh', refresh);
+  handle('dismiss', () => { state.error = ''; publish(); });
   handle('choose', chooseDirectory);
+  handle('detect', detectDirectory);
+  handle('select', (directory) => selectDirectory(directory, true));
   handle('action', action);
   handle('open', openRemote);
   handle('check', checkUpdate);
@@ -259,6 +318,7 @@ else {
   });
   handle('quit', () => app.quit());
   await win.loadFile(path.join(here, 'dist', 'index.html'));
+  await restoreDirectory();
   if (tray && (process.argv.includes('--hidden') ||
     (process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAsHidden))) {
     hideWindow(); void refresh();

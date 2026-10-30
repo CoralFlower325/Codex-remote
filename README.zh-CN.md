@@ -72,6 +72,8 @@ open -a Codex --args --remote-debugging-port=9229 --remote-debugging-address=127
 
 **9229 端口必须保持私有**。[安装指南](docs/guide.zh-CN.md#2-开启桌面同步)提供调试页面的检查方法。
 
+普通启动 Codex 不保证开启此端点，需使用上述参数启动，或使用已经配置这些参数的启动器。
+
 ### 2. 安装并启动
 
 ```bash
@@ -98,7 +100,7 @@ cd Codex-remote
 
 安装完成后，主机上的 `Start Remote.cmd` / `Stop Remote.cmd` 或 `.command` 文件管理后台运行，Windows 无需常驻终端。关闭 Remote 会保留 Codex Desktop；Windows 开关也管理已配置的 Tunnel 任务，macOS 的独立隧道需单独管理。
 
-可选的[本机管理器](docs/desktop-manager.zh-CN.md)提供启停、健康检测与确认后的版本更新，
+可选的[本机管理器](docs/desktop-manager.zh-CN.md)自动探测安装目录，提供启停、健康检测与确认后的版本更新，
 Windows 常驻右下通知区域，macOS 常驻顶部菜单栏。
 选择现有安装目录，关闭窗口后继续常驻。Release 提供未签名安装包；
 macOS GUI 的实机验收仍待完成。

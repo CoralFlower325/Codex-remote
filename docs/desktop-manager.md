@@ -20,9 +20,14 @@ npm run manager:install
 npm run manager
 ```
 
+The manager restores a valid saved installation first. Otherwise it automatically
+checks the Windows `CodexRemote` task or macOS `com.codex.remote` LaunchAgent,
+nearby directories and common user folders. A single registered service takes
+priority; multiple unregistered installations are offered in a selector instead
+of guessed. The scan button repeats discovery; folder browsing remains available.
 Select the configured directory containing `.env`, `package.json`, `scripts/`
-and `dist-server/`. Complete host setup first if these are missing. Development
-mode defaults to the source checkout; choose the actual installation if separate.
+and `dist-server/`. Complete host setup first if these are missing.
+Discovery reads installation metadata and does not start or stop services.
 Ownership conflicts disable controls instead of replacing another installation's
 scheduled task or LaunchAgent.
 Older platform scripts without JSON status use the manager's bundled read-only
@@ -38,11 +43,23 @@ probe; they do not need to be edited before opening the manager.
   **top menu bar**. The macOS Dock is separate. Use the icon to reopen the window.
 - Tray menus offer status, show/open, start/stop, update checks and quit.
   Quitting the manager preserves Remote's current state.
+- Reopening the running macOS app through Finder, Spotlight or the Dock restores
+  its hidden window after the brief Dock transition. Operation failures remain
+  visible until dismissed or another operation begins, with a bounded reason in
+  the operation records. Healthy polling does not erase them or disable recovery
+  controls; health-read failures remain separate and clear on recovery.
 - Installed builds offer manager login startup, separately from Remote service
   startup. Start/Stop continue enabling/disabling Remote's own login startup.
 - Health refreshes every five seconds without overlapping reads: owned backend,
   Desktop transport, password and managed Windows tunnel. Running alone is not
   healthy. Readings older than twenty seconds become stale.
+- Desktop diagnostics distinguish a missing debug endpoint, a missing Desktop
+  page and a pending native bridge. Ordinary Codex launches do not necessarily
+  enable port 9229; use the debug launch arguments from the setup guide. Another
+  launcher such as Codex++ may supply these arguments. Remote uses Desktop's
+  endpoint, not the launcher's own local server. Diagnostics clear on recovery.
+  Start can succeed with Desktop sync still pending; the overall health remains
+  degraded until Desktop connects.
 - macOS LaunchAgent/daemon tunnels remain externally managed; the manager does
   not adopt or stop them. **Tunnel management** distinguishes managed tasks,
   external access and no managed configuration. **Public entry** independently
@@ -79,6 +96,15 @@ Node.js 22.19+, npm and Git must be on PATH, including standard Homebrew locatio
    running service; an explicitly stopped installation stays stopped.
 6. Attempt backup recovery on installation/startup failure. Failed recovery displays
    the backup location and requires manual attention.
+
+Preparation, live dependency installation and rollback share one updater-owned
+temporary npm cache, including nested npm commands. The updater neither uses
+nor repairs the user's existing cache and removes its temporary cache at the end.
+If macOS reports `EACCES`/`EEXIST` under `~/.npm/_cacache`, install manager 0.1.12
+or later first, then retry the host update with the same installation selected.
+An already connected Desktop must reconnect after an update; if Desktop was
+unavailable before installation, that existing condition alone does not cause
+rollback. Its diagnostic remains visible.
 
 `.env`, `data/`, authentication, attachments and notifications are preserved.
 The updater never resets Git or pushes the installation. Deployed files remain local

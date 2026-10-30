@@ -2,6 +2,13 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.1.12', changes: [
+    '管理器自动识别本机安装目录，优先保存记录和已注册服务，多个候选可手动选择。',
+    '本机更新全程使用独立 npm 缓存，避免 macOS 用户缓存权限错误，并在完成或失败后清理。',
+    '管理器区分 Desktop 调试端点、页面与原生桥接状态，连接恢复后自动清除诊断。',
+    'Desktop 未连接时不再误报 Remote 启动失败；更新仍校验原本正常的桌面连接。',
+    '修复 macOS 隐藏窗口后的再次打开，保留可清除的操作错误及具体记录。'
+  ] },
   { version: '0.1.11', changes: [
     '本机更新保留有冲突的文档和规则，备份新版副本；代码和配置冲突仍会阻止更新。',
     'Windows 后台任务改为无窗口启动，自动迁移旧任务并保留服务日志。',

@@ -16,6 +16,7 @@ async function write(root, file, text) {
   await fs.writeFile(path.join(root, file), text, 'utf8');
 }
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const root of temporary.splice(0)) await fs.rm(root, { recursive: true, force: true });
 });
 describe('release selection', () => {
@@ -104,14 +105,14 @@ describe('update file plan', () => {
   });
 });
 async function prepared() {
-  const root = await directory(); const stage = await directory();
+  const root = await directory(); const stage = await directory(); const cache = await directory();
   for (const base of [root, stage]) {
     await write(base, 'dist/client/index.html', base === root ? 'old' : 'new');
     await write(base, 'dist-server/server/index.js', base === root ? 'old' : 'new');
   }
   await write(root, 'data/auth.json', 'private');
   return { info: { root, version: '0.1.9', publicUrl: '' }, stage, plan: [],
-    tools: { node: 'node', npmPath: 'npm-cli.js', env: {} }, commit: 'abc',
+    tools: { node: 'node', npmPath: 'npm-cli.js', cache, env: { npm_config_cache: cache } }, commit: 'abc',
     release: { version: '0.1.10' }, execute: vi.fn().mockResolvedValue('') };
 }
 describe('installation transaction', () => {
@@ -173,6 +174,12 @@ describe('installation transaction', () => {
     expect(await fs.readFile(path.join(item.info.root, 'dist/client/index.html'), 'utf8')).toBe('old');
     expect(item.execute).toHaveBeenCalledTimes(2);
     expect(verify).toHaveBeenCalledTimes(2);
+    for (const [, args, options] of item.execute.mock.calls) {
+      expect(args.slice(0, 3)).toEqual(['npm-cli.js', '--cache', item.tools.cache]);
+      expect(options.env.npm_config_cache).toBe(item.tools.cache);
+      expect(options.cwd).toBe(item.info.root);
+    }
+    await expect(fs.access(item.tools.cache)).rejects.toThrow();
   });
   it('blocks changed live files before stopping the service', async () => {
     const item = await prepared(); const stop = vi.fn();
@@ -223,8 +230,12 @@ describe('isolated update preparation', () => {
     await write(root, 'dist-server/server/index.js', 'old build');
     for (const file of ['remote-control-windows.ps1', 'remote-control-macos.sh']) await write(root, `scripts/${file}`, 'old control');
     await write(root, 'source.txt', 'old source');
-    let stage;
-    const execute = vi.fn(async (file, args) => {
+    const userCache = await directory();
+    await write(userCache, 'preserved.txt', 'user cache');
+    vi.stubEnv('NPM_CONFIG_CACHE', userCache);
+    vi.stubEnv('npm_config_cache', userCache);
+    let stage; let cache;
+    const execute = vi.fn(async (file, args, options) => {
       if (file === 'git') {
         stage = args[1];
         if (args[2] === 'checkout') {
@@ -239,6 +250,13 @@ describe('isolated update preparation', () => {
       if (file === 'where.exe' || file === '/usr/bin/which') return 'node';
       if (args[0] === '--version') return 'v22.19.0';
       if (args[0] === '--input-type=module') return 'npm-cli.js';
+      if (args[0] === 'npm-cli.js') {
+        cache = options.env.npm_config_cache;
+        expect(cache).not.toBe(userCache);
+        expect(options.env.NPM_CONFIG_CACHE).toBeUndefined();
+        expect(args.slice(1, 3)).toEqual(['--cache', cache]);
+        await write(cache, 'writable.txt', 'isolated cache');
+      }
       if (args.includes('typecheck')) throw new Error('validation failure');
       return '';
     });
@@ -246,6 +264,9 @@ describe('isolated update preparation', () => {
     expect(await fs.readFile(path.join(root, 'source.txt'), 'utf8')).toBe('old source');
     expect(await fs.readFile(path.join(root, 'dist-server/server/index.js'), 'utf8')).toBe('old build');
     await expect(fs.access(stage)).rejects.toThrow();
+    await expect(fs.access(cache)).rejects.toThrow();
+    expect(await fs.readFile(path.join(userCache, 'preserved.txt'), 'utf8')).toBe('user cache');
+    expect(await fs.readdir(userCache)).toEqual(['preserved.txt']);
     expect(execute.mock.calls.some(([, args]) => args.includes('refs/tags/v0.1.10:refs/tags/v0.1.10'))).toBe(true);
   });
 });

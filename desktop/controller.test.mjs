@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { controlCommand, summarize, probe, serviceStatus, externalEntry, health } from './controller.mjs';
+import { controlCommand, summarize, probe, serviceStatus, externalEntry, health, diagnostics, startupReady } from './controller.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -86,6 +86,56 @@ describe('local manager control boundary', () => {
     expect(externalEntry({ reachable: true, body: { ok: true } })).toBe(false);
     expect(externalEntry({ reachable: false, body: { ok: true, codex: 'ready', transport: 'desktop' } })).toBe(false);
     expect(externalEntry({ reachable: true, body: { ok: true, codex: 'offline', transport: 'desktop' } })).toBe(true);
+  });
+  it('allows a started service to await Desktop while preserving strict update verification', () => {
+    const status = { state: 'degraded', service: { running: true }, backend: { ready: true },
+      desktop: false, passwordConfigured: true, tunnel: { managed: false, ready: false },
+      desktopDebug: { port: 9444, reachable: false, targetReady: false } };
+    expect(startupReady(status, false)).toBe(true);
+    expect(startupReady(status)).toBe(false);
+    expect(diagnostics(status)[0]).toContain('127.0.0.1:9444');
+    expect(diagnostics({ ...status, desktopDebug: { ...status.desktopDebug, reachable: true } })[0])
+      .not.toBe(diagnostics(status)[0]);
+    expect(diagnostics({ ...status, desktopDebug: { ...status.desktopDebug, reachable: true, targetReady: true } })[0])
+      .not.toBe(diagnostics(status)[0]);
+    expect(startupReady({ ...status, desktop: true })).toBe(true);
+    expect(diagnostics({ ...status, desktop: true })).toEqual([]);
+    for (const change of [{ backend: { ready: false } }, { service: { running: false } },
+      { state: 'unowned' }, { state: 'conflict' }, { passwordConfigured: false },
+      { tunnel: { managed: true, ready: false } }]) {
+      expect(startupReady({ ...status, ...change }, false)).toBe(false);
+    }
+  });
+  it('probes the configured Desktop endpoint only while the bridge is unavailable and projects no targets', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'remote-debug-health-'));
+    try {
+      await fs.mkdir(path.join(root, 'scripts'), { recursive: true });
+      await fs.mkdir(path.join(root, 'dist-server/server'), { recursive: true });
+      for (const name of ['remote-control-windows.ps1', 'remote-control-macos.sh']) {
+        await fs.writeFile(path.join(root, 'scripts', name), '', 'utf8');
+      }
+      await fs.writeFile(path.join(root, 'dist-server/server/index.js'), '', 'utf8');
+      await fs.writeFile(path.join(root, 'package.json'), '{"name":"codex-remote","version":"0.1.11"}', 'utf8');
+      await fs.writeFile(path.join(root, '.env'), 'CODEX_DESKTOP_DEBUG_PORT=9444\n', 'utf8');
+      const execute = vi.fn().mockResolvedValue('{"running":true,"tunnelManaged":false}');
+      let connected = false;
+      const fetcher = vi.fn(async (url) => ({ ok: true, json: async () =>
+        url.endsWith('/json/list') ? [{ type: 'page', url: 'app://-/index.html', secret: 'not-forwarded' }] :
+          { ok: true, codex: 'ready', transport: connected ? 'desktop' : 'standalone', passwordConfigured: true } }));
+      const pending = await health(root, execute, 'win32', fetcher);
+      expect(pending.desktopDebug).toEqual({ port: 9444, reachable: true, targetReady: true });
+      expect(pending.diagnostics).toHaveLength(1);
+      expect(pending.state).toBe('degraded');
+      expect(JSON.stringify(pending)).not.toContain('not-forwarded');
+      expect(fetcher.mock.calls[1][0]).toBe('http://127.0.0.1:9444/json/list');
+      connected = true; fetcher.mockClear();
+      const recovered = await health(root, execute, 'win32', fetcher);
+      expect(recovered.state).toBe('healthy');
+      expect(recovered.diagnostics).toEqual([]);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      await fs.writeFile(path.join(root, '.env'), 'CODEX_DESKTOP_DEBUG_PORT=bad\n', 'utf8');
+      await expect(health(root, execute, 'win32', fetcher)).rejects.toThrow('CODEX_DESKTOP_DEBUG_PORT');
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
   });
   it('preserves binary output exactly for release comparisons', async () => {
     const bytes = await run(process.execPath, ['-e', 'process.stdout.write(Buffer.from([0,255,10,10]))'], { raw: true });

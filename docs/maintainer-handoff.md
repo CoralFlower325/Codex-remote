@@ -15,7 +15,22 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The 0.1.11 batch preserves conflicting local Markdown during manager updates,
+The 0.1.12 batch isolates npm caches for update preparation, installation and
+rollback, bypassing user-cache permission failures without modifying that cache.
+Install the new manager executable before retrying a host update. Desktop
+diagnostics distinguish endpoint/page/bridge readiness and clear on recovery;
+Start can leave Desktop pending, while updates require a previously healthy
+Desktop connection to recover. Ordinary Desktop launches need not expose 9229.
+GUI review also corrected hidden diagnostics in the smallest manager window,
+platform-specific log advice, lost operation errors and macOS activation after
+hiding. Smoke checks cover visible diagnostics, dismissal/recovery and Mac
+activation in addition to tray/menu-bar transitions.
+First-run discovery validates existing service registrations, nearby paths and
+common user folders without executing controls. A valid saved selection wins;
+one registered service can be selected automatically, while ambiguous unowned
+checkouts require the user's selection. Manual browsing remains available.
+
+The preceding 0.1.11 batch preserves conflicting local Markdown during manager updates,
 with incoming copies and a retention receipt, while continuing to reject source/
 configuration conflicts. Windows tasks run without persistent consoles and migrate
 on Start. External macOS tunnels stay externally owned; the manager separately

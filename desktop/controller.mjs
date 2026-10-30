@@ -16,6 +16,10 @@ export async function installation(directory) {
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   const port = Number(env.PORT || 4545);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PORT in .env.');
+  const desktopDebugPort = Number(env.CODEX_DESKTOP_DEBUG_PORT || 9229);
+  if (!Number.isInteger(desktopDebugPort) || desktopDebugPort < 1 || desktopDebugPort > 65535) {
+    throw new Error('Invalid CODEX_DESKTOP_DEBUG_PORT in .env.');
+  }
   let publicUrl = '';
   if (env.PUBLIC_ORIGIN) {
     const url = new URL(env.PUBLIC_ORIGIN);
@@ -24,7 +28,7 @@ export async function installation(directory) {
     }
     publicUrl = url.origin;
   }
-  return { root, version: pkg.version, localUrl: `http://127.0.0.1:${port}`, publicUrl };
+  return { root, version: pkg.version, localUrl: `http://127.0.0.1:${port}`, publicUrl, desktopDebugPort };
 }
 
 export function controlCommand(platform, root, action) {
@@ -102,6 +106,31 @@ export function externalEntry(result) {
     typeof result.body?.transport === 'string');
 }
 
+export function diagnostics(status) {
+  if (status.state === 'conflict') return ['系统服务属于另一个安装目录，请检查所选目录。'];
+  if (status.state === 'unowned') return ['本机端口被其他服务占用，请先解决端口归属。'];
+  if (status.state === 'stopped') return [];
+  if (!status.backend.ready) return ['Remote 本地健康接口未就绪，请检查当前安装的服务错误日志。'];
+  const messages = [];
+  if (!status.desktop) {
+    const address = `127.0.0.1:${status.desktopDebug.port}`;
+    if (!status.desktopDebug.reachable) {
+      messages.push(`Desktop 调试端点 ${address} 未就绪。普通启动 Codex 不一定开启此端口；请确认 Desktop 的调试启动参数，或 Codex++ 的调试连接状态。`);
+    } else if (!status.desktopDebug.targetReady) {
+      messages.push(`调试端点 ${address} 可达，但未找到 Codex Desktop 页面，请确认端口配置及 Desktop 是否已加载。`);
+    } else messages.push('Desktop 调试页面可达，但原生会话桥尚未连接；Remote 会自动重试。');
+  }
+  if (!status.passwordConfigured) messages.push('尚未设置 Remote 访问密码，请在安装目录运行 npm run set-password。');
+  if (status.tunnel.managed && !status.tunnel.ready) messages.push('受管隧道尚未就绪，请检查隧道状态。');
+  return messages;
+}
+
+export function startupReady(status, requireDesktop = true) {
+  return status.service.running && !['conflict', 'unowned', 'stopped'].includes(status.state) &&
+    status.backend.ready && status.passwordConfigured &&
+    (!status.tunnel.managed || status.tunnel.ready) && (!requireDesktop || status.desktop);
+}
+
 export async function health(directory, execute = run, platform = process.platform, fetcher = fetch) {
   const info = await installation(directory);
   const service = await serviceStatus(info, execute, platform);
@@ -112,14 +141,22 @@ export async function health(directory, execute = run, platform = process.platfo
     portListening(info.localUrl),
     info.publicUrl ? probe(`${info.publicUrl}/health`, true, fetcher) : Promise.resolve(null)
   ]);
+  const desktop = local.body?.codex === 'ready' && local.body?.transport === 'desktop';
+  const debug = local.body?.ok === true && !desktop
+    ? await probe(`http://127.0.0.1:${info.desktopDebugPort}/json/list`, true, fetcher) : null;
   // Do not forward the binary path or any other health response fields.
-  return { ...info, checkedAt: Date.now(), service,
-    backend: { reachable: local.reachable, ms: local.ms },
-    desktop: local.body?.codex === 'ready' && local.body?.transport === 'desktop',
+  const status = { ...info, checkedAt: Date.now(), service,
+    backend: { reachable: local.reachable, ready: local.body?.ok === true, ms: local.ms },
+    desktop,
+    desktopDebug: { port: info.desktopDebugPort, reachable: desktop || Boolean(debug?.reachable),
+      targetReady: desktop || Boolean(Array.isArray(debug?.body) &&
+        debug.body.some((target) => target?.type === 'page' && typeof target?.url === 'string' &&
+          target.url.includes('app://-/index.html'))) },
     passwordConfigured: local.body?.passwordConfigured === true,
     tunnel: { managed: Boolean(service.tunnelManaged), ready: tunnel.reachable },
     publicEntry: { configured: Boolean(info.publicUrl), reachable: externalEntry(external) },
     state: summarize(service, { ...local, listening }, tunnel) };
+  return { ...status, diagnostics: diagnostics(status) };
 }
 
 export async function control(directory, action, execute = run, platform = process.platform) {

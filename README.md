@@ -72,6 +72,9 @@ open -a Codex --args --remote-debugging-port=9229 --remote-debugging-address=127
 
 Keep port **9229 private**. The [setup guide](docs/guide.md#2-enable-desktop-synchronization) includes debug-target verification.
 
+Ordinary Codex launches do not necessarily enable this endpoint. Launch with the
+arguments above, or use an existing launcher configured to supply them.
+
 ### 2. Install And Run
 
 ```bash
@@ -98,7 +101,7 @@ Publish the protected web origin through an **HTTPS tunnel or reverse proxy**. T
 
 After setup, the host's `Start Remote.cmd` / `Stop Remote.cmd` or `.command` files manage background operation. Windows needs no persistent console window. Stopping Remote leaves Codex Desktop open. Windows controls also manage the configured Tunnel task; macOS manages an independent tunnel separately.
 
-The optional [Desktop Manager](docs/desktop-manager.md) adds local start/stop,
+The optional [Desktop Manager](docs/desktop-manager.md) detects installed hosts and adds local start/stop,
 health checks and confirmed version updates, with a Windows notification-area icon
 or macOS top menu-bar icon. Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance

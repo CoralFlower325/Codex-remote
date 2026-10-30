@@ -240,6 +240,9 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   incoming copies for reconciliation; source/configuration conflicts still block.
   Windows tasks use the windowless host with logs and owned-process shutdown.
   External macOS tunnels are not adopted; public health is a separate observation.
+  Installation discovery is read-only. Preserve a valid saved selection; prefer
+  registered services over guessed paths, and let users choose ambiguous roots.
+  Serialize directory changes with service actions and preserve manual browsing.
 - Windows Tunnel tasks run the owned Node supervisor. Restart exited cloudflared
   after one second, backing off repeated crashes to five seconds. Poll readiness
   every two seconds and wake on native address/availability events. Rebuild only

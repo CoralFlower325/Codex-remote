@@ -97,6 +97,16 @@ export async function nodeToolchain(execute = run) {
 
 const hash = (bytes) => bytes ? crypto.createHash('sha256').update(bytes).digest('hex') : null;
 
+function npmCommand(tools, args, cwd) {
+  return [tools.node, [tools.npmPath, '--cache', tools.cache, ...args],
+    { cwd, env: tools.env, timeout: 600_000 }];
+}
+
+async function removePreparation(stage, cache) {
+  await fs.rm(stage, { recursive: true, force: true });
+  if (cache) await fs.rm(cache, { recursive: true, force: true });
+}
+
 export async function mergeBuildInputs(root, stage, plan) {
   const changed = new Set(plan.map((item) => item.relative));
   const inputs = [];
@@ -142,6 +152,7 @@ export async function prepareUpdate(directory, release, progress, execute = run)
     throw new Error('There is no newer release to install.');
   }
   const stage = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-remote-update-'));
+  let cache;
   try {
     progress('Fetching release');
     const git = (args) => execute('git', ['-C', stage, ...args], { env: commandEnvironment(), timeout: 180_000 });
@@ -168,17 +179,23 @@ export async function prepareUpdate(directory, release, progress, execute = run)
     for (const item of plan) item.before = hash(await regularFile(info.root, item.relative));
     const inputs = await mergeBuildInputs(info.root, stage, plan);
     const tools = await nodeToolchain(execute);
+    cache = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-remote-npm-'));
+    // CLI configuration wins over project/user npmrc. The environment also
+    // carries the same cache into lifecycle scripts and nested npm commands.
+    for (const key of Object.keys(tools.env)) {
+      if (key.toLowerCase() === 'npm_config_cache') delete tools.env[key];
+    }
+    tools.cache = cache;
+    tools.env.npm_config_cache = cache;
     progress('Installing dependencies and building');
-    const npm = (args) => execute(tools.node, [tools.npmPath, ...args], {
-      cwd: stage, env: tools.env, timeout: 600_000
-    });
+    const npm = (args) => execute(...npmCommand(tools, args, stage));
     await npm(['ci', '--no-audit', '--no-fund']);
     await npm(['run', 'typecheck']);
     await npm(['test']);
     await npm(['run', 'build']);
     return { info, stage, plan, inputs, tools, commit, release, execute };
   } catch (error) {
-    await fs.rm(stage, { recursive: true, force: true });
+    await removePreparation(stage, cache);
     throw error;
   }
 }
@@ -253,9 +270,7 @@ export async function installUpdate(prepared, { stop, start, verify, isRunning, 
     await copyTree(path.join(stage, 'dist'), path.join(info.root, 'dist'));
     await copyTree(path.join(stage, 'dist-server'), path.join(info.root, 'dist-server'));
     progress('Installing runtime dependencies');
-    await execute(tools.node, [tools.npmPath, 'ci', '--no-audit', '--no-fund'], {
-      cwd: info.root, env: tools.env, timeout: 600_000
-    });
+    await execute(...npmCommand(tools, ['ci', '--no-audit', '--no-fund'], info.root));
     if (wasRunning) {
       progress('Starting and checking Remote');
       await start();
@@ -277,14 +292,12 @@ export async function installUpdate(prepared, { stop, start, verify, isRunning, 
           else await fs.rm(target, { force: true });
         }
         for (const dir of ['dist', 'dist-server']) await copyTree(path.join(backup, dir), path.join(info.root, dir));
-        await execute(tools.node, [tools.npmPath, 'ci', '--no-audit', '--no-fund'], {
-          cwd: info.root, env: tools.env, timeout: 600_000
-        });
+        await execute(...npmCommand(tools, ['ci', '--no-audit', '--no-fund'], info.root));
         if (wasRunning) { await start(); await verify(); }
       } catch (rollback) {
         throw new Error(`Update failed; recovery needs attention. Backup: ${backup}\n${rollback.message}`);
       }
     } else if (stopped && wasRunning) await start();
     throw new Error(`Update cancelled or restored. ${error.message}`);
-  } finally { await fs.rm(stage, { recursive: true, force: true }); }
+  } finally { await removePreparation(stage, tools.cache); }
 }

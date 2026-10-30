@@ -60,6 +60,11 @@ cd Codex-remote
 
 Save your work and fully quit Codex Desktop before launching it with the debug argument. This setup does not require Remote to restart Desktop during normal use.
 
+Ordinary launches do not necessarily open port 9229. A launcher such as Codex++
+may supply the debug argument; Remote and that launcher can use Desktop's
+endpoint. It is separate from the launcher's own local server. If the endpoint
+is already available, leave the current Desktop running.
+
 For a Windows Store installation, in PowerShell:
 
 ```powershell
