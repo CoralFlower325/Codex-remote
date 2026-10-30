@@ -6,14 +6,13 @@ import type { ThreadItem } from '../types';
 
 interface QuestionDockProps {
   items: ThreadItem[];
-  turnId: string | null;
   disabled: boolean;
   onSubmit: (text: string) => Promise<void>;
   onError: (error: unknown) => void;
 }
 
-export function QuestionDock({ items, turnId, disabled, onSubmit, onError }: QuestionDockProps) {
-  const groups = useMemo(() => pendingQuestionGroups(items, turnId), [items, turnId]);
+export function QuestionDock({ items, disabled, onSubmit, onError }: QuestionDockProps) {
+  const groups = useMemo(() => pendingQuestionGroups(items), [items]);
   if (!groups.length) return null;
   return <section className="approval-dock question-dock" aria-label="Codex 等待你的回答">
     {groups.map(group => <QuestionCard key={group.id} group={group} disabled={disabled}

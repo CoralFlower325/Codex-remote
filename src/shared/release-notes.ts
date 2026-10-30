@@ -2,6 +2,11 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.1.9', changes: [
+    '修复原生询问漏显，未答问题跨回合保留，临时侧聊支持回答。',
+    '会话栏增加待回答标识，新问题接入现有通知并避免重复推送。',
+    '修正整回合消息顺序和审批标识，手机回答框采用 16px 字号。'
+  ] },
   { version: '0.1.8', changes: [
     '新增原生会话摘要面板，集中查看拉取请求、输出内容、侧边聊天、子智能体和来源。',
     '版本检查在已是最新版时保留当前页面；有新版时先展示更新摘要。',

@@ -562,6 +562,16 @@ kbd {
   white-space: nowrap;
 }
 
+.thread-question-badge {
+  padding: 2px 5px;
+  border-radius: 5px;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  font-size: 10px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
 .thread-row--active .thread-row-title {
   color: var(--ink);
   font-weight: 400;
@@ -2351,6 +2361,17 @@ kbd {
   background: var(--surface);
   padding: 0 10px;
   color: var(--ink);
+}
+
+.question-input:focus,
+.question-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border-color: var(--line);
+}
+
+.question-input:focus-visible {
+  border-color: var(--accent-strong);
 }
 
 .inspector-backdrop {

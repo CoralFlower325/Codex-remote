@@ -1,6 +1,6 @@
 import {
   Archive, ArchiveRestore, Bell, ChevronRight, CircleAlert, FolderOpen, FolderPlus,
-  LoaderCircle, LogOut, MessageSquare, Plus, RefreshCw, Search, Wrench, X
+  LoaderCircle, LogOut, MessageSquare, MessageSquareText, Plus, RefreshCw, Search, Wrench, X
 } from 'lucide-react';
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { displayThreadTitle } from '../remote-state';
@@ -151,7 +151,10 @@ export function Sidebar({
                 </button>
                 {expanded && section.threads.map((thread) => (
                   <ThreadRow key={thread.id} thread={thread} active={thread.id === activeThreadId}
-                    needsAttention={remote.serverRequests.some((request) => request.params.threadId === thread.id)}
+                    questionCount={(remote.questionCounts?.[thread.id] ?? 0) + remote.serverRequests.filter(request =>
+                      request.params.threadId === thread.id && request.method === 'item/tool/requestUserInput').length}
+                    needsAttention={remote.serverRequests.some((request) => request.params.threadId === thread.id &&
+                      request.method !== 'item/tool/requestUserInput')}
                     onArchive={() => remote.archiveThread(thread.id, !remote.showArchived)}
                     onError={error => remote.setLastError(error instanceof Error ? error.message : String(error))}
                     onClick={() => onSelectThread(thread.id)} />
@@ -218,20 +221,21 @@ export function Sidebar({
   );
 }
 
-function ThreadRow({ thread, active, needsAttention, onClick, onArchive, onError }: {
-  thread: Thread; active: boolean; needsAttention: boolean; onClick: () => void;
+function ThreadRow({ thread, active, needsAttention, questionCount, onClick, onArchive, onError }: {
+  thread: Thread; active: boolean; needsAttention: boolean; questionCount: number; onClick: () => void;
   onArchive: () => Promise<void>; onError: (error: unknown) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const running = thread.status.type === 'active';
   return (
     <div className="thread-row-container"><button type="button" className={`thread-row${active ? ' thread-row--active' : ''}`} onClick={onClick}
-      aria-current={active ? 'page' : undefined} title={displayThreadTitle(thread)} data-thread-id={thread.id}>
+      aria-current={active ? 'page' : undefined} title={questionCount ? `${displayThreadTitle(thread)} · 等待回答 ${questionCount} 个问题` : displayThreadTitle(thread)} data-thread-id={thread.id}>
       <span className="thread-state" aria-hidden="true">
-        {needsAttention ? <CircleAlert size={13} /> : running ? <span className="thread-running-spinner"><LoaderCircle size={12} /></span> : null}
+        {needsAttention ? <CircleAlert size={13} /> : questionCount ? <MessageSquareText size={13} /> : running ? <span className="thread-running-spinner"><LoaderCircle size={12} /></span> : null}
       </span>
       {needsAttention && <span className="sr-only">等待审批：</span>}
       <span className="thread-row-title">{displayThreadTitle(thread)}</span>
+      {questionCount > 0 && <span className="thread-question-badge" aria-label={`等待回答 ${questionCount} 个问题`}>待回答</span>}
     </button>
     <button type="button" className="thread-archive icon-button" aria-label={thread.archived ? '恢复聊天' : '归档聊天'}
       title={thread.archived ? '恢复聊天' : '归档聊天'} disabled={busy} onClick={() => {

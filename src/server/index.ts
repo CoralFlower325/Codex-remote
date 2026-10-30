@@ -32,6 +32,7 @@ import { TerminalManager } from './terminal-manager.js';
 import { handleTerminalSocket } from './terminal-socket.js';
 import { EphemeralChats } from './ephemeral-chats.js';
 import { QueueDispatcher } from './queue-dispatcher.js';
+import { QuestionTracker } from './question-tracker.js';
 import { EventJournal } from './event-journal.js';
 import { filePreviewRouter } from './file-preview.js';
 import { LocalImages, imageExtensions } from './local-images.js';
@@ -59,6 +60,7 @@ const wss = new WebSocketServer({
 const clients = new Set<RemotePeer>();
 const synchronizedClients = new Set<RemotePeer>();
 const eventJournal = new EventJournal();
+const questionTracker = new QuestionTracker();
 const localImages = new LocalImages(path.join(config.dataDir, 'image-attachments'));
 const metadataReader = new MetadataReader((method, params) => codexBridge.request(method, params));
 const workspaceSnapshots = new WorkspaceSnapshots((method, params) => codexBridge.request(method, params));
@@ -318,6 +320,7 @@ app.get(
     const result = await workspaceSnapshots.open(threadId, mode, req.query.fresh === '1');
     const thread = (result.result as { thread?: { id: string; source?: unknown; ephemeral?: boolean } }).thread;
     if (thread && isTaskThread(thread)) pushNotifications.watch(thread.id);
+    recordQuestions(threadId, result.items.map(entry => entry.item));
     for (const entry of result.items) void localImages.remember(entry.item).catch(reportImageFailure);
     if (!res.destroyed) res.json(result);
   })
@@ -362,6 +365,7 @@ app.get(
     const result = await withReadDeadline(cursor && direction === 'desc' && req.query.conversation === '1'
       ? readConversationHistoryPage(request, threadId, cursor, Math.min(limit, 100))
       : readThreadHistoryPage(request, threadId, cursor, limit, direction));
+    recordQuestions(threadId, result.items.map(entry => entry.item));
     for (const entry of result.items) void localImages.remember(entry.item).catch(reportImageFailure);
     res.json(result);
   })
@@ -494,6 +498,7 @@ function connectClient(socket: RemotePeer): void {
     type: 'bridge.status',
     status: codexBridge.getStatus()
   });
+  send(socket, { type: 'questions.snapshot', counts: questionTracker.snapshot() });
   send(socket, {
     type: 'server.request.snapshot',
     requests: codexBridge.getPendingServerRequests()
@@ -535,6 +540,7 @@ async function handleClientMessage(socket: RemotePeer, raw: string): Promise<voi
     ephemeralChats.claim(message.additionalThreadIds ?? [], socket);
     const replay = eventJournal.resume(message.epoch, message.after, ids);
     for (const entry of replay.entries) socket.send(entry.payload);
+    send(socket, { type: 'questions.snapshot', counts: questionTracker.snapshot() });
     send(socket, { type: 'server.request.snapshot', requests: codexBridge.getPendingServerRequests() });
     send(socket, { type: 'sync.ready', epoch: replay.epoch, sequence: replay.sequence, resumed: replay.resumed });
     synchronizedClients.add(socket);
@@ -607,7 +613,23 @@ function send(socket: RemotePeer, message: ServerMessage): void {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 }
 
+function recordQuestions(threadId: string, items: unknown[]): void {
+  if (questionTracker.ingest(threadId, items)) {
+    broadcast({ type: 'questions.snapshot', counts: questionTracker.snapshot() });
+  }
+}
+
 codexBridge.on('event', ({ method, params }) => {
+  const questionEvent = /^(item|turn)\/(started|completed)$/.test(method);
+  const questionThreadId = typeof params?.threadId === 'string' ? params.threadId : '';
+  const previousQuestions = questionEvent ? questionTracker.pendingIds(questionThreadId) : new Set<string>();
+  if (questionTracker.event(method, params ?? {})) {
+    broadcast({ type: 'questions.snapshot', counts: questionTracker.snapshot() });
+  }
+  if (questionEvent) {
+    const added = [...questionTracker.pendingIds(questionThreadId)].filter(id => !previousQuestions.has(id));
+    if (added.length) void pushNotifications.notifyQuestions(params ?? {}, added);
+  }
   workspaceSnapshots.event(method, params ?? {});
   if (method === 'item/started' || method === 'item/completed') {
     void localImages.remember(params?.item).catch(reportImageFailure);
@@ -626,7 +648,7 @@ function reportImageFailure(): void {
 }
 codexBridge.on('server-request', ({ requestId, method, params }) => {
   broadcast({ type: 'server.request', requestId, method, params });
-  void pushNotifications.notifyApproval(params ?? {});
+  void pushNotifications.notifyApproval(params ?? {}, method);
 });
 codexBridge.on('status', (status) => {
   if (status !== 'ready') {

@@ -47,6 +47,17 @@ describe('conversation presentation', () => {
     expect(html).toContain('用时 16分钟 53秒');
     expect(html).toContain('ANSWER');
   });
+  it('keeps the final reply and its timing anchor visible before an empty asynchronous question', () => {
+    const html = render([
+      { type: 'agentMessage', id: 'a', turnId: 't', phase: 'final_answer', text: 'VISIBLE_FINAL',
+        startedAtMs: 147_250 },
+      { type: 'agentMessage', id: 'q', turnId: 't', delivery: 'async', text: '', startedAtMs: 200_000,
+        questions: [{ title: 'Choose?', options: ['A', 'B'] }] }
+    ], { t: complete });
+    expect(html).toContain('VISIBLE_FINAL');
+    expect(html).toContain('用时 47秒');
+    expect(html).not.toContain('用时 1分钟 40秒');
+  });
 
   it('uses the saved final-answer start instead of counting the time spent generating that answer', () => {
     const html = render([

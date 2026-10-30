@@ -6,6 +6,8 @@ import { once } from 'node:events';
 import express from 'express';
 import webPush from 'web-push';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { QuestionTracker } from './question-tracker.js';
+import { questionItemId, serializeQuestionReplies } from '../shared/async-user-input.js';
 import { PushNotifications } from './push-notifications.js';
 
 const directories: string[] = [];
@@ -288,5 +290,58 @@ describe('private standard Web Push subscriptions', () => {
     expect(await (await post('/subscription', { endpoint: first.endpoint }, 'DELETE')).json()).toEqual({ ok: true });
     expect(await (await post('/status', { endpoint: first.endpoint })).json()).toEqual({ enabled: false });
     expect(notifications.status(second.endpoint)).toBe(true);
+  });
+});
+
+
+describe('pending question notifications', () => {
+  const question = { type: 'agentMessage', id: 'call', delivery: 'async', text: 'PRIVATE_FALLBACK',
+    questions: [{ title: '请选择方案', options: ['A', 'B'] }, { title: '补充说明', options: null }] };
+  it('notifies once for a newly pending live question and not for duplicate item/turn events or history hydration', async () => {
+    const send = vi.spyOn(webPush, 'sendNotification').mockResolvedValue(sent);
+    const { notifications } = create();
+    notifications.subscribe(subscription()); notifications.watch('main');
+    const tracker = new QuestionTracker();
+    async function event(method: string, body: Record<string, unknown>) {
+      const params = { threadId: 'main', thread: { name: '测试会话' }, ...body };
+      const before = tracker.pendingIds('main');
+      tracker.event(method, params);
+      await notifications.notifyQuestions(params, [...tracker.pendingIds('main')].filter(id => !before.has(id)));
+    }
+    await event('item/started', { item: question });
+    await event('item/completed', { item: question });
+    await event('turn/completed', { turn: { items: [question] } });
+    expect(send).toHaveBeenCalledOnce();
+    const payload = JSON.parse(send.mock.calls[0]![1] as string);
+    expect(payload).toMatchObject({ title: '测试会话', body: '需要你回答：请选择方案；补充说明',
+      tag: 'codex-question-main', url: '/?thread=main' });
+    expect(JSON.stringify(payload)).not.toContain('PRIVATE_FALLBACK');
+    const answer = { type: 'userMessage', content: [{ type: 'text', text: serializeQuestionReplies([0, 1].map(index =>
+      ({ questionItemId: questionItemId('call', index), question: 'Synthetic', answer: 'A' }))) }] };
+    await event('item/completed', { item: answer });
+    tracker.ingest('main', [question]);
+    await event('turn/completed', { turn: { items: [question] } });
+    expect(send).toHaveBeenCalledOnce();
+  });
+  it('supports whole-turn arrivals, exact newly pending IDs, Unicode preview limits and blocking questions', async () => {
+    const send = vi.spyOn(webPush, 'sendNotification').mockResolvedValue(sent);
+    const { notifications } = create(); notifications.subscribe(subscription()); notifications.watch('main');
+    await notifications.notifyQuestions({ threadId: 'main', thread: { name: 'Task' }, turn: { items: [
+      { ...question, questions: [{ title: 'OLD_QUESTION', options: null }, { title: '答'.repeat(101), options: null }] }
+    ] } }, [questionItemId('call', 1)]);
+    expect(JSON.parse(send.mock.calls[0]![1] as string).body).toBe(`需要你回答：${'答'.repeat(100)}…`);
+    await notifications.notifyApproval({ threadId: 'main', thread: { name: 'Task' },
+      questions: [{ id: 'q', question: '要继续吗？' }] }, 'item/tool/requestUserInput');
+    expect(JSON.parse(send.mock.calls[1]![1] as string).body).toBe('需要你回答：要继续吗？');
+  });
+  it('skips absent subscriptions, unwatched chats, unrelated IDs and malformed items', async () => {
+    const send = vi.spyOn(webPush, 'sendNotification').mockResolvedValue(sent);
+    const { notifications } = create(); notifications.watch('main');
+    await notifications.notifyQuestions({ threadId: 'main', item: question }, [questionItemId('call', 0)]);
+    notifications.subscribe(subscription());
+    await notifications.notifyQuestions({ threadId: 'child', item: question }, [questionItemId('call', 0)]);
+    await notifications.notifyQuestions({ threadId: 'main', item: question }, ['unrelated']);
+    await notifications.notifyQuestions({ threadId: 'main', turn: { items: [null, {}, { ...question, questions: [{}] }] } }, ['x']);
+    expect(send).not.toHaveBeenCalled();
   });
 });

@@ -12,7 +12,12 @@ a merge or successful CI alone does not establish deployment.
 The README languages describe supported behavior. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The 0.1.8 functional batch adds an on-demand native conversation summary panel
+The 0.1.9 functional batch integrates PR #6's native question visibility,
+cross-turn pending forms, temporary-chat answers, sidebar badges and opt-in
+question notifications. Maintainer corrections preserve embedded message order
+and simultaneous approval indicators. See [the integration review](pr-6-review.md).
+
+The preceding 0.1.8 functional batch adds an on-demand native conversation summary panel
 and checks the loaded build before offering a confirmed update with release notes.
 Already current checks preserve the page. See [summary scope](native-summary-panel.md)
 and [the update investigation](manual-version-update.md). Functional batches now
@@ -55,9 +60,10 @@ Outstanding acceptance:
   authentication, first task/chat loading, long-history upward paging without
   flashing, foreground recovery and actual notification display.
 - Signed-in macOS Desktop integration, login persistence and tunnel operation.
-- Actual native asynchronous answers and mobile keyboard behavior. Forms cover
-  the latest loaded main-chat turn; temporary side chats and questions beyond
-  the loaded window are not claimed complete.
+- Actual native asynchronous answers and physical mobile keyboard behavior.
+  Forms cover observed unanswered questions across loaded main-chat turns and
+  temporary side chats. Questions beyond the bounded loaded window or an evicted
+  memory index are not claimed complete.
 - Some approval forms, actual dictation and a fresh active subagent lifecycle.
 - Sustained connection stability under real network/proxy changes. Earlier
   intermittent public failures are not proven eliminated by short live probes.

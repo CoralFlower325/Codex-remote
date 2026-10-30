@@ -94,7 +94,7 @@ export function NotificationSettings({ onClose }: { onClose: () => void }) {
         onClick={onClose}><X size={18} /></button>
     </header>
     <div className="notification-settings-body">
-      <p className="notification-intro">任务完成或需要审批时接收系统通知，包含会话标题和回复摘要。</p>
+      <p className="notification-intro">任务完成、需要回答或审批时接收系统通知，包含会话标题及回复或问题摘要。</p>
       {capability.reason === 'home-screen' ? <div className="notification-guidance">
         <Smartphone size={20} aria-hidden="true" />
         <div><strong>从主屏幕开启通知</strong><p>iPhone 和 iPad 需要 iOS / iPadOS 16.4 或更新版本。在 Safari 中打开本网站，选择“分享”→“添加到主屏幕”，再从主屏幕图标打开并开启通知。</p></div>

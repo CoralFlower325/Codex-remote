@@ -727,7 +727,6 @@ function ThreadScreen({
         <GoalStatus key={thread.id} goal={remote.activeGoal} disabled={!remote.connected || !remote.threadReady || remote.showArchived}
           onUpdate={update => remote.setGoal(thread.id, update)} onDelete={() => remote.clearGoal(thread.id)} onError={onError} />
         {!remote.viewingHistory && <QuestionDock items={remote.items}
-          turnId={remote.activeTurnId ?? remote.items.at(-1)?.turnId ?? null}
           disabled={!remote.connected || !remote.threadReady || remote.showArchived}
           onSubmit={text => onSubmit(text, [], [])} onError={onError} />}
         <ApprovalDock

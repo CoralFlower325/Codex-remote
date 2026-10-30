@@ -532,7 +532,8 @@ const ResponseSection = memo(function ResponseSection({ section, timing, active,
   let finalIndex = -1;
   section.entries.forEach((entry, index) => {
     if (entry.type === 'message' && entry.item.type === 'agentMessage' &&
-      entry.item.phase !== 'commentary' && entry.item.phase !== 'partial_answer') finalIndex = index;
+      entry.item.phase !== 'commentary' && entry.item.phase !== 'partial_answer' &&
+      (!entry.item.questions?.length || entry.item.text.trim())) finalIndex = index;
   });
   const finalEntry = section.entries[finalIndex];
   const completed = !active && (timing ? timing.status !== 'inProgress'

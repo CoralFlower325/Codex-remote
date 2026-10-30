@@ -1,6 +1,7 @@
 /* Mobile-only chrome. Keep physical safe areas, remove duplicate keyboard spacing. */
 .app-shell[data-layout="mobile"] {
   --mobile-header-height: 44px;
+  --mobile-input-font-size: 16px;
   --mobile-composer-control-size: 36px;
   --mobile-edge: 8px;
   --mobile-header-top: env(safe-area-inset-top, 0px);
@@ -128,4 +129,10 @@
 }
 .app-shell[data-layout="mobile"] .composer-turn-slot .thread-navigation-mobile--composer {
   background: transparent;
+}
+
+/* Keep native question/approval answers readable without iOS focus zoom. */
+.app-shell[data-layout="mobile"] .question-input {
+  font-size: var(--mobile-input-font-size);
+  line-height: 1.4;
 }

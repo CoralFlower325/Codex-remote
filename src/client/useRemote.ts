@@ -11,7 +11,7 @@ import { beginForegroundRead, constrainedNetwork, prioritizeInteraction, yieldTo
 import { readDeviceWorkspace, saveDeviceWorkspace, readDeviceChat, saveDeviceChat, removeDeviceChat } from './device-snapshots';
 import { applyTaskPage, provisionalHistory, provisionalThread, type OpenThreadPage, type ThreadListPage } from './loading-snapshots';
 import { RemoteConnection, type RemoteChannel } from './remote-connection';
-import { itemKey, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings, reconcileThreadList, upsertItem } from './remote-state';
+import { itemKey, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings, reconcileThreadList, upsertItem } from './remote-state';
 import type {
   BridgeStatus,
   ModelInfo,
@@ -20,7 +20,8 @@ import type {
   Thread,
   ThreadGoal,
   ThreadHistoryPage,
-  ThreadItem
+  ThreadItem,
+  Turn
 } from './types';
 import type { WorkspaceBootstrap } from './types';
 import type { CollaborationMode, ComposerAttachment, ContextUsage, McpStatus, ReviewTarget, SkillInfo, SkillsResult } from './types';
@@ -94,6 +95,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const [revealingHistory, setRevealingHistory] = useState(false);
   const [outlineTurns, setOutlineTurns] = useState<OutlineTurn[]>([]);
   const [outlineError, setOutlineError] = useState<string | null>(null);
+  const [questionCounts, setQuestionCounts] = useState<Record<string, number>>({});
   const [serverRequests, setServerRequests] = useState<ServerRequest[]>([]);
   const [loadingThread, setLoadingThread] = useState(false);
   const [threadReady, setThreadReady] = useState(false);
@@ -1561,6 +1563,12 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       return;
     }
 
+    if (message.type === 'questions.snapshot') {
+      setQuestionCounts(Object.fromEntries(Object.entries(message.counts ?? {}).filter(([id, count]) =>
+        id && Number.isSafeInteger(count) && count > 0)));
+      return;
+    }
+
     if (message.type === 'server.request.snapshot') {
       setServerRequests(
         message.requests.map((request) => ({
@@ -1612,6 +1620,10 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     if (message.type === 'error') {
       setLastError(message.error.message);
     }
+  }
+
+  function ingestTurnItems(turnId: string, incoming: ThreadItem[] | undefined): void {
+    setItems(current => mergeEmbeddedTurnItems(current, turnId, incoming, viewingHistoryRef.current));
   }
 
   function handleCodexEvent(method: string, params: Record<string, unknown>): void {
@@ -1751,12 +1763,14 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     }
 
     if (method === 'turn/started' && params.threadId === activeThreadRef.current) {
-      const turn = params.turn as TurnTiming | undefined;
+      const turn = params.turn as Turn | undefined;
       if (turn?.id) {
         turnRevisionRef.current += 1;
         activeTurnIdRef.current = turn.id;
         setActiveTurnId(turn.id);
-        setTurnTimings((current) => ({ ...current, [turn.id]: turn }));
+        const { items: turnItems, ...timing } = turn;
+        setTurnTimings((current) => ({ ...current, [turn.id]: timing }));
+        ingestTurnItems(turn.id, turnItems);
       }
     }
     if (method === 'turn/started') scheduleThreadRefresh(String(params.threadId ?? ''));
@@ -1788,8 +1802,12 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       const threadId = String(params.threadId ?? '');
       if (threadId === activeThreadRef.current) {
         flushStreamingDeltas();
-        const turn = params.turn as TurnTiming | undefined;
-        if (turn?.id) setTurnTimings((current) => ({ ...current, [turn.id]: turn }));
+        const turn = params.turn as Turn | undefined;
+        if (turn?.id) {
+          const { items: turnItems, ...timing } = turn;
+          setTurnTimings((current) => ({ ...current, [turn.id]: timing }));
+          ingestTurnItems(turn.id, turnItems);
+        }
         turnRevisionRef.current += 1;
         activeTurnIdRef.current = null;
         setActiveTurnId(null);
@@ -1839,6 +1857,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     outlineTurns,
     outlineError,
     serverRequests,
+    questionCounts,
     loadingThread,
     threadReady: threadReady && timedThreadId === activeThreadId && verifiedThreadId === activeThreadId,
     showArchived,

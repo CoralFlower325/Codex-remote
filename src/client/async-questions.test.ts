@@ -12,11 +12,17 @@ const reply = (index: number, answer: string) => ({ questionItemId: questionItem
 
 describe('native asynchronous questions', () => {
   it('retains native indices, options, and free text questions', () => {
-    expect(pendingQuestionGroups([message], 't')[0]?.questions).toEqual(questions.map((question, index) => ({
+    expect(pendingQuestionGroups([message])[0]?.questions).toEqual(questions.map((question, index) => ({
       ...question, id: JSON.stringify(['request_user_input_async', 'call-1', index])
     })));
-    expect(pendingQuestionGroups([message], 'other')).toEqual([]);
-    expect(pendingQuestionGroups([message], null)).toEqual([]);
+    expect(pendingQuestionGroups([message])).toHaveLength(1);
+  });
+  it('keeps unanswered groups across idle, Goal continuation and replies in a later turn', () => {
+    const continuation: ThreadItem = { type: 'agentMessage', id: 'next', turnId: 'next-turn', text: 'Continuing' };
+    expect(pendingQuestionGroups([message, continuation])).toHaveLength(1);
+    const answer: ThreadItem = { type: 'userMessage', id: 'reply-later', turnId: 'reply-turn', content: [{ type: 'text',
+      text: serializeQuestionReplies([reply(0, 'A'), reply(1, 'Details')]) }] };
+    expect(pendingQuestionGroups([message, continuation, answer])).toEqual([]);
   });
   it('round trips multiple selected or multiline custom answers with native Desktop envelopes', () => {
     const replies = [reply(0, '方案 B'), reply(1, 'Line 1\nLine 2 <>&"')];
@@ -28,11 +34,11 @@ describe('native asynchronous questions', () => {
   it('recognizes replies from another client, including partial groups, without renumbering', () => {
     const answer: ThreadItem = { type: 'userMessage', id: 'reply', turnId: 't', content: [{ type: 'text',
       text: serializeQuestionReplies([reply(0, '方案 A')]) }] };
-    expect(pendingQuestionGroups([message, answer], 't')[0]?.questions).toEqual([
+    expect(pendingQuestionGroups([message, answer])[0]?.questions).toEqual([
       { ...questions[1], id: questionItemId(message.id, 1) }
     ]);
     answer.content[0]!.text = serializeQuestionReplies([reply(0, '方案 A'), reply(1, 'Details')]);
-    expect(pendingQuestionGroups([message, answer], 't')).toEqual([]);
+    expect(pendingQuestionGroups([message, answer])).toEqual([]);
   });
   it('does not treat fallback prose, invalid JSON or unrelated envelopes as submitted answers', () => {
     for (const text of ['方案 A', '<send_user_message_question_reply>broken</send_user_message_question_reply>',

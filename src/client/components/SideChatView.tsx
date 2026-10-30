@@ -7,6 +7,7 @@ import type { RemoteState } from '../useRemote';
 import type { SideChat } from '../useSideChats';
 import { resolveReasoningEffort } from '../workspace-model';
 import { permissionLabel, type PermissionProfile } from '../../shared/permissions';
+import { QuestionDock } from './QuestionDock';
 import { ApprovalDock } from './ApprovalDock';
 import { CommandDialog, type CommandDialogState } from './CommandDialog';
 import { Composer } from './Composer';
@@ -47,6 +48,8 @@ export function SideChatView({ chat, remote, layout, onPatch, onSend, onNew }: {
       : <div className="side-chat-empty"><MessageCirclePlus size={28} strokeWidth={1.5} /><h2>侧边聊天</h2>
         <p>临时聊天，关闭标签页后消失。</p></div>}
     <div className="thread-bottom">
+      <QuestionDock items={chat.items} disabled={!remote.connected || Boolean(chat.closing || chat.unavailable)}
+        onSubmit={text => onSend(turnInput(text, [], []))} onError={onError} />
       <ApprovalDock requests={remote.serverRequests.filter(request => request.params.threadId === chat.threadId)}
         onRespond={remote.respondToRequest} onError={onError} />
       <Composer temporary {...(chat.initialInput ? { initialInput: queuedDraft(chat.initialInput) } : {})}

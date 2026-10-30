@@ -48,3 +48,38 @@ describe('running conversation indicator', () => {
     expect(attention).toContain('等待审批：');
   });
 });
+
+
+describe('pending question indicators', () => {
+  it.each(['desktop', 'mobile'] as const)('marks an unselected question chat and clears the badge after native answers on %s', layout => {
+    const thread = { id: 'question-chat', name: 'Question task', cwd: '/project', status: { type: 'active' } };
+    const render = (counts: Record<string, number>, blocking = false) => renderToStaticMarkup(createElement(Sidebar, {
+      remote: { ...remote, threads: [thread], questionCounts: counts,
+        serverRequests: blocking ? [{ params: { threadId: thread.id }, method: 'item/tool/requestUserInput' }] : [] } as unknown as RemoteState,
+      layout, activeThreadId: null, open: true, collapsed: false, search: '',
+      onSearchChange: noop, onClose: noop, onToggleCollapse: noop,
+      onNewTask: noop, onSelectThread: noop, onLogout: noop
+    }));
+    const pending = render({ [thread.id]: 2 });
+    expect(pending).toContain('aria-label="等待回答 2 个问题"');
+    expect(pending).toContain('>待回答</span>');
+    expect(pending).not.toContain('class="thread-running-spinner"');
+    expect(render({})).not.toContain('thread-question-badge');
+    expect(render({})).toContain('thread-running-spinner');
+    expect(render({}, true)).toContain('aria-label="等待回答 1 个问题"');
+  });
+  it('keeps the approval icon visible alongside an asynchronous question badge', () => {
+    const markup = renderToStaticMarkup(createElement(Sidebar, {
+      remote: { ...remote,
+        threads: [{ id: 'thread-running', name: 'Synthetic task', cwd: '/project', status: { type: 'active' } }],
+        questionCounts: { 'thread-running': 1 },
+        serverRequests: [{ params: { threadId: 'thread-running' }, method: 'item/commandExecution/requestApproval' }]
+      } as unknown as RemoteState,
+      layout: 'desktop', activeThreadId: null, open: true, collapsed: false, search: '',
+      onSearchChange: noop, onClose: noop, onToggleCollapse: noop,
+      onNewTask: noop, onSelectThread: noop, onLogout: noop
+    }));
+    expect(markup).toContain('lucide-circle-alert');
+    expect(markup).toContain('thread-question-badge');
+  });
+});

@@ -57,6 +57,7 @@ export type ServerMessage = (
   | { type: 'rpc.result'; id: string; result: unknown }
   | { type: 'rpc.error'; id: string; error: { code?: number; message: string; data?: unknown } }
   | { type: 'event'; method: string; params: unknown }
+  | { type: 'questions.snapshot'; counts: Record<string, number> }
   | { type: 'server.request.snapshot'; requests: Array<{ requestId: string | number; method: string; params: unknown }> }
   | { type: 'server.request'; requestId: string | number; method: string; params: unknown }
   | { type: 'server.request.resolved'; requestId: string | number }

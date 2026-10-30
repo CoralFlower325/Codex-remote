@@ -73,9 +73,10 @@ vi.mock('./background-work', () => ({
   yieldToInteraction: () => new Promise(() => {})
 }));
 import { useRemote } from './useRemote';
+import { pendingQuestionGroups } from './async-questions';
 import { useHistoryDetails } from './history-details';
 import type { ThreadItem } from './types';
-import { QuestionCard } from './components/QuestionDock';
+import { QuestionDock, QuestionCard } from './components/QuestionDock';
 import { parseQuestionReplies, questionItemId } from '../shared/async-user-input';
 import { historyConfig } from './history-config';
 import { QueuedMessages } from './components/QueuedMessages';
@@ -103,17 +104,19 @@ function fixture(fetcher: typeof fetch, authenticated = true) {
   vi.stubGlobal('fetch', fetcher);
   let remote!: ReturnType<typeof useRemote>;
   let queue: ReturnType<typeof QueuedMessages> = null;
+  let questions: ReturnType<typeof QuestionDock> = null;
   const bootstrap = { threads: { data: [thread], nextCursor: null }, models: { data: [] },
     projects: { data: [] } } as unknown as WorkspaceBootstrap;
   scope = new hooks.Scope();
   scope.root = () => {
     remote = useRemote({ authenticated, bootstrap });
+    questions = QuestionDock({ items: remote.items, disabled: false, onSubmit: async () => {}, onError: console.error });
     if (remote.activeThread) queue = QueuedMessages({ transport: remote.chatTransport, threadId: thread.id,
       readable: remote.authenticated, connected: remote.connected && remote.threadReady, activeTurnId: null,
       onError: console.error, onOpenSideChat: () => {}, queueEnabled: true, onQueueEnabledChange: () => {} });
   };
   scope.render();
-  return { get remote() { return remote; }, get queue() { return queue; } };
+  return { get remote() { return remote; }, get queue() { return queue; }, get questions() { return questions; } };
 }
 const json = (body: unknown) => Promise.resolve({ ok: true, text: async () => JSON.stringify(body) } as Response);
 
@@ -355,5 +358,65 @@ describe('on-demand execution bodies', () => {
     expect(detail.loading).toBe(true);
     expect(fetcher.mock.calls.map(([path]) => new URL(String(path), 'http://localhost').searchParams.get('threadId')))
       .toEqual(['synthetic-chat', 'second-chat', 'third-chat']);
+  });
+});
+
+
+describe('new native question arrivals', () => {
+  it.each(['turn/started', 'turn/completed'])('shows questions embedded in %s immediately without a history refresh', async method => {
+    const f = fixture(() => new Promise(() => {}));
+    void f.remote.openThread(thread.id).catch(() => {}); await settle();
+    const item: ThreadItem = { type: 'agentMessage', id: 'synthetic-question', text: '', delivery: 'async',
+      questions: [{ title: 'Choose?', options: ['A', 'B'] }] };
+    connection.options.onMessage({ type: 'event', method, params: { threadId: thread.id,
+      turn: { id: 'question-turn', status: method === 'turn/started' ? 'inProgress' : 'completed', items: [item] } } });
+    await settle();
+    const groups = pendingQuestionGroups(f.remote.items);
+    console.info('[question-event-diagnostic]', { method, sourceId: item.id, sourceQuestions: item.questions?.length,
+      receivedItems: f.remote.items.length, renderedQuestionIds: groups.flatMap(group => group.questions.map(q => q.id)) });
+    expect(groups.flatMap(group => group.questions.map(q => q.id))).toEqual([questionItemId(item.id, 0)]);
+    expect(f.questions?.props['aria-label']).toBe('Codex 等待你的回答');
+    expect(f.remote.turnTimings['question-turn']).not.toHaveProperty('items');
+  });
+});
+
+
+describe('question state synchronization', () => {
+  const question: ThreadItem = { type: 'agentMessage', id: 'new-question', text: '', delivery: 'async',
+    questions: [{ title: 'Choose?', options: ['A', 'B'] }] };
+  it('renders a fresh item question even before its turn-start event arrives', async () => {
+    const f = fixture(() => new Promise(() => {}));
+    void f.remote.openThread(thread.id).catch(() => {}); await settle();
+    connection.options.onMessage({ type: 'event', method: 'turn/started', params: { threadId: thread.id,
+      turn: { id: 'old-turn', status: 'inProgress', items: [] } } }); await settle();
+    connection.options.onMessage({ type: 'event', method: 'item/completed', params: { threadId: thread.id,
+      turnId: 'new-turn', item: question } }); await settle();
+    expect(f.remote.activeTurnId).toBe('old-turn');
+    expect(f.questions).not.toBeNull();
+    connection.options.onMessage({ type: 'event', method: 'turn/started', params: { threadId: thread.id,
+      turn: { id: 'goal-next-turn', status: 'inProgress', items: [] } } }); await settle();
+    expect(f.questions).not.toBeNull();
+  });
+  it('receives an unselected chat badge and replaces it on reconnect without loading its history', async () => {
+    const fetcher = vi.fn<typeof fetch>(() => new Promise(() => {}));
+    const f = fixture(fetcher);
+    connection.options.onMessage({ type: 'questions.snapshot', counts: { other: 2, invalid: -1, fraction: 1.5 } });
+    await settle();
+    expect(f.remote.questionCounts).toEqual({ other: 2 });
+    expect(f.remote.items).toEqual([]);
+    expect(fetcher.mock.calls.some(([path]) => String(path).includes('/thread/open'))).toBe(false);
+    connection.options.onMessage({ type: 'questions.snapshot', counts: {} }); await settle();
+    expect(f.remote.questionCounts).toEqual({});
+  });
+  it('does not inject window-external live questions while reading older history', async () => {
+    const f = fixture(path => String(path).includes('/around?') ? json({ items: [{ turnId: 'old-turn',
+      item: { type: 'userMessage', id: 'old-user', content: [{ type: 'text', text: 'Old context' }] } }],
+      nextCursor: 'older', newerCursor: 'newer' }) : new Promise(() => {}));
+    void f.remote.openThread(thread.id).catch(() => {}); await settle();
+    expect(await f.remote.revealHistory('old-turn', 'old-user')).toBe(true); await settle();
+    connection.options.onMessage({ type: 'event', method: 'turn/started', params: { threadId: thread.id,
+      turn: { id: 'new-turn', status: 'inProgress', items: [question] } } }); await settle();
+    expect(f.remote.viewingHistory).toBe(true);
+    expect(f.remote.items.map(item => item.id)).toEqual(['old-user']);
   });
 });

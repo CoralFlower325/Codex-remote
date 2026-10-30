@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Router } from 'express';
 import webPush from 'web-push';
+import { asyncQuestions, questionItemId } from '../shared/async-user-input.js';
 import type { PushSubscription, VapidKeys } from 'web-push';
 
 interface PushState {
@@ -165,12 +166,36 @@ export class PushNotifications {
     }
   }
 
-  async notifyApproval(params: Record<string, unknown>): Promise<void> {
+  async notifyApproval(params: Record<string, unknown>, method?: string): Promise<void> {
     const threadId = typeof params.threadId === 'string' ? params.threadId : '';
     if (!this.subscriptions.size || !this.watchedThreads.has(threadId)) return;
+    const questions = method === 'item/tool/requestUserInput' && Array.isArray(params.questions)
+      ? params.questions.map(value => firstText(recordValue(value)?.question)).filter(Boolean).join('；') : null;
     await this.notify({
-      title: await this.conversationTitle(threadId, params), body: '\u4efb\u52a1\u9700\u8981\u4f60\u7684\u786e\u8ba4',
-      tag: `codex-approval-${threadId}`, url: `/?thread=${encodeURIComponent(threadId)}`, threadId
+      title: await this.conversationTitle(threadId, params),
+      body: method === 'item/tool/requestUserInput' ? `需要你回答${questions ? `：${truncateReply(questions)}` : ''}` : '任务需要你的确认',
+      tag: `${method === 'item/tool/requestUserInput' ? 'codex-question' : 'codex-approval'}-${threadId}`, url: `/?thread=${encodeURIComponent(threadId)}`, threadId
+    });
+  }
+
+  /** Only newly pending IDs from live native events are eligible, never history hydration. */
+  async notifyQuestions(params: Record<string, unknown>, newIds: string[]): Promise<void> {
+    const threadId = typeof params.threadId === 'string' ? params.threadId : '';
+    if (!this.subscriptions.size || !this.watchedThreads.has(threadId) || !Array.isArray(newIds) || !newIds.length) return;
+    const ids = new Set(newIds);
+    const turn = recordValue(params.turn);
+    const items = params.item ? [params.item] : Array.isArray(turn?.items) ? turn.items : [];
+    const titles = items.flatMap(value => {
+      const item = recordValue(value);
+      if (item?.type !== 'agentMessage' || typeof item.id !== 'string') return [];
+      return asyncQuestions(item.questions).filter((_, index) => ids.has(questionItemId(item.id as string, index)))
+        .map(question => question.title);
+    });
+    if (!titles.length) return;
+    console.debug('[async-questions] notification requested', { count: titles.length });
+    await this.notify({
+      title: await this.conversationTitle(threadId, params), body: `需要你回答：${truncateReply(titles.join('；'))}`,
+      tag: `codex-question-${threadId}`, url: `/?thread=${encodeURIComponent(threadId)}`, threadId
     });
   }
 
@@ -203,7 +228,10 @@ export class PushNotifications {
         try { await this.send(subscription, payload); return; }
         catch (error) {
           const status = (error as { statusCode?: number })?.statusCode;
-          if (attempt === 2 || status !== undefined && status !== 429 && status < 500) return;
+          if (attempt === 2 || status !== undefined && status !== 429 && status < 500) {
+            console.warn('[push] notification delivery failed', { attempt: attempt + 1, status: status ?? 'network' });
+            return;
+          }
           await new Promise<void>(resolve => {
             const timer = setTimeout(resolve, attempt === 0 ? 1000 : 4000);
             timer.unref?.();

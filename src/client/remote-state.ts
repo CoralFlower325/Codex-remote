@@ -57,6 +57,47 @@ export function upsertItem(items: ThreadItem[], next: ThreadItem, append = false
   return copy;
 }
 
+/** Apply a native turn payload in one pass, preserving bounded historical windows. */
+export function mergeEmbeddedTurnItems(items: ThreadItem[], turnId: string, incoming: unknown, viewingHistory: boolean): ThreadItem[] {
+  if (!Array.isArray(incoming) || !incoming.length) return items;
+  const currentTurn = items.filter(item => item.turnId === turnId);
+  const existing = new Map(currentTurn.map(item => [itemKey(item), item]));
+  const updates = new Map<string, ThreadItem>();
+  for (const item of incoming) {
+    if (!item || typeof item.id !== 'string' || !item.id || typeof item.type !== 'string') continue;
+    const next = { ...item, turnId } as ThreadItem;
+    const key = itemKey(next), current = existing.get(key);
+    if (!current && viewingHistory) continue;
+    updates.set(key, { ...next,
+      ...(next.startedAtMs == null && current?.startedAtMs != null ? { startedAtMs: current.startedAtMs } : {}),
+      ...(next.completedAtMs == null && current?.completedAtMs != null ? { completedAtMs: current.completedAtMs } : {}) });
+  }
+  if (!updates.size) return items;
+  if (viewingHistory) return items.map(item => updates.get(itemKey(item)) ?? item);
+  // Reconcile inside the owning turn so delayed payloads cannot land after a later turn.
+  // Keep local-only entries by their next known neighbour; the native array orders known items.
+  const before = new Map<string, ThreadItem[]>();
+  let prefix: ThreadItem[] = [];
+  let anchored = false;
+  let remaining: ThreadItem[] = [];
+  for (const item of currentTurn) {
+    const key = itemKey(item);
+    if (updates.has(key)) {
+      if (!anchored) { prefix = remaining; anchored = true; }
+      else before.set(key, remaining);
+      remaining = [];
+    }
+    else remaining.push(item);
+  }
+  if (!anchored) { prefix = remaining; remaining = []; }
+  const merged = [...prefix, ...[...updates].flatMap(([key, item]) => [...(before.get(key) ?? []), item])];
+  merged.push(...remaining);
+  const start = items.findIndex(item => item.turnId === turnId);
+  if (start === -1) return [...items, ...merged];
+  return [...items.slice(0, start), ...merged,
+    ...items.slice(start).filter(item => item.turnId !== turnId)];
+}
+
 export function itemKey(item: { id: string; turnId?: string }): string {
   return JSON.stringify([item.turnId ?? '', item.id]);
 }

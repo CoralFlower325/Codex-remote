@@ -57,7 +57,7 @@ Each validated functional batch also publishes a GitHub Release with its version
 - **Workspace terminals.** Open an interactive shell in the current chat/project directory, with terminal tabs, Ctrl+C, preserved sessions, and reconnectable output.
 - **Responsive light UI.** Drag the desktop sidebar and review dividers to resize all three columns; widths are remembered in the current browser, and double-clicking restores defaults. Phones use navigation drawers, with a compact composer and system typography.
 - **Connection recovery.** Heartbeat deadlines, handshake timeouts, network/foreground recovery, and drafts stored per chat in the browser.
-- **Device notifications.** Opt into encrypted Web Push for completed tasks and approvals, test delivery, and turn off this device from Settings.
+- **Device notifications.** Opt into encrypted Web Push for completed tasks, pending questions and approvals, test delivery, and turn off this device from Settings.
 - **Faster repeat entry.** Previously verified devices can open the empty workspace while login is checked in the background; tasks and chats still require server authentication.
 - **Self-hosted access.** Password login, signed HTTP-only sessions, local-only initial setup, and optional Cloudflare Tunnel.
 - **Windows and macOS controls.** Double-click `.cmd` files on Windows or `.command` files on macOS to start and stop Remote.
@@ -509,7 +509,8 @@ Plain LAN HTTP does not support this; localhost is a browser development excepti
 Push comes from the Remote server and can arrive while its page is closed.
 Remote and its native Desktop connection must stay running. Notifications cover
 ordinary chats opened or created through Remote, including completed, failed or
-stopped turns and approval requests. Child-agent and temporary chats are excluded.
+stopped turns, newly pending native questions and approval requests. Repeated item/turn
+notifications do not resend the same question; history hydration does not push old questions. Child-agent and temporary chats are excluded.
 Tapping a notification focuses the workspace and opens its chat.
 
 Delivery does not depend on the page's WebSocket or HTTP event stream. For
@@ -521,7 +522,7 @@ VAPID keys, device subscriptions and notification chat scope are private runtime
 data in `data/web-push.json`. Keep that file across updates and out of Git.
 Browser push services, including Apple or the browser vendor, deliver encrypted
 messages. Notifications include the conversation title, status, chat identifier
-and up to 100 characters of the final reply. A title may fall back to the chat's
+and up to 100 characters of the final reply or question preview. A title may fall back to the chat's
 native preview; this content can appear on the device's lock screen. Tool and
 command output are excluded. Title lookup falls back after 1.5 seconds.
 Disable affects this device; successful
@@ -696,14 +697,26 @@ the startup record and the implementation.
 
 ### Native questions and bounded history payloads
 
-The main conversation displays native asynchronous questions as selectable options
-and custom multiline answers above the composer. The first option is selected but
-never sent automatically. Submit sends Desktop's persisted answer envelope directly
-as active-turn steering (`expectedTurnId`) or a new idle turn, bypassing the message
-queue. Replies received from Desktop are recognized from loaded history. The card
-shows questions for the latest loaded turn, outside historical navigation; pending
-questions beyond the bounded loaded window and temporary side-chat forms still need
-separate acceptance. Existing blocking user-input approvals remain supported.
+Main conversations and temporary side chats display native asynchronous questions
+as selectable options or multiline custom answers. First-option defaults remain
+unsent until explicit submission. Replies use Desktop's persisted answer envelope,
+steering active turns with `expectedTurnId` or starting idle turns without the
+ordinary queue. Loaded replies from another client dismiss the matching questions.
+Unanswered groups remain visible across turn completion and Goal continuation;
+whole-turn notifications deliver their embedded messages immediately. Historical
+navigation keeps its bounded reading window unchanged. Answer fields omit the black
+focus ring; mobile answer text is 16px to avoid focus zoom without disabling user
+page magnification.
+
+The mobile and desktop task sidebar shows **待回答** for observed pending questions,
+including live arrivals in unselected chats and blocking native user-input requests.
+Count-only summaries travel over the existing authenticated live connection and
+resynchronize on reconnect. Existing bounded history reads populate these summaries;
+no extra full-history scan or public/private-content cache is added. The memory
+index retains at most 1,000 chats and 1,000 pending/answered IDs per chat. After a
+server restart, old unobserved questions outside loaded history have no badge until
+native events or a bounded history read reveal them. Physical iOS and real native
+answer submission still require separate acceptance.
 
 History pages preserve complete conversation prose, questions, file diffs, identities
 and native cursors. Folded command/tool bodies are retrieved from the original native
