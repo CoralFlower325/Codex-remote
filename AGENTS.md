@@ -320,6 +320,9 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 - Publish a GitHub Release for each validated functional batch, with a matching
   version tag, exact source commit and concise change summary. Keep the public
   release metadata in src/shared/release-notes.ts aligned with that release.
+- Write release titles, headings, change summaries and update-dialog notes in
+  Chinese only. Keep necessary product names, commands and version identifiers;
+  do not add an English duplicate or English headings such as "Changes".
 - The conversation summary panel reads native PR attachments and projected
   artifacts/sources on demand. Keep its history cursor independent of chat
   history; routine native events refresh the head until known items, never
