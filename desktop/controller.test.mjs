@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { controlCommand, summarize, probe, serviceStatus } from './controller.mjs';
+import { controlCommand, summarize, probe, serviceStatus, externalEntry, health } from './controller.mjs';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
 import { run } from './process.mjs';
 import net from 'node:net';
 import { portListening } from './controller.mjs';
@@ -45,6 +48,44 @@ describe('local manager control boundary', () => {
     const fetcher = vi.fn().mockRejectedValue(new Error('offline'));
     expect((await probe('http://127.0.0.1/health', true, fetcher)).reachable).toBe(false);
     expect(fetcher.mock.calls[0][1].redirect).toBe('error');
+  });
+  it('reports external public access separately without treating it as a managed tunnel', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'remote-external-health-'));
+    try {
+      await fs.mkdir(path.join(root, 'scripts'), { recursive: true });
+      await fs.mkdir(path.join(root, 'dist-server/server'), { recursive: true });
+      for (const name of ['remote-control-windows.ps1', 'remote-control-macos.sh']) {
+        await fs.writeFile(path.join(root, 'scripts', name), '', 'utf8');
+      }
+      await fs.writeFile(path.join(root, 'dist-server/server/index.js'), '', 'utf8');
+      await fs.writeFile(path.join(root, 'package.json'), '{"name":"codex-remote","version":"0.1.10"}', 'utf8');
+      await fs.writeFile(path.join(root, '.env'), 'PUBLIC_ORIGIN=https://remote.example.com\n', 'utf8');
+      const execute = vi.fn().mockResolvedValue('{"running":true,"tunnelManaged":false}');
+      const body = { ok: true, codex: 'ready', transport: 'desktop', passwordConfigured: true };
+      const fetcher = vi.fn().mockImplementation(async () => ({ ok: true, json: async () => body }));
+      const result = await health(root, execute, 'darwin', fetcher);
+      expect(result.publicEntry).toEqual({ configured: true, reachable: true });
+      expect(result.tunnel).toEqual({ managed: false, ready: false });
+      expect(result.state).toBe('healthy');
+      expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+        'http://127.0.0.1:4545/health', 'https://remote.example.com/health'
+      ]);
+      expect(execute.mock.calls.every(([, args]) => args.includes('Status'))).toBe(true);
+      fetcher.mockImplementation(async (url) => {
+        if (url.startsWith('https:')) throw new Error('offline');
+        return { ok: true, json: async () => body };
+      });
+      expect((await health(root, execute, 'darwin', fetcher)).publicEntry.reachable).toBe(false);
+      await fs.writeFile(path.join(root, '.env'), '', 'utf8');
+      fetcher.mockClear();
+      expect((await health(root, execute, 'darwin', fetcher)).publicEntry.configured).toBe(false);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+  });
+  it('does not mistake a generic proxy response for the Remote health endpoint', () => {
+    expect(externalEntry({ reachable: true, body: { ok: true } })).toBe(false);
+    expect(externalEntry({ reachable: false, body: { ok: true, codex: 'ready', transport: 'desktop' } })).toBe(false);
+    expect(externalEntry({ reachable: true, body: { ok: true, codex: 'offline', transport: 'desktop' } })).toBe(true);
   });
   it('preserves binary output exactly for release comparisons', async () => {
     const bytes = await run(process.execPath, ['-e', 'process.stdout.write(Buffer.from([0,255,10,10]))'], { raw: true });

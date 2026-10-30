@@ -9,6 +9,7 @@ type Status = {
   service: { running: boolean; enabled: boolean; installed: boolean };
   backend: { reachable: boolean; ms: number }; desktop: boolean; passwordConfigured: boolean;
   tunnel: { managed: boolean; ready: boolean };
+  publicEntry: { configured: boolean; reachable: boolean };
 };
 type State = {
   root: string; version: string; platform: string; packaged: boolean; launchAtLogin: boolean;
@@ -91,7 +92,8 @@ function App() {
           <Row name="本地服务" value={status ? status.backend.reachable ? `${status.backend.ms} ms` : '未响应' : '等待检测'} good={status?.backend.reachable} stale={stale} />
           <Row name="Desktop 同步" value={status ? status.desktop ? '已连接' : '未就绪' : '等待检测'} good={status?.desktop} stale={stale} />
           <Row name="访问密码" value={status ? status.passwordConfigured ? '已设置' : status.backend.reachable ? '未设置' : '等待服务' : '等待检测'} good={status?.passwordConfigured} stale={stale} />
-          <Row name="Cloudflare 隧道" value={status?.tunnel.managed ? status.tunnel.ready ? '已连接' : '未就绪' : '独立管理 / 未配置'} good={status?.tunnel.managed ? status.tunnel.ready : undefined} stale={stale} />
+          <Row name="隧道管理" value={status?.tunnel.managed ? status.tunnel.ready ? '受管 · 已连接' : '受管 · 未就绪' : status?.publicEntry.configured ? '外部管理' : '未配置受管隧道'} good={status?.tunnel.managed ? status.tunnel.ready : undefined} stale={stale} />
+          <Row name="公网入口" value={status?.publicEntry.configured ? status.publicEntry.reachable ? '可达' : '未连通' : '未设置'} good={status?.publicEntry.configured ? status.publicEntry.reachable : undefined} stale={stale} />
           <Row name="Remote 登录启动" value={status ? status.service.enabled ? '已启用' : '未启用' : '等待检测'} stale={stale} />
         </dl>
         <div className="links">

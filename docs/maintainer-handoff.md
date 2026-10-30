@@ -15,7 +15,14 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The 0.1.10 functional batch adds an optional Windows/macOS desktop manager:
+The 0.1.11 batch preserves conflicting local Markdown during manager updates,
+with incoming copies and a retention receipt, while continuing to reject source/
+configuration conflicts. Windows tasks run without persistent consoles and migrate
+on Start. External macOS tunnels stay externally owned; the manager separately
+checks public-origin health. Users blocked in a 0.1.10 manager must install the
+new manager executable before retrying. See the bilingual manager guide below.
+
+The preceding 0.1.10 functional batch adds an optional Windows/macOS desktop manager:
 tray/menu-bar residency, owned platform controls, layered local health and staged
 release updates with conflict detection, backups and recovery. See the bilingual
 [manager guide](desktop-manager.md). Electron dependencies are separately installed.

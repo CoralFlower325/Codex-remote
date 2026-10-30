@@ -31,6 +31,9 @@ probe; they do not need to be edited before opening the manager.
 ## Everyday Operation
 
 - Start, stop and restart reuse existing platform controls and preserve Desktop.
+- Windows runs server/tunnel tasks without persistent console windows. Start
+  migrates older console tasks once; backend output goes to `data/server.out.log`
+  and `data/server.err.log`. `npm start` remains a foreground developer command.
 - Close/minimize keeps the manager in the Windows notification area or macOS
   **top menu bar**. The macOS Dock is separate. Use the icon to reopen the window.
 - Tray menus offer status, show/open, start/stop, update checks and quit.
@@ -40,8 +43,12 @@ probe; they do not need to be edited before opening the manager.
 - Health refreshes every five seconds without overlapping reads: owned backend,
   Desktop transport, password and managed Windows tunnel. Running alone is not
   healthy. Readings older than twenty seconds become stale.
-- macOS independent tunnels remain separately managed. Local tunnel readiness
-  does not establish public DNS, proxy, HTTPS or browser reachability.
+- macOS LaunchAgent/daemon tunnels remain externally managed; the manager does
+  not adopt or stop them. **Tunnel management** distinguishes managed tasks,
+  external access and no managed configuration. **Public entry** independently
+  checks the configured origin's `/health`, without cookies or redirects.
+  Public reachability does not prove tunnel ownership or a particular route.
+  A failed public check does not stop a healthy local service.
 - Bounded operation records contain manager actions only and stay in memory.
   Installation files open locally; diagnostics are not uploaded.
 
@@ -53,15 +60,21 @@ Node.js 22.19+, npm and Git must be on PATH, including standard Homebrew locatio
 
 1. Fetch official version tags into an isolated temporary directory.
 2. Compare upstream-changed files with the installed release's originals. CRLF
-   differences are accepted. Unrelated edits remain; conflicts, local deletions,
-   symlinks and protected runtime paths block installation. Customized package/
-   lockfiles may require maintainer assistance.
+   differences are accepted. Unrelated edits remain. Conflicting local Markdown
+   in root `AGENTS.md`, `CLAUDE.md`, `README*.md` or `docs/` is retained, including
+   deliberate deletions. Source/configuration conflicts, local source deletions,
+   symlinks and protected runtime paths still block installation. Customized
+   package/lockfiles may require maintainer assistance.
 3. Combine the incoming changes with preserved local `src/`, `public/`, `scripts/`
    and standard build configuration in the isolated directory. Install dependencies,
    typecheck, test and build while the existing service runs. Runtime `.env` and
    private data are not copied into staging. Recheck build input hashes before install.
 4. Back up affected sources and builds under `output/manager-backup-*`. Stop Remote
    and wait for the old backend to exit before replacing files.
+   Retained documentation has local copies under `source/`, incoming copies under
+   `incoming/`, and deletion/retention entries in `receipt.json`. Completion lists
+   the retained paths for manual reconciliation; local rules are never overwritten
+   to resolve a conflict automatically.
 5. Install sources/builds and locked dependencies. Restart and verify a previously
    running service; an explicitly stopped installation stays stopped.
 6. Attempt backup recovery on installation/startup failure. Failed recovery displays
@@ -76,6 +89,10 @@ This updates **the selected host installation**, not the manager executable.
 Install a newer manager from its Release. Independent static-edge/CDN assets and
 external tunnels are not deployed here. Public-origin installations receive a
 reminder to synchronize externally hosted frontend assets through the hosting guide.
+If a 0.1.10 manager is blocked by Markdown conflicts, install the 0.1.11 or newer
+manager first, select the same host directory and retry. The old executable cannot
+use the fixed updater merely by checking for a new host release. Do not reset Git
+or delete the local documents.
 
 Cross-platform tests cover ownership, release selection, conflicts, protected paths,
 backups, recovery and stopped-state preservation. macOS packaging, shell and

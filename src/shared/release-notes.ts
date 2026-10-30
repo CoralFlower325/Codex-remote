@@ -2,6 +2,11 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.1.11', changes: [
+    '本机更新保留有冲突的文档和规则，备份新版副本；代码和配置冲突仍会阻止更新。',
+    'Windows 后台任务改为无窗口启动，自动迁移旧任务并保留服务日志。',
+    '管理器区分外部隧道管理与公网入口可达性，避免将 macOS 独立隧道显示为未配置。'
+  ] },
   { version: '0.1.10', changes: [
     '新增 Windows/macOS 本机管理器，支持启停、健康检测和托盘或菜单栏常驻。',
     '管理器支持检查版本、显示更新摘要，以及备份、冲突检测和失败恢复后的本机更新。',

@@ -160,6 +160,11 @@ After building and setting the password:
 Stopping Remote leaves Codex Desktop running. The tasks stay disabled across sign-in until Start is used again. Repeated Start does not create another running instance.
 
 The first Start installs the current-user scheduled tasks when they are missing. If `data/cloudflared-token` exists, the tunnel task is included.
+Start also migrates older console-based tasks to a windowless launcher. Remote
+keeps running after the control window closes; no persistent terminal is needed.
+Backend output is in `data/server.out.log` and `data/server.err.log`.
+Use the manager or Start/Stop controls for background operation; `npm start`
+runs in the foreground.
 
 For terminal use:
 

@@ -26,10 +26,13 @@ function Get-RemoteProcesses {
   $token = Join-Path $Root "data\cloudflared-token"
   $supervisor = Join-Path $Root "dist-server\server\cli\tunnel-supervisor.js"
   $watcher = Join-Path $Root "scripts\watch-network-windows.ps1"
-  Get-CimInstance Win32_Process -Filter "Name = 'node.exe' OR Name = 'cloudflared.exe' OR Name = 'powershell.exe'" |
+  $background = Join-Path $Root "scripts\background-task-windows.mjs"
+  $hidden = Join-Path $Root "scripts\run-hidden-windows.vbs"
+  Get-CimInstance Win32_Process -Filter "Name = 'node.exe' OR Name = 'cloudflared.exe' OR Name = 'powershell.exe' OR Name = 'wscript.exe'" |
     Where-Object {
       $_.CommandLine -and (
-      ($_.Name -eq "node.exe" -and ($_.CommandLine.Contains($entry) -or $_.CommandLine.Contains($supervisor))) -or
+      ($_.Name -eq "node.exe" -and ($_.CommandLine.Contains($entry) -or $_.CommandLine.Contains($supervisor) -or $_.CommandLine.Contains($background))) -or
+      ($_.Name -eq "wscript.exe" -and $_.CommandLine.Contains($hidden)) -or
       ($_.Name -eq "powershell.exe" -and $_.CommandLine.Contains($watcher)) -or
       ($_.Name -eq "cloudflared.exe" -and $_.CommandLine.Contains($token)))
     }
@@ -136,8 +139,19 @@ if (-not (Test-Path -LiteralPath (Join-Path $Root "dist-server\server\index.js")
 $serverTask = Get-RemoteTask $ServerTaskName
 $tokenFile = Join-Path $Root "data\cloudflared-token"
 $hasTunnel = Test-Path -LiteralPath $tokenFile
-if (-not $serverTask -or ($hasTunnel -and -not (Get-RemoteTask $TunnelTaskName))) {
-  & (Join-Path $PSScriptRoot "install-task-windows.ps1")
+$hiddenLauncher = Join-Path $PSScriptRoot "run-hidden-windows.vbs"
+$tunnelTask = Get-RemoteTask $TunnelTaskName
+$needsMigration = ($serverTask -and -not $serverTask.Actions.Arguments.Contains($hiddenLauncher)) -or
+  ($hasTunnel -and $tunnelTask -and -not $tunnelTask.Actions.Arguments.Contains($hiddenLauncher))
+if ($needsMigration) {
+  & $PSCommandPath -Action Stop -NoBrowser
+}
+if (-not $serverTask -or ($hasTunnel -and -not $tunnelTask) -or $needsMigration) {
+  $protocol = "http2"
+  if ($tunnelTask -and $tunnelTask.Actions.Arguments -match '(?:\s|^)"?(auto|http2|quic)"?\s*$') {
+    $protocol = $Matches[1]
+  }
+  & (Join-Path $PSScriptRoot "install-task-windows.ps1") -NoStart -TunnelProtocol $protocol
 }
 Enable-ScheduledTask -TaskName $ServerTaskName | Out-Null
 if ((Get-RemoteTask $ServerTaskName).State -ne "Running") {

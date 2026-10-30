@@ -96,14 +96,21 @@ export function summarize(service, local, tunnel) {
   return service.running ? 'degraded' : 'stopped';
 }
 
+export function externalEntry(result) {
+  return Boolean(result?.reachable && result.body?.ok === true &&
+    ['starting', 'ready', 'restarting', 'offline'].includes(result.body?.codex) &&
+    typeof result.body?.transport === 'string');
+}
+
 export async function health(directory, execute = run, platform = process.platform, fetcher = fetch) {
   const info = await installation(directory);
   const service = await serviceStatus(info, execute, platform);
-  const [local, tunnel, listening] = await Promise.all([
+  const [local, tunnel, listening, external] = await Promise.all([
     probe(`${info.localUrl}/health`, true, fetcher),
     service.tunnelManaged ? probe('http://127.0.0.1:20241/ready', false, fetcher)
       : Promise.resolve({ reachable: false, body: null }),
-    portListening(info.localUrl)
+    portListening(info.localUrl),
+    info.publicUrl ? probe(`${info.publicUrl}/health`, true, fetcher) : Promise.resolve(null)
   ]);
   // Do not forward the binary path or any other health response fields.
   return { ...info, checkedAt: Date.now(), service,
@@ -111,6 +118,7 @@ export async function health(directory, execute = run, platform = process.platfo
     desktop: local.body?.codex === 'ready' && local.body?.transport === 'desktop',
     passwordConfigured: local.body?.passwordConfigured === true,
     tunnel: { managed: Boolean(service.tunnelManaged), ready: tunnel.reachable },
+    publicEntry: { configured: Boolean(info.publicUrl), reachable: externalEntry(external) },
     state: summarize(service, { ...local, listening }, tunnel) };
 }
 

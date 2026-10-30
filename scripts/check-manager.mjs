@@ -8,6 +8,7 @@ import { _electron } from '../desktop/node_modules/playwright/index.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const version = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8')).version;
 const packaged = process.env.MANAGER_PACKAGED === '1';
 const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'remote-manager-smoke-'));
 const results = { platform: process.platform, arch: process.arch, packaged };
@@ -28,7 +29,7 @@ try {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   await fs.mkdir(path.join(fixture, 'scripts'), { recursive: true });
   await fs.mkdir(path.join(fixture, 'dist-server/server'), { recursive: true });
-  await fs.writeFile(path.join(fixture, 'package.json'), JSON.stringify({ name: 'codex-remote', version: '0.1.10' }), 'utf8');
+  await fs.writeFile(path.join(fixture, 'package.json'), JSON.stringify({ name: 'codex-remote', version }), 'utf8');
   await fs.writeFile(path.join(fixture, 'dist-server/server/index.js'), '// Synthetic fixture only.\n', 'utf8');
   await fs.writeFile(path.join(fixture, '.env'), `PORT=${server.address().port}\n`, 'utf8');
   const status = JSON.stringify({ running: true, installed: true, enabled: true, conflict: false, tunnelManaged: false });
@@ -42,7 +43,8 @@ try {
     executablePath: packaged ? path.join(root, 'output/manager', process.platform === 'darwin'
       ? 'mac-arm64/Codex Remote Manager.app/Contents/MacOS/Codex Remote Manager'
       : 'win-unpacked/Codex Remote Manager.exe') : require('../desktop/node_modules/electron'),
-    args: packaged ? [] : [path.join(root, 'desktop'), `--installation=${fixture}`], env, timeout: 60_000
+    args: [...(packaged ? [] : [path.join(root, 'desktop'), `--installation=${fixture}`]),
+      `--user-data-dir=${path.join(fixture, 'profile')}`], env, timeout: 60_000
   });
   const page = await application.firstWindow();
   if (packaged) {
@@ -94,12 +96,12 @@ try {
     await page.screenshot({ path: path.join(root, `output/manager-smoke/${process.platform}-${packaged ? 'packaged' : 'source'}-${width}.png`) });
   }
   results.viewports = [480, 400, 780];
-  await application.evaluate(() => {
+  await application.evaluate((_, currentVersion) => {
     const original = globalThis.fetch;
     globalThis.fetch = (url, options) => String(url).startsWith('https://api.github.com/repos/CoralFlower325/')
-      ? Promise.resolve(new Response(JSON.stringify({ tag_name: 'v0.1.10', body: 'Synthetic release notes' })))
+      ? Promise.resolve(new Response(JSON.stringify({ tag_name: `v${currentVersion}`, body: 'Synthetic release notes' })))
       : original(url, options);
-  });
+  }, version);
   await page.evaluate(() => { window.__managerMarker = 'retained'; });
   const checked = await page.evaluate(() => window.manager.check());
   if (!checked.ok) throw new Error(checked.error);

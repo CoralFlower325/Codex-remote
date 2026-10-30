@@ -56,6 +56,25 @@ describe('update file plan', () => {
     await write(stage, 'gone', 'new');
     await expect(planFiles(root, stage, ['gone'], async () => Buffer.from('old'))).rejects.toThrow('gone');
   });
+  it('retains conflicting local documentation and rules, but still blocks source conflicts', async () => {
+    const root = await directory(); const stage = await directory();
+    const docs = ['AGENTS.md', 'README.md', 'README.zh-CN.md', 'docs/README.md',
+      'docs/guide.md', 'docs/guide.zh-CN.md', 'docs/maintainer-handoff.md'];
+    for (const file of docs) {
+      await write(root, file, 'private notes');
+      await write(stage, file, 'new official docs');
+    }
+    await write(stage, 'docs/deleted-locally.md', 'new official docs');
+    const files = [...docs, 'docs/deleted-locally.md'];
+    expect(await planFiles(root, stage, files, async () => Buffer.from('old official docs')))
+      .toEqual(files.map((relative) => ({ relative, remove: false, preserve: true })));
+    await write(root, 'src/a.ts', 'custom code'); await write(stage, 'src/a.ts', 'new code');
+    await expect(planFiles(root, stage, [...files, 'src/a.ts'], async () => Buffer.from('old')))
+      .rejects.toThrow('src/a.ts');
+    await write(root, 'docs/run.mjs', 'custom executable'); await write(stage, 'docs/run.mjs', 'new executable');
+    await expect(planFiles(root, stage, ['docs/run.mjs'], async () => Buffer.from('old')))
+      .rejects.toThrow('docs/run.mjs');
+  });
   it('rejects a junction/symlink crossing the installation boundary', async () => {
     const root = await directory(); const stage = await directory(); const outside = await directory();
     await fs.symlink(outside, path.join(root, 'src'), process.platform === 'win32' ? 'junction' : 'dir');
@@ -96,6 +115,36 @@ async function prepared() {
     release: { version: '0.1.10' }, execute: vi.fn().mockResolvedValue('') };
 }
 describe('installation transaction', () => {
+  it('preserves edited and deleted documentation, backs up both versions, and records retention', async () => {
+    const item = await prepared();
+    await write(item.info.root, 'AGENTS.md', 'private rules');
+    await write(item.stage, 'AGENTS.md', 'new official rules');
+    await write(item.stage, 'docs/deleted.md', 'new official docs');
+    item.plan = [
+      { relative: 'AGENTS.md', before: crypto.createHash('sha256').update('private rules').digest('hex'), remove: false, preserve: true },
+      { relative: 'docs/deleted.md', before: null, remove: false, preserve: true }
+    ];
+    const result = await installUpdate(item, { stop: vi.fn(), start: vi.fn(), verify: vi.fn(),
+      isRunning: async () => false, progress: () => {} });
+    expect(result.preservedFiles).toEqual(['AGENTS.md', 'docs/deleted.md']);
+    expect(await fs.readFile(path.join(item.info.root, 'AGENTS.md'), 'utf8')).toBe('private rules');
+    await expect(fs.access(path.join(item.info.root, 'docs/deleted.md'))).rejects.toThrow();
+    expect(await fs.readFile(path.join(result.backup, 'source/AGENTS.md'), 'utf8')).toBe('private rules');
+    expect(await fs.readFile(path.join(result.backup, 'incoming/AGENTS.md'), 'utf8')).toBe('new official rules');
+    expect(await fs.readFile(path.join(result.backup, 'incoming/docs/deleted.md'), 'utf8')).toBe('new official docs');
+    expect(JSON.parse(await fs.readFile(path.join(result.backup, 'receipt.json'), 'utf8')).plan[0].preserve).toBe(true);
+  });
+  it('keeps local rules intact when an install with retained documentation rolls back', async () => {
+    const item = await prepared();
+    await write(item.info.root, 'AGENTS.md', 'private rules');
+    await write(item.stage, 'AGENTS.md', 'official rules');
+    item.plan = [{ relative: 'AGENTS.md', before: crypto.createHash('sha256').update('private rules').digest('hex'),
+      remove: false, preserve: true }];
+    item.execute.mockRejectedValueOnce(new Error('failed install')).mockResolvedValueOnce('');
+    await expect(installUpdate(item, { stop: vi.fn(), start: vi.fn(), verify: vi.fn(),
+      isRunning: async () => false, progress: () => {} })).rejects.toThrow('restored');
+    expect(await fs.readFile(path.join(item.info.root, 'AGENTS.md'), 'utf8')).toBe('private rules');
+  });
   it('backs up before stopping, installs, restarts and verifies without touching private data', async () => {
     const item = await prepared(); const calls = [];
     const result = await installUpdate(item, {

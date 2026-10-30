@@ -96,7 +96,7 @@ cd Codex-remote
 
 [公网访问配置](docs/guide.zh-CN.md#公网访问) · [Windows 开关](docs/guide.zh-CN.md#windows-开启与关闭) · [macOS 开关](docs/guide.zh-CN.md#macos-开启与关闭)
 
-安装完成后，主机上的 `Start Remote.cmd` / `Stop Remote.cmd` 或 `.command` 文件管理后台运行。关闭 Remote 会保留 Codex Desktop；Windows 开关也管理已配置的 Tunnel 任务，macOS 的独立隧道需单独管理。
+安装完成后，主机上的 `Start Remote.cmd` / `Stop Remote.cmd` 或 `.command` 文件管理后台运行，Windows 无需常驻终端。关闭 Remote 会保留 Codex Desktop；Windows 开关也管理已配置的 Tunnel 任务，macOS 的独立隧道需单独管理。
 
 可选的[本机管理器](docs/desktop-manager.zh-CN.md)提供启停、健康检测与确认后的版本更新，
 Windows 常驻右下通知区域，macOS 常驻顶部菜单栏。

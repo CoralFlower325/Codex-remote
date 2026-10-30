@@ -60,7 +60,13 @@ export async function planFiles(root, stage, files, readBase) {
       regularFile(root, relative), regularFile(stage, relative), readBase(relative)
     ]);
     if (sameContent(local, incoming)) continue;
-    if ((local && !base) || (base && !sameContent(local, base))) conflicts.push(relative);
+    if ((local && !base) || (base && !sameContent(local, base))) {
+      // Installation notes and local agent rules are not runtime build inputs.
+      // Retain them, including deliberate deletions; save incoming copies later.
+      if (/^(?:AGENTS\.md|CLAUDE\.md|README(?:\.[\w-]+)?\.md|docs\/.+\.md)$/.test(relative)) {
+        plan.push({ relative, remove: !incoming, preserve: true });
+      } else conflicts.push(relative);
+    }
     else plan.push({ relative, remove: !incoming });
   }
   if (conflicts.length) throw new Error(`Local changes conflict with this update:\n${conflicts.slice(0, 12).join('\n')}`);
@@ -148,7 +154,7 @@ export async function prepareUpdate(directory, release, progress, execute = run)
     const pkg = JSON.parse(await fs.readFile(path.join(stage, 'package.json'), 'utf8'));
     if (pkg.name !== 'codex-remote' || pkg.version !== release.version) throw new Error('Release version mismatch.');
     const files = (await git(['diff', '--name-only', '--no-renames', `v${info.version}`, release.tag])).split('\n').filter(Boolean);
-    // Read only public source files. Runtime data and local docs are never deleted.
+    // Read only public source files. Runtime data never enters the update plan.
     const readBase = async (file) => {
       const exists = await git(['ls-tree', '--name-only', `v${info.version}`, '--', file]);
       if (!exists) return null;
@@ -157,6 +163,8 @@ export async function prepareUpdate(directory, release, progress, execute = run)
     };
     // Binary-safe git blobs are read separately, with no trimming or transcoding.
     const plan = await planFiles(info.root, stage, files, readBase);
+    const retained = plan.filter((item) => item.preserve);
+    if (retained.length) progress(`Keeping ${retained.length} locally modified documentation files`);
     for (const item of plan) item.before = hash(await regularFile(info.root, item.relative));
     const inputs = await mergeBuildInputs(info.root, stage, plan);
     const tools = await nodeToolchain(execute);
@@ -219,6 +227,10 @@ export async function installUpdate(prepared, { stop, start, verify, isRunning, 
         await fs.mkdir(path.dirname(path.join(backup, 'source', item.relative)), { recursive: true });
         await fs.writeFile(path.join(backup, 'source', item.relative), bytes);
       }
+      if (item.preserve && !item.remove) {
+        await fs.mkdir(path.dirname(path.join(backup, 'incoming', item.relative)), { recursive: true });
+        await fs.copyFile(path.join(stage, item.relative), path.join(backup, 'incoming', item.relative));
+      }
     }
     for (const dir of ['dist', 'dist-server']) await copyTree(path.join(info.root, dir), path.join(backup, dir));
     await fs.writeFile(path.join(backup, 'receipt.json'), JSON.stringify({
@@ -230,6 +242,7 @@ export async function installUpdate(prepared, { stop, start, verify, isRunning, 
     await checkInputs();
     touched = true;
     for (const item of plan) {
+      if (item.preserve) continue;
       const target = path.join(info.root, item.relative);
       if (item.remove) await fs.rm(target, { force: true });
       else {
@@ -249,13 +262,15 @@ export async function installUpdate(prepared, { stop, start, verify, isRunning, 
       await verify();
     }
     progress('Update complete');
-    return { version: release.version, backup, wasRunning, edgeSyncRequired: Boolean(info.publicUrl) };
+    return { version: release.version, backup, wasRunning, edgeSyncRequired: Boolean(info.publicUrl),
+      preservedFiles: plan.filter((item) => item.preserve).map((item) => item.relative) };
   } catch (error) {
     if (touched) {
       progress('Restoring backup');
       try {
         await stop();
         for (const item of plan) {
+          if (item.preserve) continue;
           const target = path.join(info.root, item.relative);
           const source = path.join(backup, 'source', item.relative);
           if (item.before) await fs.copyFile(source, target);

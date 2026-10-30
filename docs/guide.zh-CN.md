@@ -160,6 +160,9 @@ Codex Desktop -> 桌面端所属的 App Server
 关闭远控不会关闭 Codex Desktop。关闭后重新登录系统也不会自动开启，直到再次运行 Start。重复开启不会重复创建运行实例。
 
 若计划任务不存在，首次开启会安装当前用户的任务。存在 `data/cloudflared-token` 时会同时管理隧道。
+开启时也会将旧控制台任务迁移到无窗口启动器，控制窗口关闭后 Remote 继续运行，
+无需常驻终端。后端日志位于 `data/server.out.log`、`data/server.err.log`。
+日常后台运行使用管理器或 Start/Stop 开关；`npm start` 是前台命令。
 
 命令行用法：
 

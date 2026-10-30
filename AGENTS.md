@@ -236,6 +236,10 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   through HTTP. Updates require confirmation, conflict checks, isolated build,
   backup, old-process exit and recovery. Preserve explicit stopped state and
   private runtime data. External edge assets and the manager update separately.
+  Keep locally modified Markdown documentation/rules during updates and retain
+  incoming copies for reconciliation; source/configuration conflicts still block.
+  Windows tasks use the windowless host with logs and owned-process shutdown.
+  External macOS tunnels are not adopted; public health is a separate observation.
 - Windows Tunnel tasks run the owned Node supervisor. Restart exited cloudflared
   after one second, backing off repeated crashes to five seconds. Poll readiness
   every two seconds and wake on native address/availability events. Rebuild only

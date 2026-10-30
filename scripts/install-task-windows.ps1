@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
   [switch]$Unregister,
+  [switch]$NoStart,
   [ValidateSet("auto", "http2", "quic")]
   [string]$TunnelProtocol = "http2"
 )
@@ -23,6 +24,12 @@ if ($Unregister) {
 
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
+foreach ($taskName in @($ServerTaskName, $TunnelTaskName)) {
+  $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+  if ($existing -and $existing.Actions.WorkingDirectory -ne $Root) {
+    throw "Scheduled task $taskName belongs to another checkout."
+  }
+}
 $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $principal = New-ScheduledTaskPrincipal `
   -UserId $currentUser `
@@ -47,8 +54,8 @@ function Register-CodexRemoteTask {
   )
 
   $action = New-ScheduledTaskAction `
-    -Execute $Executable `
-    -Argument $Arguments `
+    -Execute (Join-Path $env:WINDIR "System32\wscript.exe") `
+    -Argument "//B //Nologo `"$(Join-Path $PSScriptRoot 'run-hidden-windows.vbs')`" `"$Executable`" `"$(Join-Path $PSScriptRoot 'background-task-windows.mjs')`" $Arguments" `
     -WorkingDirectory $Root
   Register-ScheduledTask `
     -TaskName $TaskName `
@@ -58,8 +65,8 @@ function Register-CodexRemoteTask {
     -Principal $principal `
     -Description $Description `
     -Force | Out-Null
-  Start-ScheduledTask -TaskName $TaskName
-  Write-Host "Installed and started scheduled task $TaskName."
+  if (-not $NoStart) { Start-ScheduledTask -TaskName $TaskName }
+  Write-Host "Installed background scheduled task $TaskName."
 }
 
 $entryPoint = Join-Path $Root "dist-server\server\index.js"
@@ -79,7 +86,7 @@ if (-not $node) {
 Register-CodexRemoteTask `
   -TaskName $ServerTaskName `
   -Executable $node.Source `
-  -Arguments "`"$entryPoint`"" `
+  -Arguments "server" `
   -Description "Codex Remote local server"
 
 $tokenFile = Join-Path $Root "data\cloudflared-token"
@@ -99,7 +106,7 @@ if (Test-Path $tokenFile) {
   Register-CodexRemoteTask `
     -TaskName $TunnelTaskName `
     -Executable $node.Source `
-    -Arguments "`"$(Join-Path $Root 'dist-server\server\cli\tunnel-supervisor.js')`" `"$cloudflaredPath`" $TunnelProtocol" `
+    -Arguments "tunnel `"$cloudflaredPath`" $TunnelProtocol" `
     -Description "Codex Remote Cloudflare Tunnel"
 }
 

@@ -167,6 +167,7 @@ async function update() {
     });
     state.release = null;
     state.result = `已安装 ${result.version}。备份：${result.backup}` +
+      (result.preservedFiles.length ? `\n已保留本机文档：${result.preservedFiles.join('、')}。新版副本位于备份的 incoming 目录。` : '') +
       (result.wasRunning ? '' : '\nRemote 保持关闭。') +
       (result.edgeSyncRequired ? '\n若使用外部静态托管，请同步新版前端资源。' : '');
     event(`本机已更新到 ${result.version}`);
