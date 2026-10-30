@@ -1,6 +1,35 @@
 # Desktop Manager Acceptance
 
-Functional batch: 0.1.10, 2026-10-30.
+Latest functional batch: 0.1.13, 2026-10-30.
+
+## Update Progress And Recovery
+
+Local validation passes 499 tests across 71 files, typecheck, web/manager builds
+and source Electron checks at 400, 480 and 780 widths. Synthetic progress checks
+verify the numeric progress element stays visible in the minimum window and
+service controls remain disabled while updating. Statuses and error explanations
+are Chinese; bounded raw npm/test output retains its original language.
+
+An isolated real v0.1.12-to-v0.1.13 update fetched exact local Git source and used
+real npm dependency installation, typecheck, tests and builds. An injected initial
+ECONNRESET was retried. Staging completed an actual offline reinstall before the
+install callback; final dependency installation succeeded offline with deliberately
+unusable proxy settings. The original dependency directory remained in the backup,
+private fixture files were unchanged and the stopped fixture stayed stopped.
+Temporary cache/staging cleanup completed and progress reached 100 only at success.
+This proves the local transaction boundary, not the user's macOS network.
+
+Unit checks cover bounded/redacted output, percentages that remain stable during
+logs, distinct recovery progress, one transient preparation retry, no retry for
+validation failures, partial-stop recovery, failed recovery and restoration of old
+dependencies without a second npm command. Final release packaging additionally
+requires source and packaged Electron checks on Windows and Apple Silicon macOS.
+Use the exact tagged workflow results and private deployment receipt for final
+packaged/installed acceptance; signed-in Mac integration remains separate.
+
+## Historical Baseline
+
+The following 0.1.10 record retains its original scope; its counts are historical.
 
 ## Verified On Windows
 

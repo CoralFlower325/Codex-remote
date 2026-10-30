@@ -201,7 +201,7 @@ try {
   const actual = await page.evaluate(async () => (await window.manager.get()).value);
   await application.evaluate(({ BrowserWindow }, value) =>
     BrowserWindow.getAllWindows()[0].webContents.send('manager:state', value),
-  { ...actual, busy: '下载并安装依赖', updateProgress: { percent: 18, step: 'dependencies',
+  { ...actual, result: '', busy: '下载并安装依赖', updateProgress: { percent: 18, step: 'dependencies',
     title: '下载并安装依赖', detail: '正在临时目录安装依赖；网络较慢时此步骤可能持续数分钟。',
     startedAt: Date.now() - 90_000, stepStartedAt: Date.now() - 70_000,
     lastOutputAt: Date.now() - 40_000, endedAt: null, status: 'running',
