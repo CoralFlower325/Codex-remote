@@ -42,6 +42,19 @@ try {
     args: [path.join(root, 'desktop'), `--installation=${fixture}`], env, timeout: 60_000
   });
   const page = await application.firstWindow();
+  if (process.platform === 'darwin') await application.evaluate(({ app, BrowserWindow }) => {
+    globalThis.__managerDockEvents = [];
+    const record = (kind) => globalThis.__managerDockEvents.push({
+      kind, dock: app.dock.isVisible(), visible: BrowserWindow.getAllWindows()[0]?.isVisible()
+    });
+    const hide = app.dock.hide.bind(app.dock); const show = app.dock.show.bind(app.dock);
+    app.dock.hide = () => { record('dock.hide'); return hide(); };
+    app.dock.show = () => { record('dock.show'); return show(); };
+    app.on('activate', () => record('activate'));
+    for (const name of ['show', 'hide', 'minimize', 'restore']) {
+      BrowserWindow.getAllWindows()[0].on(name, () => record(name));
+    }
+  });
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await until(() => page.evaluate(async () => (await window.manager.get()).value.status?.state), 'healthy', 'synthetic health');
@@ -81,7 +94,7 @@ try {
       await until(() => application.evaluate(({ app }) => app.dock.isVisible()), false, 'Dock hidden');
       results.dockHidden = true;
     }
-    await application.evaluate(({ app }) => app.emit('activate'));
+    await application.evaluate(({ app }) => app.emit('second-instance'));
     await until(() => application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()), true, 'reopen');
     if (process.platform === 'darwin') await until(() => application.evaluate(({ app }) => app.dock.isVisible()), true, 'Dock shown');
   }
@@ -92,6 +105,9 @@ try {
   await fs.writeFile(path.join(root, `output/manager-smoke/${process.platform}.json`), JSON.stringify(results, null, 2), 'utf8');
   console.log(JSON.stringify(results));
 } finally {
+  if (application && process.platform === 'darwin') {
+    console.log('Dock events: ' + JSON.stringify(await application.evaluate(() => globalThis.__managerDockEvents)));
+  }
   await application?.close();
   await new Promise((resolve) => server.close(resolve));
   await fs.rm(fixture, { recursive: true, force: true });

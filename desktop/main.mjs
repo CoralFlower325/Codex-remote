@@ -12,6 +12,7 @@ const labels = {
 };
 let win; let tray; let timer; let quitting = false; let polling = null;
 let dockTimer; let lastDockHide = 0;
+let showingDock = null;
 let settings = { root: '', launchAtLogin: false };
 let state = { status: null, busy: '', error: '', release: null, result: '', events: [] };
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
@@ -47,7 +48,9 @@ async function refresh() {
 function showWindow() {
   if (!win || win.isDestroyed()) return;
   clearTimeout(dockTimer);
-  if (process.platform === 'darwin') void app.dock.show();
+  if (process.platform === 'darwin' && !app.dock.isVisible() && !showingDock) {
+    showingDock = app.dock.show().finally(() => { showingDock = null; });
+  }
   if (win.isMinimized()) win.restore();
   win.show(); win.focus();
   void refresh();
@@ -189,7 +192,11 @@ function handle(name, fn) {
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', showWindow);
-  app.on('activate', showWindow);
+  app.on('activate', () => {
+    // Hiding the Dock can itself activate the application on macOS. An
+    // intentionally hidden tray window must stay hidden during that transition.
+    if (!tray || !win || win.isVisible()) showWindow();
+  });
   app.on('window-all-closed', () => {});
   app.on('before-quit', (e) => {
     if (state.busy) { e.preventDefault(); showWindow(); return; }

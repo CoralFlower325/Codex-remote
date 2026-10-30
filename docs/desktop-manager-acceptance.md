@@ -19,6 +19,10 @@ Functional batch: 0.1.10, 2026-10-30.
   the local 0.1.9 to 0.1.10 deployment. The old backend exited before replacement,
   the new backend reached ready Desktop transport, and Desktop kept its process.
   Quitting the manager left Remote running.
+- The updater fetched the official 0.1.9/0.1.10 tags and completed real dependency
+  installation, checks, tests, build and file installation in an isolated stopped
+  fixture. A local source addition was compiled into the new backend, synthetic
+  runtime data was preserved and the fixture remained stopped.
 - The Windows x64 NSIS installer builds successfully. Packages are unsigned.
 
 The live deployment used the maintainer's scoped copy procedure, preserving the
