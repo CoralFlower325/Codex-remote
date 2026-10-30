@@ -124,12 +124,13 @@ before claiming that rollback is complete.
 
 ## Evidence and Cleanup
 
-The 2026-10-30 documentation closeout reorganizes both README languages and
-preserves detailed instructions in bilingual guides. It also corrects stale
-unversioned test counts, the phone outline's 36px exception and the security
-description of question notifications. The application remains 0.1.9; the deployed
-functional source is still the v0.1.9 tag even when main has newer documentation.
-No service restart or new Release is required for this documentation-only batch.
+The earlier 2026-10-30 README closeout reorganized both languages, moved detailed
+instructions into bilingual guides and preserved 0.1.9 at that checkpoint.
+The subsequent manager release is 0.1.10. Its functional source and installers
+are recorded by the v0.1.10 tag and Release; each installation's private
+acceptance record remains the authority for its deployed version.
+Documentation-only closeouts do not increment the application version, rebuild,
+restart services or publish another Release.
 
 Ignored QA artifacts, deployment backups and review branches can contain unique
 or private evidence. Inventory them before proposing cleanup, distinguish
