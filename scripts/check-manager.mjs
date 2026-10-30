@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const version = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8')).version;
 const packaged = process.env.MANAGER_PACKAGED === '1';
-const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'remote-manager-smoke-'));
+const fixture = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'remote-manager-smoke-')));
 const results = { platform: process.platform, arch: process.arch, packaged };
 let desktopReady = true;
 const server = http.createServer((request, response) => {
@@ -59,7 +59,7 @@ try {
     executablePath: packaged ? path.join(root, 'output/manager', process.platform === 'darwin'
       ? 'mac-arm64/Codex Remote Manager.app/Contents/MacOS/Codex Remote Manager'
       : 'win-unpacked/Codex Remote Manager.exe') : require('../desktop/node_modules/electron'),
-    args: [...(packaged ? [] : [path.join(root, 'desktop'), `--installation=${fixture}`]),
+    args: [...(packaged ? [] : [path.join(root, 'desktop'), `--installation=${fixture}${path.sep}.`]),
       `--user-data-dir=${path.join(fixture, 'profile')}`], cwd: fixture, env, timeout: 60_000
   });
   const page = await application.firstWindow();

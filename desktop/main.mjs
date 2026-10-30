@@ -231,7 +231,11 @@ async function detectDirectory() {
 }
 async function restoreDirectory() {
   if (settings.root) {
-    try { await installation(settings.root); return; }
+    try {
+      const info = await installation(settings.root);
+      if (settings.root !== info.root) { settings.root = info.root; await saveSettings(); }
+      return;
+    }
     catch { settings.root = ''; state.release = null; state.status = null; healthError = ''; }
   }
   await detectDirectory();
