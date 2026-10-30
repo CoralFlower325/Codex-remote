@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.1.14', changes: [
+    '新增 Windows 和 Apple Silicon 预构建运行包，标准安装更新无需下载 npm 依赖或本机构建。',
+    '下载按实际字节推进，安装前校验官方摘要、归档路径、所有文件和运行环境。',
+    '更新事务持久保存，管理器重启后恢复中断更新；恢复再次中断仍可重试。',
+    '保留本机源码定制的隔离构建路径、文档修改、私有数据和更新前关闭状态。'
+  ] },
   { version: '0.1.13', changes: [
     '本机更新增加百分比进度、中文步骤、总耗时与当前步骤耗时，并保留最近命令输出。',
     '依赖下载连接中断时有限重试，准备阶段继续运行旧服务，不自动修改依赖源或代理。',

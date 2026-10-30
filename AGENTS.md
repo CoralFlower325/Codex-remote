@@ -246,6 +246,12 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Update progress reflects completed stages, not invented download percentages.
   Validate offline dependencies before stopping; preserve old dependencies for
   recovery. Keep raw bounded tool output separate from Chinese status messages.
+  Standard installations prefer checksum-verified platform runtime packages;
+  preserve the isolated source path for local build customizations. Runtime
+  packages must reject unsafe archives and verify every file before stopping.
+  Persist installation phases before mutations; recover unfinished transactions
+  before service actions on startup. Retain recovery evidence across crashes,
+  preserve stopped state, and block overwriting edits made after interruption.
 - Windows Tunnel tasks run the owned Node supervisor. Restart exited cloudflared
   after one second, backing off repeated crashes to five seconds. Poll readiness
   every two seconds and wake on native address/availability events. Rebuild only

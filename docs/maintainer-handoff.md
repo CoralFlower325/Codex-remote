@@ -15,7 +15,17 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The 0.1.13 batch exposes Chinese update stages, completed-step percentages,
+The 0.1.14 batch adds verified platform runtime assets and durable installation
+transactions. Standard updates use release-provided source baselines and production
+dependencies without Git/npm/build; customized inputs retain the source path.
+`runtime.yml` builds Windows x64 and Apple Silicon assets, validates the unpacked
+runtime and uploads the manifest/archive pair. Manager 0.1.14 must be installed
+separately to use the new updater. A flushed installation journal precedes service
+stop; startup recovery restores the original run state and retains dependency
+backups across repeated crashes. Recovery failure blocks mutations, preserving
+later source edits and damaged evidence. Read the bilingual manager guides.
+
+The preceding 0.1.13 batch exposes Chinese update stages, completed-step percentages,
 elapsed times and bounded raw command output. Long steps do not fake progress.
 Transient downloads retry within finite limits; the original registry/proxy
 configuration remains authoritative. Preparation validates an actual offline

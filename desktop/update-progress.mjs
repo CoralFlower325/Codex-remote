@@ -6,6 +6,8 @@ const steps = [
   ['test', '运行自动测试', 51, 66, '正在验证新版本功能和更新保护机制。'],
   ['build', '构建新版本', 66, 78, '正在生成网页和服务程序，现有服务继续运行。'],
   ['offline', '验证离线安装', 78, 81, '正在验证本次缓存可独立完成依赖安装，现有服务继续运行。'],
+  ['runtime', '下载运行包', 18, 65, '正在下载当前系统的官方运行包，现有服务继续运行。'],
+  ['unpack', '校验运行包', 65, 81, '正在校验文件、解压并检查运行环境，无需本机构建。'],
   ['backup', '备份当前版本', 81, 85, '正在保存受影响的文件和构建，准备失败恢复。'],
   ['stop', '停止旧服务', 85, 88, '正在等待旧服务退出，保留桌面端和私有数据。'],
   ['install', '安装新版本', 88, 96, '正在安装已验证的文件和运行依赖，远程服务会短暂离线。'],
@@ -34,7 +36,8 @@ export function updateError(error) {
 }
 
 export function networkFailure(error) {
-  return /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ESOCKETTIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up|fetch failed|could not resolve|unable to access/i.test(error?.message || '');
+  return /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ESOCKETTIMEDOUT|EAI_AGAIN|ENOTFOUND|UND_ERR|socket hang up|fetch failed|could not resolve|unable to access/i.test(
+    `${error?.message || ''} ${error?.cause?.code || ''}`);
 }
 
 export function createUpdateProgress(notify) {
@@ -59,17 +62,24 @@ export function createUpdateProgress(notify) {
   const flush = () => { if (pendingOutput) { log(pendingOutput); pendingOutput = ''; } };
   return {
     output,
+    download(loaded, total) {
+      if (state.step !== 'runtime' || total <= 0) return;
+      const percent = 18 + Math.floor(Math.min(1, loaded / total) * 47);
+      const detail = `已下载 ${(loaded / 1048576).toFixed(1)} / ${(total / 1048576).toFixed(1)} MB。`;
+      if (percent <= state.percent) return;
+      state.percent = percent; state.detail = detail; state.lastOutputAt = Date.now(); emit('output');
+    },
     start(key) {
       flush();
       const step = steps.find(([id]) => id === key);
       if (!step) throw new Error('Unknown update step');
-      state = { ...state, step: key, title: step[1], percent: step[2], detail: step[4],
+      state = { ...state, step: key, title: step[1], percent: Math.max(state.percent, step[2]), detail: step[4],
         status: 'running', stepStartedAt: Date.now(), lastOutputAt: null };
       emit('step');
     },
     finish(key) {
       flush();
-      state.percent = steps.find(([id]) => id === key)[3];
+      state.percent = Math.max(state.percent, steps.find(([id]) => id === key)[3]);
       emit('step');
     },
     note(detail) { state.detail = detail; emit('note'); },

@@ -14,6 +14,7 @@ type Status = {
 };
 type State = {
   root: string; version: string; platform: string; packaged: boolean; launchAtLogin: boolean;
+  recoveryRequired: boolean;
   status: Status | null; busy: string; error: string; healthError: string; result: string;
   release: { available: boolean; version: string; notes: string } | null;
   events: { time: number; message: string }[];
@@ -30,13 +31,13 @@ interface Bridge {
   get(): Promise<Result>; refresh(): Promise<Result>; dismiss(): Promise<Result>; choose(): Promise<Result>;
   detect(): Promise<Result>; select(directory: string): Promise<Result>;
   action(action: string): Promise<Result>; open(): Promise<Result>; folder(): Promise<Result>;
-  check(): Promise<Result>; update(): Promise<Result>; login(value: boolean): Promise<Result>;
+  check(): Promise<Result>; update(): Promise<Result>; recover(): Promise<Result>; login(value: boolean): Promise<Result>;
   quit(): Promise<Result>; subscribe(listener: (state: State) => void): () => void;
 }
 declare global { interface Window { manager: Bridge } }
 const initial: State = { root: '', version: '', platform: '', packaged: false, launchAtLogin: false,
   status: null, busy: '', error: '', healthError: '', result: '', release: null, events: [], installations: [],
-  updateProgress: null };
+  updateProgress: null, recoveryRequired: false };
 const labels = { healthy: '运行正常', degraded: '需要检查', stopped: '已关闭',
   conflict: '安装目录冲突', unowned: '端口被占用' };
 function App() {
@@ -66,7 +67,7 @@ function App() {
   const disabled = pending || Boolean(state.busy);
   const conflict = status && ['conflict', 'unowned'].includes(status.state);
   const stale = !status || now - status.checkedAt > 20_000;
-  const canControl = Boolean(status) && !conflict && !state.healthError && !stale;
+  const canControl = Boolean(status) && !conflict && !state.healthError && !stale && !state.recoveryRequired;
   const text = state.busy || (state.healthError ? '状态检测失败' : status ? labels[status.state] : state.root ? '正在检测' : '选择安装目录');
   const issue = error || state.error || state.healthError;
   return <main>
@@ -110,6 +111,9 @@ function App() {
         onClick={() => { setError(''); void perform(window.manager.dismiss); }}><X size={16} /></button>}
     </div>}
     {state.result && <div className="message" role="status">{state.result}</div>}
+    {state.recoveryRequired && <div className="message" role="alert"><span>存在未完成更新，请先恢复旧版。</span>
+      <button disabled={disabled} onClick={() => void perform(window.manager.recover)}><RotateCw size={16} />重试恢复</button>
+    </div>}
     <nav aria-label="管理视图">
       <button aria-current={tab === 'status' ? 'page' : undefined} onClick={() => setTab('status')}><Activity size={15} />健康状态</button>
       <button aria-current={tab === 'update' ? 'page' : undefined} onClick={() => setTab('update')}><ArrowUpToLine size={15} />版本更新{state.release?.available && <span className="new-dot" />}</button>
@@ -136,7 +140,7 @@ function App() {
         </details>
       </> : <section className="updates">
         <div className="update-heading"><div><h3>本机 Codex Remote</h3><p>{status ? `当前版本 ${status.version}` : '请选择安装目录'}</p></div>
-          <button disabled={disabled || !status} onClick={() => void perform(window.manager.check)}><RefreshCw size={15} />检查更新</button></div>
+          <button disabled={disabled || !status || state.recoveryRequired} onClick={() => void perform(window.manager.check)}><RefreshCw size={15} />检查更新</button></div>
         {state.release?.available && <><h3 className="release-title">新版本 {state.release.version}</h3><pre className="notes">{state.release.notes || '此版本没有更新摘要。'}</pre>
           <button className="primary" disabled={disabled || !canControl} onClick={() => void perform(window.manager.update)}><ArrowUpToLine size={16} />更新到 {state.release.version}</button></>}
       </section>}

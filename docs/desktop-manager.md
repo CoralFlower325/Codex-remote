@@ -77,7 +77,8 @@ Node.js 22.19+, npm and Git must be on PATH, including standard Homebrew locatio
 
 The progress display uses Chinese stage labels, a percentage based on completed
 steps, total/stage elapsed time and bounded recent command output. Percentages
-do not estimate download bytes or time remaining. A long step holds its percentage;
+use weighted stages, with actual byte progress inside runtime downloads; they do
+not estimate time remaining. Other long steps hold their percentage;
 after thirty seconds without output, the display explicitly says it is waiting.
 Raw dependency/test output retains its original language. Network errors get a
 Chinese explanation rather than replacing the whole screen with npm output.
@@ -85,7 +86,14 @@ Downloads use bounded npm request retries and at most one command retry for
 transient network failures, preserving configured registries and proxies.
 Each npm command has a ten-minute deadline; source fetches have three minutes.
 
-1. Fetch official version tags into an isolated temporary directory.
+0. Manager 0.1.14+ checks the platform runtime manifest and its GitHub SHA-256.
+   Standard installations use its source baseline; custom inputs or absent baselines
+   select the source workflow below. Download and hash the runtime archive, reject
+   unsafe paths, links, duplicate entries and size mismatches, verify every file and
+   smoke-check dependencies plus the native terminal. This path needs Node.js 22.19+
+   but no Git, npm installation or local test/build. Incomplete runtime asset pairs
+   stop preparation instead of silently falling back.
+1. For source installations, fetch official version tags into an isolated temporary directory.
 2. Compare upstream-changed files with the installed release's originals. CRLF
    differences are accepted. Unrelated edits remain. Conflicting local Markdown
    in root `AGENTS.md`, `CLAUDE.md`, `README*.md` or `docs/` is retained, including
@@ -105,7 +113,8 @@ Each npm command has a ten-minute deadline; source fetches have three minutes.
    the retained paths for manual reconciliation; local rules are never overwritten
    to resolve a conflict automatically.
 5. Retain the original dependency directory in the backup, then install sources,
-   builds and locked dependencies offline from the validated cache. Restart and verify a previously
+    builds and dependencies: copy verified runtime dependencies, or install offline
+    from the validated cache for source builds. Restart and verify a previously
    running service; an explicitly stopped installation stays stopped.
 6. Attempt backup recovery on installation/startup failure. Restore original
    dependencies directly when available, without a network request; an installation
@@ -114,7 +123,17 @@ Each npm command has a ten-minute deadline; source fetches have three minutes.
    and outcome; restored old versions are not presented as successful updates.
    Cleanup failures after a successful installation are warnings, not failed updates.
 
-Preparation, live dependency installation and rollback share one updater-owned
+Before stopping service, persist `output/manager-update/active.json`. Record phases
+around dependency moves, file installation, verification and commit. Reopening the
+manager or selecting that installation recovers unfinished transactions first.
+Failed recovery blocks service mutations and updates and offers a retry. Dependency
+backups survive restoration so a second crash remains recoverable. Explicitly stopped
+services stay stopped. Later manual source edits, missing or damaged backups stop
+automatic overwrites and preserve the evidence. Committed transactions never roll
+back; interrupted preparation leaves the live installation unchanged. The installation
+filesystem must support atomic renames and hard links.
+
+Source preparation, live dependency installation and rollback share one updater-owned
 temporary npm cache, including nested npm commands. The updater neither uses
 nor repairs the user's existing cache and removes its temporary cache at the end.
 If macOS reports `EACCES`/`EEXIST` under `~/.npm/_cacache`, install manager 0.1.12

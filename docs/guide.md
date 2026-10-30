@@ -1,5 +1,12 @@
 # Codex Remote Guide
 
+Manager 0.1.14+ prefers Windows x64 / Apple Silicon prebuilt runtimes. Standard
+updates skip npm installation, tests and local compilation; Node.js 22.19+ is still
+required. Source customizations or unavailable baselines use isolated source builds.
+Reopening the manager recovers interrupted installs before other mutations. Failed
+recovery offers a retry; preserve its journal and backup. Install the new manager
+from the Release first: updating the host alone does not update the manager executable.
+
 For local GUI controls, tray/menu-bar status and confirmed updates, see the optional
 [Desktop Manager](desktop-manager.md). It requires an already configured installation.
 Host updates show Chinese stages, completed-step percentages, elapsed times and

@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('manager', {
   open: () => invoke('open'),
   check: () => invoke('check'),
   update: () => invoke('update'),
+  recover: () => invoke('recover'),
   folder: () => invoke('folder'),
   login: (value) => invoke('login', value),
   quit: () => invoke('quit'),

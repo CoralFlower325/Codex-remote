@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { health, installation, control, serviceStatus, portListening, startupReady } from './controller.mjs';
 import { latestRelease, prepareUpdate, installUpdate } from './updater.mjs';
 import { discoverInstallations, preferredInstallation } from './discovery.mjs';
-import { updateError } from './update-progress.mjs';
+import { updateError, createUpdateProgress } from './update-progress.mjs';
+import { pendingUpdate, recoverPendingUpdate } from './update-transaction.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const labels = {
@@ -19,7 +20,7 @@ let suppressActivationUntil = 0;
 let healthError = '';
 let settings = { root: '', launchAtLogin: false };
 let state = { status: null, busy: '', error: '', release: null, result: '', events: [], installations: [],
-  updateProgress: null };
+  updateProgress: null, recoveryRequired: false };
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 function event(message) {
   state.events = [{ time: Date.now(), message }, ...state.events].slice(0, 60);
@@ -85,7 +86,7 @@ function updateTray() {
   if (!tray) return;
   const text = healthError ? '状态检测失败' : labels[state.status?.state] || '未选择安装目录';
   tray.setToolTip(`Codex Remote · ${state.busy || text}`);
-  const ready = Boolean(settings.root) && !state.busy && !healthError &&
+  const ready = Boolean(settings.root) && !state.busy && !state.recoveryRequired && !healthError &&
     !['conflict', 'unowned'].includes(state.status?.state);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: `Codex Remote · ${state.busy || text}`, enabled: false },
@@ -138,6 +139,7 @@ async function verify({ requireDesktop = true } = {}) {
 }
 async function action(kind) {
   if (!settings.root) throw new Error('请先选择安装目录。');
+  if (state.recoveryRequired) throw new Error('请先恢复中断的更新。');
   if (!['Start', 'Stop', 'Restart'].includes(kind)) throw new Error('Invalid action.');
   return exclusive(kind === 'Start' ? '正在开启 Remote' : kind === 'Stop' ? '正在关闭 Remote' : '正在重启 Remote',
     async () => {
@@ -164,12 +166,13 @@ async function checkUpdate() {
   });
 }
 async function update() {
+  if (state.recoveryRequired) throw new Error('请先恢复中断的更新。');
   if (!state.release?.available) throw new Error('请先检查更新。');
   const release = { ...state.release };
   const { response } = await dialog.showMessageBox(win, {
     type: 'question', title: '更新本机 Codex Remote',
     message: `更新到 ${release.version}？`,
-    detail: '将检查文件冲突、备份并构建新版。安装时 Remote 会短暂离线。Codex Desktop 和私有数据保留。外部静态托管需另行同步。\n\n' + release.notes,
+    detail: '标准安装优先使用预构建运行包；源码定制安装使用隔离构建。将检查冲突并保留恢复备份，安装时 Remote 会短暂离线。外部静态托管需另行同步。\n\n' + release.notes,
     buttons: ['取消', '更新本机'], defaultId: 0, cancelId: 0
   });
   if (response !== 1) return;
@@ -183,21 +186,49 @@ async function update() {
     };
     const prepared = await prepareUpdate(settings.root, release, progress);
     let requireDesktop = current.desktop;
-    const result = await installUpdate(prepared, {
+    let result;
+    try { result = await installUpdate(prepared, {
       stop, start: () => control(settings.root, 'Start'), verify: () => verify({ requireDesktop }),
       isRunning: async () => {
         const status = await health(settings.root);
         requireDesktop = status.desktop;
         return status.service.running;
-      }, progress
-    });
+      }, progress, requireDesktop
+    }); } finally { state.recoveryRequired = Boolean(await pendingUpdate(settings.root)); }
     state.release = null;
-    state.result = `已安装 ${result.version}。备份：${result.backup}` +
+    state.result = `已通过${result.mode === 'runtime' ? '预构建运行包' : '源码构建'}安装 ${result.version}。备份：${result.backup}` +
       (result.preservedFiles.length ? `\n已保留本机文档：${result.preservedFiles.join('、')}。新版副本位于备份的 incoming 目录。` : '') +
       (result.wasRunning ? '' : '\nRemote 保持关闭。') +
       (result.edgeSyncRequired ? '\n若使用外部静态托管，请同步新版前端资源。' : '') +
       (result.cleanupWarning ? `\n${result.cleanupWarning}` : '');
     event(`本机已更新到 ${result.version}`);
+  });
+}
+async function recoverInstallation() {
+  if (!settings.root) return;
+  return exclusive('正在检查未完成更新', async () => {
+    state.recoveryRequired = true;
+    const pending = await pendingUpdate(settings.root);
+    if (!pending) { state.recoveryRequired = false; return; }
+    const report = createUpdateProgress((message, detail) => {
+      state.busy = message; state.updateProgress = detail; publish();
+    });
+    try {
+      const result = await recoverPendingUpdate(settings.root, {
+        stop, start: () => control(settings.root, 'Start'),
+        verify: () => verify({ requireDesktop: Boolean(pending.requireDesktop) }), report
+      });
+      state.recoveryRequired = false;
+      state.release = null;
+      if (result) {
+        state.result = result.terminal === 'committed' ? '已确认上次更新完成。' : '已恢复中断更新前的版本和运行状态。';
+        event(state.result);
+      }
+    } catch (error) {
+      report.terminal('recovery-failed', '中断更新恢复未完成',
+        '已保留事务记录和备份，请检查错误后重试恢复。', error);
+      throw error;
+    }
   });
 }
 async function chooseDirectory() {
@@ -208,7 +239,7 @@ async function chooseDirectory() {
   await selectDirectory(chosen.filePaths[0]);
 }
 async function selectDirectory(directory, discoveredOnly = false) {
-  return exclusive('正在选择安装目录', async () => {
+  await exclusive('正在选择安装目录', async () => {
     if (discoveredOnly && !state.installations.some((item) => item.root === directory)) {
       throw new Error('请重新探测安装目录。');
     }
@@ -217,8 +248,10 @@ async function selectDirectory(directory, discoveredOnly = false) {
     healthError = '';
     if (!discoveredOnly) state.installations = [];
     await saveSettings();
+    state.recoveryRequired = Boolean(await pendingUpdate(settings.root));
     event('已选择本机安装目录');
   });
+  if (state.recoveryRequired) await recoverInstallation();
 }
 async function detectDirectory() {
   return exclusive('正在探测安装目录', async () => {
@@ -230,6 +263,7 @@ async function detectDirectory() {
       state.release = null; state.status = null; healthError = '';
     }
     settings.root = selected?.root || '';
+    state.recoveryRequired = settings.root ? Boolean(await pendingUpdate(settings.root)) : false;
     await saveSettings();
     if (selected) {
       event('已识别本机安装目录');
@@ -316,6 +350,7 @@ else {
   handle('open', openRemote);
   handle('check', checkUpdate);
   handle('update', update);
+  handle('recover', recoverInstallation);
   handle('folder', async () => {
     const info = await installation(settings.root);
     const error = await shell.openPath(info.root);
@@ -330,7 +365,20 @@ else {
   });
   handle('quit', () => app.quit());
   await win.loadFile(path.join(here, 'dist', 'index.html'));
-  await restoreDirectory();
+  // Recover the saved root before discovery validates its possibly interrupted
+  // build. Never silently switch away from an installation needing recovery.
+  const savedRoot = settings.root;
+  if (savedRoot) {
+    try { await recoverInstallation(); }
+    catch (error) {
+      if (error.code === 'ENOENT' && !await fs.stat(settings.root).catch(() => null)) state.recoveryRequired = false;
+      else showError(error);
+    }
+  }
+  if (!state.recoveryRequired) await restoreDirectory();
+  if (settings.root && settings.root !== savedRoot && !state.recoveryRequired) {
+    try { await recoverInstallation(); } catch (error) { showError(error); }
+  }
   if (tray && (process.argv.includes('--hidden') ||
     (process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAsHidden))) {
     hideWindow(); void refresh();

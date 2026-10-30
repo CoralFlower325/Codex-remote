@@ -5,6 +5,9 @@ import crypto from 'node:crypto';
 import { run } from './process.mjs';
 import { installation, commandEnvironment } from './controller.mjs';
 import { createUpdateProgress, networkFailure, updateError } from './update-progress.mjs';
+import { runtimeNames, validateManifest, downloadAsset, unpackRuntime, sourceHash } from './runtime-package.mjs';
+import { acquireUpdateLock, pendingUpdate, recordUpdate, finishUpdate, snapshotBackup,
+  restoreTransaction, atomicWrite, syncDirectory, syncTree } from './update-transaction.mjs';
 
 const repository = 'https://github.com/CoralFlower325/Codex-remote.git';
 const api = 'https://api.github.com/repos/CoralFlower325/Codex-remote/releases/latest';
@@ -24,6 +27,8 @@ export async function latestRelease(installedVersion, fetcher = fetch) {
   if (!versionPattern.test(data.tag_name) || data.draft || data.prerelease) throw new Error('Invalid stable release.');
   return { version: data.tag_name.replace(/^v/, ''), tag: data.tag_name,
     notes: String(data.body || '').slice(0, 16_000),
+    assets: Array.isArray(data.assets) ? data.assets.map(({ name, size, digest, browser_download_url }) =>
+      ({ name, size, digest, browser_download_url })) : [],
     available: compareVersions(data.tag_name, installedVersion) > 0 };
 }
 
@@ -94,6 +99,15 @@ export async function nodeToolchain(execute = run) {
     'import fs from "node:fs";import path from "node:path";const n=process.execPath;const p=process.platform==="win32"?path.join(path.dirname(n),"node_modules/npm/bin/npm-cli.js"):fs.realpathSync(process.argv[1]);process.stdout.write(p);',
     ...(process.platform === 'win32' ? [] : [(await execute('/usr/bin/which', ['npm'], { env })).split('\n')[0]])], { env });
   return { node, npmPath, env };
+}
+
+async function runtimeNode(execute) {
+  const env = commandEnvironment();
+  const found = await execute(process.platform === 'win32' ? 'where.exe' : '/usr/bin/which', ['node'], { env });
+  const node = found.split(/\r?\n/)[0];
+  const version = await execute(node, ['--version'], { env });
+  if (compareVersions(version, '22.19.0') < 0) throw new Error('Node.js 22.19+ is required.');
+  return { node, env };
 }
 
 const hash = (bytes) => bytes ? crypto.createHash('sha256').update(bytes).digest('hex') : null;
@@ -168,10 +182,30 @@ export async function mergeBuildInputs(root, stage, plan) {
   return inputs;
 }
 
+async function buildFileNames(root) {
+  const result = [];
+  const visit = async (relative) => {
+    const stat = await fs.lstat(path.join(root, relative)).catch((error) => {
+      if (error.code !== 'ENOENT') throw error; return null;
+    });
+    if (!stat) return;
+    if (stat.isSymbolicLink()) throw new Error(`Unsafe build input: ${relative}`);
+    if (stat.isDirectory()) {
+      for (const name of await fs.readdir(path.join(root, relative))) await visit(`${relative}/${name}`);
+    } else result.push(relative);
+  };
+  for (const name of ['src', 'public', 'scripts']) await visit(name);
+  for (const name of await fs.readdir(root)) {
+    if (/^(?:package(?:-lock)?\.json|tsconfig[^/]*\.json|vite[^/]*\.config\.[cm]?[jt]s)$/.test(name)) await visit(name);
+  }
+  return result.sort();
+}
+
 // Preparation is side-effect free for the live installation: fetch, compare and
 // build in an isolated directory before any service is stopped.
-export async function prepareUpdate(directory, release, progress, execute = run) {
+export async function prepareUpdate(directory, release, progress, execute = run, options = {}) {
   const info = await installation(directory);
+  if (await pendingUpdate(info.root)) throw new Error('检测到未完成更新，请先恢复旧版。');
   if (!versionPattern.test(release.tag) || compareVersions(release.tag, info.version) <= 0) {
     throw new Error('没有可安装的新版本，请重新检查版本。');
   }
@@ -179,6 +213,72 @@ export async function prepareUpdate(directory, release, progress, execute = run)
   const report = createUpdateProgress(progress);
   let cache;
   try {
+    const names = runtimeNames(release.version);
+    const manifestAsset = release.assets?.find((asset) => asset.name === names.manifest);
+    const archiveAsset = release.assets?.find((asset) => asset.name === names.archive);
+    if (manifestAsset || archiveAsset) {
+      if (!manifestAsset || !archiveAsset) throw new Error('当前平台的运行包尚未发布完整，请稍后重新检查更新。');
+      report.start('fetch');
+      if (manifestAsset.size > 8 * 1024 * 1024) throw new Error('运行包清单过大。');
+      const manifestFile = path.join(stage, 'manifest.json');
+      await withNetworkRetry(async () => {
+        await fs.rm(manifestFile, { force: true });
+        await downloadAsset(manifestAsset, manifestFile, options);
+      }, report);
+      const manifest = validateManifest(JSON.parse(await fs.readFile(manifestFile, 'utf8')), release);
+      report.finish('fetch');
+      report.start('compare');
+      const baseline = manifest.baselines[info.version];
+      if (baseline) {
+        const plan = [];
+        const inputs = [];
+        let custom = false;
+        const names = new Set([...Object.keys(baseline), ...Object.keys(manifest.sources)]);
+        for (const relative of names) {
+          const local = await regularFile(info.root, relative);
+          const localHash = local ? sourceHash(local) : null;
+          const before = baseline[relative] || null;
+          const after = manifest.sources[relative] || null;
+          inputs.push({ relative, before: hash(local) });
+          if (localHash !== before && /^(?:src\/|public\/|scripts\/|package(?:-lock)?\.json$|tsconfig|vite)/.test(relative)) {
+            custom = true;
+          }
+          if (before === after || localHash === after) continue;
+          const preserve = localHash !== before;
+          if (preserve && !/^(?:AGENTS\.md|CLAUDE\.md|README(?:\.[\w-]+)?\.md|docs\/.+\.md)$/.test(relative)) {
+            custom = true;
+          }
+          plan.push({ relative, remove: !after, before: hash(local), ...(preserve ? { preserve: true } : {}) });
+        }
+        // An untracked local build input must also retain its behavior.
+        const runtimeFiles = await buildFileNames(info.root);
+        if (runtimeFiles.some((name) => !names.has(name))) custom = true;
+        if (!custom) {
+          const tools = await runtimeNode(execute);
+          report.finish('compare');
+          report.start('runtime');
+          const archive = path.join(stage, 'runtime.tar.gz');
+          if (archiveAsset.size !== manifest.archive.size || archiveAsset.digest !== `sha256:${manifest.archive.sha256}`) {
+            throw new Error('Release 与运行包清单的校验值不一致。');
+          }
+          await withNetworkRetry(async () => {
+            await fs.rm(archive, { force: true });
+            await downloadAsset(archiveAsset, archive, { ...options,
+              progress: (loaded, total) => report.download(loaded, total) });
+          }, report);
+          report.finish('runtime');
+          report.start('unpack');
+          const payload = path.join(stage, 'payload');
+          await unpackRuntime(archive, payload, manifest);
+          const pkg = JSON.parse(await fs.readFile(path.join(payload, 'package.json'), 'utf8'));
+          if (pkg.name !== 'codex-remote' || pkg.version !== release.version) throw new Error('Release version mismatch.');
+          await execute(tools.node, ['scripts/check-runtime.mjs'], { cwd: payload, env: tools.env, timeout: 30_000, onLine: report.output });
+          report.finish('unpack');
+          return { info, stage, payload, plan, inputs, runtimeFiles, tools, commit: manifest.commit, release, execute, report, mode: 'runtime' };
+        }
+        report.note('检测到本机源码定制，将使用隔离源码构建以保留现有行为。');
+      } else report.note('此安装版本不在运行包基线中，将使用兼容的源码更新。');
+    }
     report.start('fetch');
     const git = (args) => execute('git', ['-C', stage, ...args], { env: commandEnvironment(), timeout: 180_000 });
     await git(['init']);
@@ -229,7 +329,7 @@ export async function prepareUpdate(directory, release, progress, execute = run)
     report.start('offline');
     await installDependencies(tools, stage, execute, report, true);
     report.finish('offline');
-    return { info, stage, plan, inputs, tools, commit, release, execute, report };
+    return { info, stage, plan, inputs, tools, commit, release, execute, report, mode: 'source' };
   } catch (error) {
     const cleaned = await removePreparation(stage, cache);
     const message = `${updateError(error)}\n尚未安装新版本，原有服务和文件保持原状。`;
@@ -257,16 +357,21 @@ async function rejectLinkedDirectory(directory, recursive = false) {
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
 }
 
-export async function installUpdate(prepared, { stop, start, verify, isRunning, progress }) {
+export async function installUpdate(prepared, { stop, start, verify, isRunning, progress, requireDesktop = false }) {
   const { info, stage, plan, tools, execute, release } = prepared;
-  const backup = path.join(info.root, 'output', `manager-backup-${Date.now()}`);
-  let touched = false;
-  let stopped = false;
+  const payload = prepared.payload || stage;
+  const id = crypto.randomUUID();
+  const backup = path.join(info.root, 'output', `manager-backup-${id}`);
   let wasRunning = false;
   let dependenciesSaved = false;
   let result;
+  let transaction;
+  let unlock;
   const report = prepared.report || createUpdateProgress(progress);
   const checkInputs = async () => {
+    if (prepared.runtimeFiles && JSON.stringify(await buildFileNames(info.root)) !== JSON.stringify(prepared.runtimeFiles)) {
+      throw new Error('Installation changed during preparation: build file list');
+    }
     for (const item of [...plan, ...(prepared.inputs || [])]) {
       if (hash(await regularFile(info.root, item.relative)) !== item.before) {
         throw new Error(`Installation changed during preparation: ${item.relative}`);
@@ -274,6 +379,8 @@ export async function installUpdate(prepared, { stop, start, verify, isRunning, 
     }
   };
   try {
+    unlock = await acquireUpdateLock(info.root);
+    if (await pendingUpdate(info.root)) throw new Error('检测到未完成更新，请先恢复旧版。');
     report.start('backup');
     wasRunning = await isRunning();
     for (const dir of ['output', 'node_modules']) await rejectLinkedDirectory(path.join(info.root, dir));
@@ -288,16 +395,26 @@ export async function installUpdate(prepared, { stop, start, verify, isRunning, 
       }
       if (item.preserve && !item.remove) {
         await fs.mkdir(path.dirname(path.join(backup, 'incoming', item.relative)), { recursive: true });
-        await fs.copyFile(path.join(stage, item.relative), path.join(backup, 'incoming', item.relative));
+        await fs.copyFile(path.join(payload, item.relative), path.join(backup, 'incoming', item.relative));
       }
+      const incoming = item.remove ? null : await regularFile(payload, item.relative);
+      item.after = hash(incoming);
     }
     for (const dir of ['dist', 'dist-server']) await copyTree(path.join(info.root, dir), path.join(backup, dir));
-    await fs.writeFile(path.join(backup, 'receipt.json'), JSON.stringify({
+    await atomicWrite(path.join(backup, 'receipt.json'), JSON.stringify({
       from: info.version, to: release.version, commit: prepared.commit, plan, wasRunning
-    }, null, 2), 'utf8');
+    }, null, 2));
+    transaction = { format: 1, id, root: info.root, from: info.version, to: release.version,
+      plan, wasRunning, requireDesktop, backupFiles: await snapshotBackup(backup),
+      hadDependencies: Boolean(await fs.stat(path.join(info.root, 'node_modules')).catch((error) => {
+        if (error.code !== 'ENOENT') throw error; return null;
+      })),
+      dependenciesCaptured: false, installationStarted: false, stopRequested: false };
+    await recordUpdate(info.root, transaction, 'prepared');
     report.finish('backup');
     report.start('stop');
-    stopped = true;
+    transaction.stopRequested = true;
+    await recordUpdate(info.root, transaction, 'stopping');
     await stop();
     await checkInputs();
     report.finish('stop');
@@ -306,74 +423,79 @@ export async function installUpdate(prepared, { stop, start, verify, isRunning, 
       await fs.rename(path.join(info.root, 'node_modules'), path.join(backup, 'node_modules'));
       dependenciesSaved = true;
     } catch (error) { if (error.code !== 'ENOENT') throw error; }
-    touched = true;
+    await syncDirectory(backup);
+    await syncDirectory(info.root);
+    transaction.dependenciesCaptured = true;
+    transaction.installationStarted = true;
+    await recordUpdate(info.root, transaction, 'installing');
     for (const item of plan) {
       if (item.preserve) continue;
       const target = path.join(info.root, item.relative);
       if (item.remove) await fs.rm(target, { force: true });
       else {
-        await fs.mkdir(path.dirname(target), { recursive: true });
-        await fs.copyFile(path.join(stage, item.relative), target);
+        const source = path.join(payload, item.relative);
+        await atomicWrite(target, await fs.readFile(source), (await fs.stat(source)).mode);
       }
     }
-    await copyTree(path.join(stage, 'dist'), path.join(info.root, 'dist'));
-    await copyTree(path.join(stage, 'dist-server'), path.join(info.root, 'dist-server'));
-    report.note('正在从已验证的本次缓存离线安装依赖；旧版依赖已保留供恢复。');
-    await installDependencies(tools, info.root, execute, report, true);
+    // Replace individual files atomically so a crash never truncates the
+    // service entry or a platform control needed by startup recovery.
+    const installTree = async (relative) => {
+      for (const entry of await fs.readdir(path.join(payload, relative), { withFileTypes: true })) {
+        const name = `${relative}/${entry.name}`;
+        if (entry.isDirectory()) await installTree(name);
+        else {
+          await regularFile(info.root, name);
+          const source = path.join(payload, name);
+          await atomicWrite(path.join(info.root, name), await fs.readFile(source), (await fs.stat(source)).mode);
+        }
+      }
+    };
+    for (const dir of ['dist', 'dist-server']) await installTree(dir);
+    if (prepared.mode === 'runtime') {
+      report.note('正在安装已校验的预构建运行依赖，无需运行 npm 或本机构建。');
+      await copyTree(path.join(payload, 'node_modules'), path.join(info.root, 'node_modules'));
+    } else {
+      report.note('正在从已验证的本次缓存离线安装依赖；旧版依赖已保留供恢复。');
+      await installDependencies(tools, info.root, execute, report, true);
+    }
+    await syncTree(path.join(info.root, 'node_modules'));
     report.finish('install');
     report.start('verify');
+    await recordUpdate(info.root, transaction, 'verifying');
     if (wasRunning) {
       await start();
       await verify();
     } else report.note('更新前服务处于关闭状态，本次保持关闭。');
     report.finish('verify');
+    await finishUpdate(info.root, transaction, 'committed');
     result = { version: release.version, backup, wasRunning, dependenciesSaved, edgeSyncRequired: Boolean(info.publicUrl),
-      preservedFiles: plan.filter((item) => item.preserve).map((item) => item.relative) };
+      mode: prepared.mode || 'source', preservedFiles: plan.filter((item) => item.preserve).map((item) => item.relative) };
   } catch (error) {
     report.output(error.message);
-    if (touched) {
-      report.recovery('restore-files', '正在恢复旧版', 0, '安装未完成，正在停止本次服务并恢复备份文件。');
+    if (transaction && transaction.phase !== 'committed') {
       try {
-        await stop();
-        for (const item of plan) {
-          if (item.preserve) continue;
-          const target = path.join(info.root, item.relative);
-          const source = path.join(backup, 'source', item.relative);
-          if (item.before) await fs.copyFile(source, target);
-          else await fs.rm(target, { force: true });
-        }
-        for (const dir of ['dist', 'dist-server']) await copyTree(path.join(backup, dir), path.join(info.root, dir));
-        report.recovery('restore-dependencies', '正在恢复旧版依赖', 40,
-          dependenciesSaved ? '正在恢复原有依赖，无需连接网络。' : '原安装没有可用的依赖备份，正在安装旧版锁定依赖。');
-        if (dependenciesSaved) {
-          await fs.rm(path.join(info.root, 'node_modules'), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
-          await fs.rename(path.join(backup, 'node_modules'), path.join(info.root, 'node_modules'));
-        } else await installDependencies(tools, info.root, execute, report);
-        report.recovery('restore-service', '正在确认旧版状态', 85, '正在恢复更新前的服务状态并检查健康度。');
-        if (wasRunning) { await start(); await verify(); }
+        // An install originally missing dependencies has no offline recovery
+        // source. Keep the compatibility repair for this in-process case.
+        await restoreTransaction(info.root, { ...transaction, backup }, {
+          stop, start, verify, report, ...(prepared.mode !== 'runtime'
+            ? { repairDependencies: () => installDependencies(tools, info.root, execute, report) } : {})
+        });
       } catch (rollback) {
         const message = `新版本安装失败，自动恢复也未能完成，需要人工处理。\n备份位置：${backup}\n${updateError(rollback)}`;
         report.terminal('recovery-failed', '旧版恢复未完成', message, rollback);
         throw new Error(message, { cause: rollback });
       }
-      const message = `新版本安装未完成，已恢复旧版和更新前的运行状态。\n${updateError(error)}`;
+      const message = `${transaction.installationStarted ? '新版本安装未完成，已恢复旧版和更新前的运行状态。' : '尚未替换安装文件，已恢复更新前的运行状态。'}\n${updateError(error)}`;
       report.terminal('recovered', '已恢复旧版', message);
       throw new Error(message, { cause: error });
-    } else if (stopped && wasRunning) {
-      report.recovery('resume-service', '正在恢复原有服务', 0, '尚未替换文件，正在恢复原有服务。');
-      try { await start(); await verify(); }
-      catch (recovery) {
-        const message = `尚未替换安装文件，但原有服务未能恢复，需要人工检查。\n备份位置：${backup}\n${updateError(recovery)}`;
-        report.terminal('recovery-failed', '服务恢复未完成', message, recovery);
-        throw new Error(message, { cause: recovery });
-      }
     }
     const message = `尚未替换安装文件，更新已停止。\n${updateError(error)}`;
     report.terminal('failed', '更新未完成', message);
     throw new Error(message, { cause: error });
   } finally {
     if (result) report.start('cleanup');
-    const cleaned = await removePreparation(stage, tools.cache);
+    const cleaned = await removePreparation(stage, tools?.cache);
+    if (unlock) await unlock();
     if (result) {
       result.cleanupWarning = cleaned ? '' : '更新已完成，但部分临时文件未能清理，可稍后清理。';
       report.terminal('completed', '更新完成',

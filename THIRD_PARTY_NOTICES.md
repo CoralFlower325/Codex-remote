@@ -65,3 +65,6 @@ File previews use Highlight.js (BSD-3-Clause, copyright Ivan Sagalaev) and
 Mozilla PDF.js through `pdfjs-dist` (Apache-2.0). Unmodified package license
 texts are distributed in `public/licenses/`; PDF.js's worker remains a separate
 asset. Both renderers load on demand.
+
+Prebuilt runtime archives and the desktop updater use the BlueOak-1.0.0-licensed `tar`
+package. Runtime bundles retain dependency packages' copyright and license files.
