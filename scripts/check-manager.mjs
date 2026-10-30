@@ -8,8 +8,9 @@ import { _electron } from '../desktop/node_modules/playwright/index.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const packaged = process.env.MANAGER_PACKAGED === '1';
 const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'remote-manager-smoke-'));
-const results = { platform: process.platform, arch: process.arch };
+const results = { platform: process.platform, arch: process.arch, packaged };
 const server = http.createServer((_request, response) => {
   response.setHeader('Content-Type', 'application/json');
   response.end(JSON.stringify({ ok: true, codex: 'ready', transport: 'desktop', passwordConfigured: true }));
@@ -38,10 +39,27 @@ try {
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
   application = await _electron.launch({
-    executablePath: require('../desktop/node_modules/electron'),
-    args: [path.join(root, 'desktop'), `--installation=${fixture}`], env, timeout: 60_000
+    executablePath: packaged ? path.join(root, 'output/manager', process.platform === 'darwin'
+      ? 'mac-arm64/Codex Remote Manager.app/Contents/MacOS/Codex Remote Manager'
+      : 'win-unpacked/Codex Remote Manager.exe') : require('../desktop/node_modules/electron'),
+    args: packaged ? [] : [path.join(root, 'desktop'), `--installation=${fixture}`], env, timeout: 60_000
   });
   const page = await application.firstWindow();
+  if (packaged) {
+    await application.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+    }, fixture);
+    const selected = await page.evaluate(() => window.manager.choose());
+    if (!selected.ok) throw new Error(selected.error);
+    results.legacyProbe = await application.evaluate(async ({ app }, directory) => {
+      const { execFile } = process.getBuiltinModule('node:child_process');
+      const base = app.getAppPath().replace(/app\.asar$/, 'app.asar.unpacked');
+      const args = process.platform === 'darwin' ? [base + '/status-macos.sh', directory]
+        : ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', base + '/status-windows.ps1', '-Root', directory];
+      return new Promise((resolve, reject) => execFile(process.platform === 'darwin' ? '/bin/bash' : 'powershell.exe',
+        args, { windowsHide: true }, (error, stdout) => error ? reject(error) : resolve(JSON.parse(stdout))));
+    }, fixture);
+  }
   if (process.platform === 'darwin') await application.evaluate(({ app, BrowserWindow }) => {
     globalThis.__managerDockEvents = [];
     const record = (kind) => globalThis.__managerDockEvents.push({
@@ -73,7 +91,7 @@ try {
       return document.documentElement.scrollWidth <= innerWidth && footer.bottom <= innerHeight + 1;
     });
     if (!layout) throw new Error(`Layout overflow at ${width}`);
-    await page.screenshot({ path: path.join(root, `output/manager-smoke/${process.platform}-${width}.png`) });
+    await page.screenshot({ path: path.join(root, `output/manager-smoke/${process.platform}-${packaged ? 'packaged' : 'source'}-${width}.png`) });
   }
   results.viewports = [480, 400, 780];
   await application.evaluate(() => {
@@ -102,7 +120,7 @@ try {
   results.closeToTray = true;
   results.errors = errors;
   if (errors.length) throw new Error(errors.join('\n'));
-  await fs.writeFile(path.join(root, `output/manager-smoke/${process.platform}.json`), JSON.stringify(results, null, 2), 'utf8');
+  await fs.writeFile(path.join(root, `output/manager-smoke/${process.platform}-${packaged ? 'packaged' : 'source'}.json`), JSON.stringify(results, null, 2), 'utf8');
   console.log(JSON.stringify(results));
 } finally {
   if (application && process.platform === 'darwin') {
