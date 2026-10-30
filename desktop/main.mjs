@@ -11,7 +11,7 @@ const labels = {
   conflict: '安装目录冲突', unowned: '端口被其他服务使用'
 };
 let win; let tray; let timer; let quitting = false; let polling = null;
-let dockTimer; let lastDockHide = 0;
+let dockTimer; let lastDockChange = 0;
 let showingDock = null;
 let settings = { root: '', launchAtLogin: false };
 let state = { status: null, busy: '', error: '', release: null, result: '', events: [] };
@@ -49,7 +49,8 @@ function showWindow() {
   if (!win || win.isDestroyed()) return;
   clearTimeout(dockTimer);
   if (process.platform === 'darwin' && !app.dock.isVisible() && !showingDock) {
-    showingDock = app.dock.show().finally(() => { showingDock = null; });
+    showingDock = app.dock.show().then(() => { lastDockChange = Date.now(); })
+      .catch(showError).finally(() => { showingDock = null; });
   }
   if (win.isMinimized()) win.restore();
   win.show(); win.focus();
@@ -60,10 +61,14 @@ function hideWindow() {
   win.hide();
   if (process.platform === 'darwin') {
     clearTimeout(dockTimer);
-    // Electron ignores repeated dock.hide calls within one second.
-    dockTimer = setTimeout(() => {
-      if (!win.isDestroyed() && !win.isVisible()) { app.dock.hide(); lastDockHide = Date.now(); }
-    }, Math.max(0, 1100 - (Date.now() - lastDockHide)));
+    // Wait for a pending show before hiding; Cocoa can otherwise restore the
+    // icon after hide. Electron also needs a quiet second between transitions.
+    void Promise.resolve(showingDock).then(() => {
+      if (win.isDestroyed() || win.isVisible()) return;
+      dockTimer = setTimeout(() => {
+        if (!win.isDestroyed() && !win.isVisible()) { app.dock.hide(); lastDockChange = Date.now(); }
+      }, Math.max(0, 1100 - (Date.now() - lastDockChange)));
+    });
   }
 }
 function updateTray() {

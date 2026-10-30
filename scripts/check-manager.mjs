@@ -45,7 +45,7 @@ try {
   if (process.platform === 'darwin') await application.evaluate(({ app, BrowserWindow }) => {
     globalThis.__managerDockEvents = [];
     const record = (kind) => globalThis.__managerDockEvents.push({
-      kind, dock: app.dock.isVisible(), visible: BrowserWindow.getAllWindows()[0]?.isVisible()
+      kind, time: Date.now(), dock: app.dock.isVisible(), visible: BrowserWindow.getAllWindows()[0]?.isVisible()
     });
     const hide = app.dock.hide.bind(app.dock); const show = app.dock.show.bind(app.dock);
     app.dock.hide = () => { record('dock.hide'); return hide(); };
