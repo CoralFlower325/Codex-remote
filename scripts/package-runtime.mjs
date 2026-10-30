@@ -8,7 +8,7 @@ import { runtimeNames, runtimePath, sha256, runtimeRepository, sourceHash } from
 const git = (...args) => execFileSync('git', args, { maxBuffer: 16 * 1024 * 1024 }).toString('utf8').trim();
 export function treeSources(ref) {
   const result = {};
-  for (const row of git('ls-tree', '-rz', ref).split('\0').filter(Boolean)) {
+  for (const row of git('ls-tree', '--full-tree', '-rz', ref).split('\0').filter(Boolean)) {
     const [metadata, name] = row.split('\t');
     if (/^\.env|^(?:data|output|node_modules|\.git)(?:\/|$)/i.test(name)) continue;
     runtimePath(name);
@@ -24,6 +24,7 @@ export async function packageRuntime(root, output) {
   }
   const pkg = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
   const sources = treeSources('HEAD');
+  if (!sources['package.json']) throw new Error('Runtime source tree is incomplete.');
   const stage = await fs.mkdtemp(path.join(output, 'runtime-stage-'));
   try {
     for (const [name, expected] of Object.entries(sources)) {

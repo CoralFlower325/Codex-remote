@@ -22,7 +22,8 @@ try {
   const baseline = Object.keys(manifest.baselines).sort((a, b) => compareVersions(b, a))[0];
   if (!baseline) throw new Error('No released source baseline available for upgrade acceptance.');
   const baseArchive = path.join(temporary, 'old-source.tar');
-  execFileSync('git', ['archive', '--format=tar', `--output=${baseArchive}`, `v${baseline}`]);
+  const repositoryRoot = execFileSync('git', ['rev-parse', '--show-toplevel']).toString('utf8').trim();
+  execFileSync('git', ['-C', repositoryRoot, 'archive', '--format=tar', `--output=${baseArchive}`, `v${baseline}`]);
   const manifestPath = path.resolve('output/runtime', names.manifest);
   const assets = [[names.manifest, manifestPath], [names.archive, archive]].map(([name, target]) => ({
     name, target, size: name === names.archive ? manifest.archive.size : null,
