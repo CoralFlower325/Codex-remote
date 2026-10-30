@@ -1,8 +1,29 @@
 # Desktop Manager Acceptance
 
-Latest functional batch: 0.1.13, 2026-10-30.
+Latest functional batch: 0.1.14, 2026-10-30.
+
+## Prebuilt Runtimes And Interrupted Updates
+
+The updater checks the release-provided manifest/archive pair and GitHub digests,
+validates every archive path and file checksum, and runs a production-dependency
+plus native-terminal probe before live changes. Source modifications select the
+existing isolated build path. Release CI packs Windows x64 and Apple Silicon
+runtimes from production dependencies, unpacks them and exercises a real
+old-source upgrade, stopped-state preservation and an injected verification
+failure with old-dependency restoration. Local Windows production-package
+acceptance passed; use the final tagged CI jobs for cross-platform results.
+
+Child-process tests forcibly terminate installation before dependency moves,
+after a move, before/after atomic source replacement and during verification.
+They also terminate recovery itself and successfully retry it. Separate cases
+preserve stopped state and later manual edits, reject damaged recovery evidence,
+finalize committed transactions without rollback and resolve path aliases to
+one canonical installation identity. These simulate abrupt process termination;
+they do not claim physical power-loss testing.
 
 ## Update Progress And Recovery
+
+The following 0.1.13 record retains its original scope and test counts.
 
 Local validation passes 499 tests across 71 files, typecheck, web/manager builds
 and source Electron checks at 400, 480 and 780 widths. Synthetic progress checks
@@ -78,7 +99,8 @@ No real model turn, answer or notification was submitted for these checks.
 ## Update Boundaries
 
 Updates target the selected Remote host directory, require native confirmation,
-build before service shutdown, preserve runtime data and retain backups. Already
+validate a prebuilt runtime or build before service shutdown, preserve runtime
+data and retain backups. Already
 current checks do not restart the service. A running installation is verified
 after an update; a stopped installation stays stopped. The manager executable
 and independent edge/CDN assets update separately.

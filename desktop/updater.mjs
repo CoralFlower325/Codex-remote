@@ -358,7 +358,8 @@ async function rejectLinkedDirectory(directory, recursive = false) {
 }
 
 export async function installUpdate(prepared, { stop, start, verify, isRunning, progress, requireDesktop = false }) {
-  const { info, stage, plan, tools, execute, release } = prepared;
+  const { stage, plan, tools, execute, release } = prepared;
+  const info = { ...prepared.info, root: await fs.realpath(prepared.info.root) };
   const payload = prepared.payload || stage;
   const id = crypto.randomUUID();
   const backup = path.join(info.root, 'output', `manager-backup-${id}`);

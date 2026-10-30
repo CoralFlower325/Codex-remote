@@ -7,7 +7,7 @@ import { compareVersions, latestRelease, safeRelative, planFiles, mergeBuildInpu
 
 const temporary = [];
 async function directory() {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'remote-manager-test-'));
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'remote-manager-test-')));
   temporary.push(root);
   return root;
 }

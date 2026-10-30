@@ -4,7 +4,8 @@ import { installUpdate } from '../updater.mjs';
 import { recoverPendingUpdate } from '../update-transaction.mjs';
 import { sha256 } from '../runtime-package.mjs';
 
-const [root, stage, checkpoint, running] = process.argv.slice(2);
+const [rootArgument, stage, checkpoint, running] = process.argv.slice(2);
+const root = await fs.realpath(rootArgument);
 const hang = async () => {
   process.send?.('checkpoint');
   await new Promise(() => { setInterval(() => {}, 1000); });
@@ -37,7 +38,7 @@ if (checkpoint === 'recovery') {
   };
   await recoverPendingUpdate(root, controls);
 } else {
-  await installUpdate({ info: { root, version: '0.1.13' }, stage, payload: stage, mode: 'runtime',
+  await installUpdate({ info: { root: rootArgument, version: '0.1.13' }, stage, payload: stage, mode: 'runtime',
     tools: {}, execute: () => { throw new Error('npm must not execute'); }, release: { version: '0.1.14' },
     plan: [{ relative: 'package.json', before: sha256(await fs.readFile(path.join(root, 'package.json'))), remove: false }],
     commit: 'a'.repeat(40) }, controls);

@@ -12,7 +12,7 @@ async function write(root, name, value) {
   await fs.writeFile(path.join(root, name), value);
 }
 async function fixture() {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'remote-crash-'));
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'remote-crash-')));
   temporary.push(directory);
   const root = path.join(directory, 'root'); const stage = path.join(directory, 'stage');
   for (const [base, value] of [[root, 'old'], [stage, 'new']]) {
@@ -103,5 +103,15 @@ describe('durable interrupted update recovery', () => {
     expect(stop).not.toHaveBeenCalled(); expect(start).not.toHaveBeenCalled();
     expect(await fs.readFile(path.join(root, 'package.json'), 'utf8')).toBe('new');
     expect(await pendingUpdate(root)).toBeNull();
+  });
+  it('uses the same installation identity through an alternate directory path', async () => {
+    const { root, stage } = await fixture();
+    const alias = path.join(path.dirname(root), 'alias');
+    await fs.symlink(root, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    await interrupt(alias, stage, 'source', false);
+    expect((await pendingUpdate(alias)).root).toBe(root);
+    await recoverPendingUpdate(alias, { stop: vi.fn(), start: vi.fn(), verify: vi.fn() });
+    expect(await pendingUpdate(root)).toBeNull();
+    expect(await fs.readFile(path.join(root, 'package.json'), 'utf8')).toBe('old');
   });
 });
