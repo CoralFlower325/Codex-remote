@@ -199,14 +199,21 @@ try {
   if (await page.evaluate(() => window.__managerMarker) !== 'retained') throw new Error('Current-version check reloaded');
   results.currentCheckPreservesWindow = true;
   const actual = await page.evaluate(async () => (await window.manager.get()).value);
-  await application.evaluate(({ BrowserWindow }, value) =>
-    BrowserWindow.getAllWindows()[0].webContents.send('manager:state', value),
+  await application.evaluate(({ BrowserWindow }, value) => {
+    const contents = BrowserWindow.getAllWindows()[0].webContents;
+    globalThis.__managerOriginalSend = contents.send.bind(contents);
+    // Keep the synthetic update stable across real health polling and resize.
+    contents.send = (channel, ...args) => globalThis.__managerOriginalSend(channel,
+      ...(channel === 'manager:state' ? [value] : args));
+    contents.send('manager:state', value);
+  },
   { ...actual, result: '', busy: '下载并安装依赖', updateProgress: { percent: 18, step: 'dependencies',
     title: '下载并安装依赖', detail: '正在临时目录安装依赖；网络较慢时此步骤可能持续数分钟。',
     startedAt: Date.now() - 90_000, stepStartedAt: Date.now() - 70_000,
     lastOutputAt: Date.now() - 40_000, endedAt: null, status: 'running',
     logs: [{ time: Date.now(), message: 'npm http fetch synthetic dependency' }] } });
   await page.getByRole('progressbar', { name: '更新进度' }).waitFor();
+  await new Promise((resolve) => setTimeout(resolve, 5500));
   for (const [width, height] of [[400, 550], [480, 690], [780, 800]]) {
     await application.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setSize(...size), [width, height]);
     if (await page.getByRole('progressbar').getAttribute('value') !== '18') throw new Error('Wrong progress value');
@@ -221,8 +228,12 @@ try {
     if (!await page.locator('.actions button').first().isDisabled()) throw new Error('Update controls not locked');
     await page.screenshot({ path: path.join(root, `output/manager-smoke/${process.platform}-${packaged ? 'packaged' : 'source'}-progress-${width}.png`) });
   }
-  await application.evaluate(({ BrowserWindow }, value) =>
-    BrowserWindow.getAllWindows()[0].webContents.send('manager:state', value), actual);
+  await application.evaluate(({ BrowserWindow }, value) => {
+    const contents = BrowserWindow.getAllWindows()[0].webContents;
+    contents.send = globalThis.__managerOriginalSend;
+    delete globalThis.__managerOriginalSend;
+    contents.send('manager:state', value);
+  }, actual);
   await page.getByRole('progressbar').waitFor({ state: 'detached' });
   results.updateProgressVisible = true;
   for (const operation of ['minimize', 'close']) {
