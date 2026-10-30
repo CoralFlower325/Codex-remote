@@ -1,5 +1,8 @@
 # Codex Remote 使用指南
 
+本机 GUI 启停、托盘/菜单栏状态及确认更新见可选的[本机管理器](desktop-manager.zh-CN.md)。
+使用前需先完成现有主机安装。
+
 [项目首页](../README.zh-CN.md) / [文档索引](README.md) / [English](guide.md)
 
 完整安装步骤、日常操作与运行边界。截图使用虚构数据说明工作区，不代表每个控件的最新外观。

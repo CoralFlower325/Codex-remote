@@ -1,0 +1,63 @@
+{
+  "name": "codex-remote-manager",
+  "productName": "Codex Remote Manager",
+  "version": "0.1.10",
+  "private": true,
+  "type": "module",
+  "main": "main.mjs",
+  "description": "Local controls and health monitoring for Codex Remote.",
+  "author": "CoralFlower325",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "smoke": "node ../scripts/check-manager.mjs"
+  },
+  "devDependencies": {
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
+    "playwright": "1.64.1"
+  },
+  "build": {
+    "appId": "io.github.coralflower325.codex-remote-manager",
+    "asar": true,
+    "asarUnpack": [
+      "*.ps1",
+      "*.sh"
+    ],
+    "npmRebuild": false,
+    "directories": {
+      "output": "../output/manager"
+    },
+    "files": [
+      "*.mjs",
+      "!*.test.mjs",
+      "*.ps1",
+      "*.sh",
+      "preload.cjs",
+      "dist/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/app.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["arm64"] },
+        { "target": "zip", "arch": ["arm64"] }
+      ],
+      "icon": "assets/app.png",
+      "category": "public.app-category.developer-tools"
+    },
+    "artifactName": "Codex-Remote-Manager-${version}-${os}-${arch}.${ext}"
+  }
+}

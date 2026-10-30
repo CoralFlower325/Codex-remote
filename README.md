@@ -98,6 +98,12 @@ Publish the protected web origin through an **HTTPS tunnel or reverse proxy**. T
 
 After setup, the host's `Start Remote.cmd` / `Stop Remote.cmd` or `.command` files manage background operation. Stopping Remote leaves Codex Desktop open. Windows controls also manage the configured Tunnel task; macOS manages an independent tunnel separately.
 
+The optional [Desktop Manager](docs/desktop-manager.md) adds local start/stop,
+health checks and confirmed version updates, with a Windows notification-area icon
+or macOS top menu-bar icon. Choose the existing installation; closing the window
+keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
+remains pending.
+
 ## Built For Ongoing Sessions
 
 - **Read long conversations.** Bounded history pages preserve reading position; execution bodies load when expanded.

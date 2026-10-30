@@ -3,7 +3,8 @@ param(
   [Parameter(Mandatory = $true)]
   [ValidateSet("Start", "Stop", "Status")]
   [string]$Action,
-  [switch]$NoBrowser
+  [switch]$NoBrowser,
+  [switch]$Json
 )
 
 $ErrorActionPreference = "Stop"
@@ -61,6 +62,23 @@ if (Test-Path -LiteralPath $envPath) {
 $localUrl = "http://127.0.0.1:$port"
 
 if ($Action -eq "Status") {
+  if ($Json) {
+    $task = Get-ScheduledTask -TaskName $ServerTaskName -ErrorAction SilentlyContinue
+    $tunnelTask = Get-ScheduledTask -TaskName $TunnelTaskName -ErrorAction SilentlyContinue
+    $conflict = ($task -and $task.Actions.WorkingDirectory -ne $Root) -or
+      ($tunnelTask -and $tunnelTask.Actions.WorkingDirectory -ne $Root)
+    $processes = @(Get-RemoteProcesses)
+    $entry = Join-Path $Root "dist-server\server\index.js"
+    $backend = @($processes | Where-Object { $_.Name -eq "node.exe" -and $_.CommandLine.Contains($entry) })
+    @{
+      installed = [bool]$task
+      running = [bool]($backend.Count -gt 0)
+      enabled = [bool]($task -and $task.State -ne "Disabled")
+      conflict = [bool]$conflict
+      tunnelManaged = [bool](Test-Path -LiteralPath (Join-Path $Root "data\cloudflared-token"))
+    } | ConvertTo-Json -Compress
+    return
+  }
   foreach ($name in @($ServerTaskName, $TunnelTaskName)) {
     $task = Get-RemoteTask $name
     if ($task) { Write-Host "$name : $($task.State)" }

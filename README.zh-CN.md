@@ -98,6 +98,11 @@ cd Codex-remote
 
 安装完成后，主机上的 `Start Remote.cmd` / `Stop Remote.cmd` 或 `.command` 文件管理后台运行。关闭 Remote 会保留 Codex Desktop；Windows 开关也管理已配置的 Tunnel 任务，macOS 的独立隧道需单独管理。
 
+可选的[本机管理器](docs/desktop-manager.zh-CN.md)提供启停、健康检测与确认后的版本更新，
+Windows 常驻右下通知区域，macOS 常驻顶部菜单栏。
+选择现有安装目录，关闭窗口后继续常驻。Release 提供未签名安装包；
+macOS GUI 的实机验收仍待完成。
+
 ## 为持续工作的会话准备
 
 - **阅读长会话**：历史有界分页，保留阅读位置，展开执行记录时才加载详细正文。

@@ -1,0 +1,76 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #202020; background: #fff; font-size: 14px; letter-spacing: 0;
+  font-synthesis: none; color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; overflow: hidden; }
+button, input { font: inherit; }
+button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; border: 1px solid #d9d9d9; border-radius: 6px; padding: 0 11px; color: #303030; background: #fff; cursor: pointer; white-space: nowrap; }
+button:hover { background: #f0f0f0; }
+button:active { background: #e8e8e8; }
+button:disabled { cursor: default; opacity: .45; }
+button:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px solid #444; outline-offset: 3px; }
+button.primary { background: #202020; color: #fff; border-color: #202020; }
+button.primary:hover { background: #444; }
+button.icon { width: 34px; height: 34px; padding: 0; flex: 0 0 auto; background: transparent; border-color: transparent; }
+button.icon:hover { background: #efefef; }
+h1,h2,h3,p { margin: 0; }
+main { height: 100dvh; display: flex; flex-direction: column; }
+header { display: flex; flex: 0 0 auto; align-items: center; gap: 11px; padding: 16px 24px 14px; }
+header > div { flex: 1; }
+h1 { font-size: 17px; font-weight: 600; line-height: 24px; }
+header span { color: #626262; font-size: 12px; }
+small { margin-left: 5px; font-size: 11px; }
+.installation { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; padding: 10px 24px; border-top: 1px solid #ebebeb; border-bottom: 1px solid #ebebeb; background: #fafafa; }
+.installation > div { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.caption { color: #626262; font-size: 11px; }
+.path { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12px; }
+.overview { padding: 17px 24px; display: flex; flex: 0 0 auto; gap: 12px; align-items: center; min-height: 85px; }
+.status-symbol { display: grid; place-items: center; width: 43px; height: 43px; flex: 0 0 auto; border-radius: 8px; background: #f0f0f0; color: #626262; }
+.status-symbol.healthy { color: #247543; background: #edf6f0; }
+.status-symbol.degraded,.status-symbol.conflict,.status-symbol.unowned { color: #925415; background: #fff5e8; }
+.status-symbol.working { color: #2466a4; background: #edf4fb; }
+.status-copy { flex: 1; min-width: 0; }
+h2 { font-size: 16px; line-height: 23px; font-weight: 600; overflow-wrap: anywhere; }
+.status-copy p { color: #626262; font-size: 11px; margin-top: 4px; }
+.actions { display: flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+nav { display: flex; flex: 0 0 auto; gap: 22px; padding: 0 24px; border-bottom: 1px solid #ebebeb; }
+nav button { position: relative; min-height: 41px; border: 0; padding: 0 0 10px; border-radius: 0; color: #626262; background: transparent; }
+nav button:hover { background: transparent; color: #202020; }
+nav button[aria-current] { color: #202020; box-shadow: inset 0 -2px #202020; }
+.new-dot { height: 6px; width: 6px; background: #2466a4; border-radius: 50%; }
+.content { flex: 1; min-height: 0; overflow-y: auto; padding: 5px 24px 14px; }
+.health { margin: 0; }
+.health > div { display: flex; align-items: center; justify-content: space-between; min-height: 38px; gap: 12px; border-bottom: 1px solid #f0f0f0; }
+dt { font-size: 12px; color: #454545; }
+dd { margin: 0; display: flex; align-items: center; gap: 6px; text-align: right; color: #626262; font-size: 12px; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: #999; flex: 0 0 auto; }
+.ok { color: #247543; }.ok .dot { background: #247543; }
+.warn { color: #925415; }.warn .dot { background: #a96516; }
+.links { display: flex; gap: 9px; padding: 13px 0; }
+.links button { font-size: 12px; }
+details { border-top: 1px solid #ebebeb; padding-top: 12px; }
+summary { cursor: pointer; color: #626262; font-size: 12px; }
+summary span { margin-left: 5px; color: #626262; }
+.events { list-style: none; margin: 12px 0 0; padding: 0; max-height: 160px; overflow-y: auto; }
+.events li { display: flex; gap: 12px; font-size: 11px; margin: 9px 0; overflow-wrap: anywhere; }
+time { color: #626262; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.empty { color: #626262; font-size: 12px; padding-top: 10px; }
+footer { flex: 0 0 auto; border-top: 1px solid #ebebeb; background: #fafafa; padding: 7px 24px; display: flex; justify-content: space-between; gap: 8px; align-items: center; font-size: 11px; }
+footer label { display: flex; align-items: center; gap: 5px; color: #454545; }
+input { accent-color: #303030; margin: 0; }
+footer button { border-color: transparent; background: transparent; color: #626262; padding: 0 5px; font-size: 11px; }
+.message { flex: 0 0 auto; max-height: 140px; overflow-y: auto; margin: 0 24px 12px; border: 1px solid #d9e6ef; border-radius: 6px; background: #f4f8fc; color: #2c5271; padding: 10px 12px; font-size: 12px; overflow-wrap: anywhere; white-space: pre-wrap; display: flex; align-items: start; gap: 6px; }
+.message span { min-width: 0; flex: 1; }
+.message.error { border-color: #edd6d6; background: #fff5f5; color: #a33232; }
+.message .icon { width: 22px; height: 22px; min-height: 22px; }
+.updates { padding-top: 17px; }
+.update-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+h3 { font-size: 13px; font-weight: 600; }
+.update-heading p { color: #626262; font-size: 12px; margin-top: 5px; }
+.update-heading button { font-size: 12px; }
+.release-title { margin-top: 24px; }
+.notes { max-height: 260px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #454545; margin: 12px 0 18px; }
+@media (max-width: 410px) { header,.installation,.overview,footer { padding-left: 18px; padding-right: 18px; }.content { padding-left: 18px; padding-right: 18px; }.overview { gap: 8px; }.status-symbol { width: 36px; height: 36px; } h2 { font-size: 14px; } }
+@media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation: none !important; transition: none !important; } }

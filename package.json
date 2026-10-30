@@ -1,6 +1,6 @@
 {
   "name": "codex-remote",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "type": "module",
   "description": "Responsive remote control UI for the Codex desktop app.",
@@ -33,7 +33,11 @@
     "install-task:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-task-windows.ps1",
     "uninstall-task:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-task-windows.ps1 -Unregister",
     "tunnel:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/cloudflared-tunnel-windows.ps1",
-    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "manager:install": "npm --prefix desktop ci",
+    "manager:build": "tsc -p tsconfig.manager.json && node scripts/build-manager.mjs",
+    "manager": "npm run manager:build && npm --prefix desktop start --",
+    "manager:dist": "npm run manager:build && npm --prefix desktop run dist --",
+    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.manager.json",
     "test": "vitest run",
     "test:watch": "vitest"
   },

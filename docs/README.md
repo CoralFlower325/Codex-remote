@@ -1,6 +1,10 @@
 # Documentation / 文档
 
+[Desktop Manager](desktop-manager.md) / [本机管理器](desktop-manager.zh-CN.md)
+
 [English overview](../README.md) · [中文首页](../README.zh-CN.md)
+
+[Desktop manager acceptance](desktop-manager-acceptance.md): Windows x64 and macOS Apple Silicon.
 
 The overview introduces the product. The guides describe current supported
 behavior and limits; dated acceptance and investigation records describe their

@@ -16,3 +16,4 @@ coverage/
 .playwright-cli/
 output/
 .cloudflare/
+desktop/dist/

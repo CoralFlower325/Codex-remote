@@ -17,6 +17,10 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 - `src/server/thread-history.ts`: native bounded history pagination.
 - `src/shared/`: protocol and permission profiles.
 - `scripts/`: Windows/macOS setup, services, tunnel, and platform controls.
+- `desktop/`: optional Electron manager, isolated IPC, tray/menu-bar controls and
+  staged local updates. Build with `npm run manager:build`; install its separate
+  dependencies with `npm run manager:install`; package with `npm run manager:dist`.
+  Backend installs do not download Electron.
 
 ## Product Constraints
 
@@ -227,6 +231,11 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 - Permissions apply per chat. Do not rewrite global Codex config to change them.
 - Do not start a second backend that replaces an active Desktop relay.
 - Starting or stopping Remote must not terminate Codex Desktop.
+- The desktop manager reuses owned platform controls. Close/minimize hides to the
+  tray/menu bar; quitting preserves service state. Never expose manager operations
+  through HTTP. Updates require confirmation, conflict checks, isolated build,
+  backup, old-process exit and recovery. Preserve explicit stopped state and
+  private runtime data. External edge assets and the manager update separately.
 - Windows Tunnel tasks run the owned Node supervisor. Restart exited cloudflared
   after one second, backing off repeated crashes to five seconds. Poll readiness
   every two seconds and wake on native address/availability events. Rebuild only

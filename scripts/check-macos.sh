@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
-for script in scripts/*.sh ./*.command; do
+for script in scripts/*.sh desktop/*.sh ./*.command; do
   bash -n "$script"
 done
 [[ -x "./Start Remote.command" && -x "./Stop Remote.command" ]]
@@ -28,7 +28,8 @@ fs.mkdirSync(bin);
 fs.writeFileSync(path.join(bin, 'launchctl'), `#!/bin/bash
 printf '%s\\n' "$*" >> "$LAUNCHCTL_TEST_LOG"
 case "$1" in
-  print) test -f "$LAUNCHCTL_TEST_STATE" ;;
+  print) test -f "$LAUNCHCTL_TEST_STATE" && echo 'state = running' ;;
+  print-disabled) echo '{}' ;;
   bootstrap) touch "$LAUNCHCTL_TEST_STATE" ;;
   bootout) rm "$LAUNCHCTL_TEST_STATE" ;;
   enable|disable) ;;
@@ -54,8 +55,16 @@ bash scripts/remote-control-macos.sh Start --no-browser
 bash scripts/remote-control-macos.sh Start --no-browser
 [[ "$(grep -c '^bootstrap ' "$LAUNCHCTL_TEST_LOG")" == "1" ]]
 bash scripts/remote-control-macos.sh Status
+STATUS_JSON="$(bash scripts/remote-control-macos.sh Status --json)"
+node -e 'const s=JSON.parse(process.argv[1]);if(!s.installed||!s.running||s.conflict||s.tunnelManaged)process.exit(1)' "$STATUS_JSON"
+FALLBACK_JSON="$(bash desktop/status-macos.sh "$ROOT_DIR")"
+node -e 'const s=JSON.parse(process.argv[1]);if(!s.installed||!s.running||s.conflict)process.exit(1)' "$FALLBACK_JSON"
 bash scripts/remote-control-macos.sh Stop
 [[ ! -f "$LAUNCHCTL_TEST_STATE" ]]
+STATUS_JSON="$(bash scripts/remote-control-macos.sh Status --json)"
+node -e 'if(JSON.parse(process.argv[1]).running)process.exit(1)' "$STATUS_JSON"
+FALLBACK_JSON="$(bash desktop/status-macos.sh "$ROOT_DIR")"
+node -e 'if(JSON.parse(process.argv[1]).running)process.exit(1)' "$FALLBACK_JSON"
 grep -q '^disable ' "$LAUNCHCTL_TEST_LOG"
 bash scripts/remote-control-macos.sh Uninstall
 [[ ! -f "$PLIST" ]]

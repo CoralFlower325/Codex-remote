@@ -15,13 +15,17 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 if [[ "$ACTION" != "Start" && "$ACTION" != "Stop" && "$ACTION" != "Status" && "$ACTION" != "Uninstall" ]] ||
-   [[ "${2:-}" != "" && "${2:-}" != "--no-browser" ]] || (( $# > 2 )); then
-  echo "Usage: bash scripts/remote-control-macos.sh Start|Stop|Status|Uninstall [--no-browser]" >&2
+   [[ "${2:-}" != "" && "${2:-}" != "--no-browser" && ! ( "$ACTION" == "Status" && "${2:-}" == "--json" ) ]] || (( $# > 2 )); then
+  echo "Usage: bash scripts/remote-control-macos.sh Start|Stop|Status|Uninstall [--no-browser|--json]" >&2
   exit 1
 fi
 if [[ -f "$PLIST" ]]; then
   OWNER="$(/usr/libexec/PlistBuddy -c 'Print :WorkingDirectory' "$PLIST")"
   if [[ "$OWNER" != "$ROOT_DIR" ]]; then
+    if [[ "$ACTION" == "Status" && "${2:-}" == "--json" ]]; then
+      echo '{"installed":true,"running":false,"enabled":false,"conflict":true,"tunnelManaged":false}'
+      exit 0
+    fi
     echo "The existing Codex Remote service belongs to another checkout: $OWNER" >&2
     exit 1
   fi
@@ -29,6 +33,15 @@ fi
 
 case "$ACTION" in
   Status)
+    if [[ "${2:-}" == "--json" ]]; then
+      INSTALLED=false; RUNNING=false; ENABLED=false
+      [[ -f "$PLIST" ]] && INSTALLED=true
+      if launchctl print "$SERVICE" 2>/dev/null | grep -q 'state = running'; then RUNNING=true; fi
+      if [[ "$INSTALLED" == "true" ]] &&
+        ! launchctl print-disabled "$DOMAIN" | grep -q "\"$LABEL\" => true"; then ENABLED=true; fi
+      printf '{"installed":%s,"running":%s,"enabled":%s,"conflict":false,"tunnelManaged":false}\n' "$INSTALLED" "$RUNNING" "$ENABLED"
+      exit 0
+    fi
     if launchctl print "$SERVICE" >/dev/null 2>&1; then
       launchctl print "$SERVICE"
     else

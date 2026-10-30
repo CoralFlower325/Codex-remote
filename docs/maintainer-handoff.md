@@ -15,7 +15,16 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The 0.1.9 functional batch integrates PR #6's native question visibility,
+The 0.1.10 functional batch adds an optional Windows/macOS desktop manager:
+tray/menu-bar residency, owned platform controls, layered local health and staged
+release updates with conflict detection, backups and recovery. See the bilingual
+[manager guide](desktop-manager.md). Electron dependencies are separately installed.
+Unsigned packaging and live Mac acceptance have separate boundaries.
+macOS installers target Apple Silicon only. The packaging workflow opens a
+synthetic Electron window on each supported OS; signed-in Mac acceptance remains
+separate. See [manager acceptance](desktop-manager-acceptance.md).
+
+The preceding 0.1.9 functional batch integrates PR #6's native question visibility,
 cross-turn pending forms, temporary-chat answers, sidebar badges and opt-in
 question notifications. Maintainer corrections preserve embedded message order
 and simultaneous approval indicators. See [the integration review](pr-6-review.md).
