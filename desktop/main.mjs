@@ -6,6 +6,8 @@ import { installation } from './controller.mjs';
 import { readDiagnosticLogs } from './diagnostics.mjs';
 import { createManagerSession } from './manager-session.mjs';
 import { trayAppearance } from './tray-state.mjs';
+import updaterPackage from 'electron-updater';
+import { createManagerSelfUpdate } from './manager-self-update.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fetchRelease = (url, options) => net.fetch(url, { ...options, credentials: 'omit' });
@@ -18,6 +20,7 @@ let dockTimer; let lastDockChange = 0;
 let showingDock = null;
 let suppressActivationUntil = 0;
 let trayImageKey = '';
+let selfUpdateQuitting = false;
 const session = createManagerSession({
   app, dialog, shell, fetchRelease, getWindow: () => win, publish, here
 });
@@ -26,6 +29,12 @@ const {
   action, openRemote, diagnose, repair, security, checkUpdate, update,
   recoverInstallation, chooseDirectory, selectDirectory, detectDirectory, restoreDirectory
 } = session;
+const managerUpdate = createManagerSelfUpdate({
+  app, getUpdater: () => updaterPackage.autoUpdater, fetcher: fetchRelease, dialog, shell,
+  getWindow: () => win, publish, exclusive,
+  allowInstallQuit: value => { selfUpdateQuitting = value; }
+});
+state.managerUpdate = managerUpdate.state;
 function publish() {
   if (win && !win.isDestroyed()) win.webContents.send('manager:state', snapshot());
   updateTray();
@@ -75,7 +84,8 @@ function updateTray() {
   }
   const text = healthError ? '状态检测失败' : labels[state.status?.state] || '未选择安装目录';
   tray.setToolTip(`Codex Remote · ${state.busy || text}`);
-  const ready = Boolean(settings.root) && !state.busy && !state.recoveryRequired && !healthError &&
+  const installing = state.managerUpdate.status === 'installing';
+  const ready = Boolean(settings.root) && !state.busy && !installing && !state.recoveryRequired && !healthError &&
     !['conflict', 'unowned'].includes(state.status?.state);
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: `Codex Remote · ${state.busy || text}`, enabled: false },
@@ -88,7 +98,9 @@ function updateTray() {
       click: () => void action('Start').catch(showError) },
     { label: '关闭 Remote', enabled: ready && Boolean(state.status?.service.running),
       click: () => void action('Stop').catch(showError) },
-    { label: '检查更新', enabled: ready, click: () => { showWindow(); void checkUpdate().catch(showError); } },
+    { label: '检查 Remote 更新', enabled: ready, click: () => { showWindow(); void checkUpdate().catch(showError); } },
+    { label: '检查管理器更新', enabled: !state.busy && !installing,
+      click: () => { showWindow(); void managerUpdate.check().catch(showError); } },
     { type: 'separator' },
     { label: '退出管理器', enabled: !state.busy, click: () => app.quit() }
   ]));
@@ -101,6 +113,9 @@ function fileURLToPathUrl() { return new URL('./dist/index.html', import.meta.ur
 function handle(name, fn) {
   ipcMain.handle(`manager:${name}`, async (event, ...args) => {
     if (!trusted(event)) throw new Error('Untrusted IPC sender.');
+    if (state.managerUpdate.status === 'installing' && !['get', 'refresh'].includes(name)) {
+      return { ok: false, error: '正在交接管理器安装，请等待管理器重新打开。', value: snapshot() };
+    }
     try { const result = await fn(...args); return { ok: true, value: result ?? snapshot() }; }
     catch (error) {
       if (state.error !== error.message) showError(error);
@@ -119,7 +134,7 @@ else {
   });
   app.on('window-all-closed', () => {});
   app.on('before-quit', (e) => {
-    if (state.busy) { e.preventDefault(); showWindow(); return; }
+    if (state.busy && !selfUpdateQuitting) { e.preventDefault(); showWindow(); return; }
     quitting = true; clearInterval(timer); clearTimeout(dockTimer);
   });
   app.whenReady().then(async () => {
@@ -163,6 +178,17 @@ else {
   handle('open', openRemote);
   handle('check', checkUpdate);
   handle('update', update);
+  handle('managerCheck', managerUpdate.check);
+  handle('managerDownload', managerUpdate.download);
+  handle('managerInstall', managerUpdate.install);
+  handle('managerCancel', managerUpdate.cancel);
+  handle('managerInstaller', managerUpdate.openInstaller);
+  handle('managerBackups', async () => {
+    const directory = path.join(app.getPath('userData'), 'manager-update-backups');
+    await fs.mkdir(directory, { recursive: true });
+    const error = await shell.openPath(directory);
+    if (error) throw new Error(error);
+  });
   handle('recover', recoverInstallation);
   handle('diagnose', diagnose);
   handle('repair', repair);
@@ -184,6 +210,7 @@ else {
     await saveSettings(); publish();
   });
   handle('quit', () => app.quit());
+  await managerUpdate.initialize();
   await win.loadFile(path.join(here, 'dist', 'index.html'));
   // Recover the saved root before discovery validates its possibly interrupted
   // build. Never silently switch away from an installation needing recovery.

@@ -18,10 +18,19 @@ their original scope and do not establish current physical-device performance.
 The 0.2.2 batch polishes the edit dialog without changing its native mutation
 flow. Remote and manager now have independent package versions. The manager's
 new baseline is 0.2.0; a Remote-only release must not bump, rebuild or install it.
-The manager packaging workflow compares its version with the preceding Remote
-tag and rejects manager source edits without a version change. Release notes
+The manager packaging workflow compares its version with the preceding reachable
+Remote or manager tag and rejects manager source edits without a version change. Release notes
 must list both versions and separate changes, explicitly stating no changes
 where applicable. Existing published tags remain historical records.
+
+Manager 0.2.1 adds a separate self-update coordinator and renderer section.
+`manager-release.mjs` validates the independent manager-v channel;
+`manager-self-update.mjs` owns download, digests, backup and durable handoff.
+Trusted IPC and the existing session serializer isolate this from host updates.
+Publish manager tags with `--latest=false`, attach installers plus latest*.yml,
+and preserve Remote 0.2.2. Unsigned Mac builds intentionally offer manual download.
+Program rollback, Mac signing/notarization and real signed Mac update acceptance
+remain explicit checkpoints in [the recovery record](manager-self-update-checkpoints.md).
 
 The 0.2.1 batch adds service-state tray/menu-bar images and editing of the latest
 interrupted turn's original input in the main chat. `message-edit.ts` owns fresh

@@ -1,7 +1,7 @@
 {
   "name": "codex-remote-manager",
   "productName": "Codex Remote Manager",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "main": "main.mjs",
@@ -27,6 +27,10 @@
       "*.sh"
     ],
     "npmRebuild": false,
+    "publish": {
+      "provider": "generic",
+      "url": "https://github.com/CoralFlower325/Codex-remote/releases/download/manager-v0.2.1"
+    },
     "directories": {
       "output": "../output/manager"
     },
@@ -52,8 +56,18 @@
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["arm64"] },
-        { "target": "zip", "arch": ["arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
       ],
       "icon": "assets/app.png",
       "category": "public.app-category.developer-tools"
@@ -61,6 +75,7 @@
     "artifactName": "Codex-Remote-Manager-${version}-${os}-${arch}.${ext}"
   },
   "dependencies": {
+    "electron-updater": "6.8.11",
     "tar": "7.5.22"
   }
 }

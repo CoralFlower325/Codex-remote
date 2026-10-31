@@ -176,22 +176,54 @@ The updater never resets Git or pushes the installation. Deployed files remain l
 changes; future comparisons use the installed version tag rather than assuming a
 clean HEAD. Backups and older frontend chunks for open tabs remain available.
 
-This updates **the selected host installation**, not the manager executable.
-The manager and Remote display their own versions and may differ. Update checks
-compare the selected Remote installation with the release. Install a newer manager
-separately when its controls or updater need a fix; manager self-update is not
-currently implemented.
+This updates **the selected host installation**. The separate manager controls
+below update the manager executable. The manager and Remote display their own
+versions and may differ; each check compares its own installed component.
 The manager uses an independent version starting at 0.2.0. Remote-only updates
 leave the manager and its version unchanged. Every Release lists both component
 versions and their changes; unchanged manager installers remain in their original
 Release rather than being rebuilt.
-Install a newer manager from its Release. Independent static-edge/CDN assets and
+Independent static-edge/CDN assets and
 external tunnels are not deployed here. Public-origin installations receive a
 reminder to synchronize externally hosted frontend assets through the hosting guide.
 If a 0.1.10 manager is blocked by Markdown conflicts, install the 0.1.11 or newer
 manager first, select the same host directory and retry. The old executable cannot
 use the fixed updater merely by checking for a new host release. Do not reset Git
 or delete the local documents.
+
+## Manager Self-Update
+
+Manager 0.2.1 checks the independent `manager-vX.Y.Z` release channel. Remote
+releases keep `vX.Y.Z`; manager releases must not become GitHub's latest release.
+An unchanged/latest manager check never downloads, installs or reloads the window.
+Older managers require one manual upgrade to a supporting installer.
+
+In Version updates, use Check manager, read the summary and download. Progress
+uses actual received bytes, total size and speed; cancellation leaves Remote
+running. GitHub SHA-256 digests verify both metadata and the platform package.
+Only Windows x64 and Apple Silicon are supported. Updates are full packages;
+interrupted downloads can be retried, but byte-range resume is not promised.
+
+Install and reopen requires a native confirmation. Before handoff, copy and hash
+the existing manager program, copy settings, and persist a receipt in user data.
+Recheck the installer hash before quitting. Windows uses NSIS; service, Desktop
+and tunnel controls are not called. Ordinary quit never installs a downloaded
+package. Reopening confirms completion only if the actual manager version matches
+the recorded target; failed/unconfirmed handoffs preserve evidence and backups.
+
+The current Mac distribution lacks a Developer ID signature and notarization.
+It can check releases and open the installer download, but automatic installation
+is blocked. Signed Mac update code still requires a real signed upgrade test.
+Code/build CI does not establish that acceptance.
+
+Backups are in `manager-update-backups/<id>` under the manager user-data directory;
+`manager-self-update.json` records the handoff. The update view opens the backup
+folder. Backups are retained without automatic cleanup. There is **no automatic
+manager program rollback**: close the manager and reinstall the previous official
+installer; retain settings and the verified backup for manual recovery. Do not
+replace running program files or remove recovery evidence. A corrupt receipt
+blocks installation until its contents/permissions have been investigated.
+See [implementation checkpoints and recovery](manager-self-update-checkpoints.md).
 
 Cross-platform tests cover ownership, release selection, conflicts, protected paths,
 backups, recovery and stopped-state preservation. macOS packaging, shell and

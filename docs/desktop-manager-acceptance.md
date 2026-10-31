@@ -1,5 +1,20 @@
 # Desktop Manager Acceptance
 
+## Manager 0.2.1 Self-Update
+
+The 2026-10-31 manager batch preserves Remote 0.2.2. Local validation passes
+594 tests across 84 files, typecheck and both builds. The 26 additional cases
+cover the independent release channel, bounded pagination, downgrade refusal,
+explicit download/install, cancellation races, changed metadata/installers,
+real program/settings backup, corrupt receipts and actual-version confirmation.
+Synthetic Electron checks retain existing behavior and add manager current-version
+IPC checks plus seven update states at 400/480 widths. No page errors were seen.
+
+Exact-source packaging, published asset verification and installed Windows
+handoff results are recorded in the private deployment receipt. Mac automatic
+installation remains blocked for unsigned distributions. There is no automatic
+manager program rollback. See [implementation checkpoints](manager-self-update-checkpoints.md).
+
 Latest functional batch: 0.1.15, 2026-10-31.
 
 ## Diagnostics And Device Administration

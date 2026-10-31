@@ -31,6 +31,7 @@ the authority for what is actually installed.
 - [Contributing / 贡献指南](../CONTRIBUTING.md)
 - [Code organization / 代码分层与维护边界](code-organization.md)
 - [Maintainer handoff and release procedure / 开发交接与发布流程](maintainer-handoff.md)
+- [Manager self-update checkpoints / 管理器自更新断点与恢复](manager-self-update-checkpoints.md)
 - [Agent rules / 开发约束](../AGENTS.md)
 - [Product principles / 产品原则](../PRODUCT.md)
 - [Security / 安全](../SECURITY.md)

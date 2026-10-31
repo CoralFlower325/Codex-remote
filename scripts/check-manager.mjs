@@ -269,6 +269,26 @@ try {
   if (!checked.ok) throw new Error(checked.error);
   if (await page.evaluate(() => window.__managerMarker) !== 'retained') throw new Error('Current-version check reloaded');
   results.currentCheckPreservesWindow = true;
+  await application.evaluate(({ net, app }) => {
+    const original = net.fetch.bind(net);
+    const version = app.getVersion();
+    const tag = `manager-v${version}`;
+    const names = process.platform === 'darwin'
+      ? [`Codex-Remote-Manager-${version}-mac-arm64.zip`, 'latest-mac.yml']
+      : [`Codex-Remote-Manager-${version}-win-x64.exe`, 'latest.yml'];
+    net.fetch = (url, options) => String(url).includes('/releases?')
+      ? Promise.resolve(new Response(JSON.stringify([{ tag_name: tag, body: '合成管理器摘要',
+        assets: names.map(name => ({ name, size: 10, digest: 'sha256:' + 'a'.repeat(64),
+          browser_download_url: `https://github.com/CoralFlower325/Codex-remote/releases/download/${tag}/${name}` })) }])))
+      : original(url, options);
+  });
+  const managerChecked = await page.evaluate(() => window.manager.managerCheck());
+  if (!managerChecked.ok || managerChecked.value.managerUpdate.status !== 'current' ||
+    managerChecked.value.managerUpdate.version !== managerChecked.value.version) {
+    throw new Error('Independent manager current-version check failed');
+  }
+  if (await page.evaluate(() => window.__managerMarker) !== 'retained') throw new Error('Manager check reloaded window');
+  results.managerCurrentCheckPreservesWindow = true;
   await page.getByRole('button', { name: '设备与密码', exact: true }).click();
   await until(() => page.evaluate(async () => (await window.manager.get()).value.security?.devices.length), 2, 'registered devices');
   await page.getByText('iPhone · Safari', { exact: true }).waitFor();
@@ -360,6 +380,46 @@ try {
   }, actual);
   await page.getByRole('progressbar').waitFor({ state: 'detached' });
   results.updateProgressVisible = true;
+  await page.getByRole('button', { name: '版本更新', exact: true }).click();
+  const managerBaseline = actual.managerUpdate;
+  for (const updateStatus of ['available', 'downloading', 'downloaded', 'installing', 'error', 'completed', 'unsigned-mac']) {
+    const synthetic = { ...managerBaseline, status: updateStatus === 'unsigned-mac' ? 'available' : updateStatus,
+      version: '9.0.0', notes: '## 管理器 9.0.0\n\n- 合成更新摘要，用于检查排版。',
+      detail: updateStatus === 'installing' ? '正在备份管理器程序与设置。' : '合成状态，不执行真实更新。',
+      percent: updateStatus === 'downloading' ? 37 : null, transferred: 37 * 1024 ** 2,
+      total: 100 * 1024 ** 2, bytesPerSecond: 3 * 1024 ** 2,
+      error: updateStatus === 'error' ? '管理器更新未完成：合成网络中断。' : '',
+      blocked: updateStatus === 'unsigned-mac' ? '此 Mac 管理器尚未使用开发者证书签名，暂不能自动安装；请通过安装包升级。' : '',
+      backup: updateStatus === 'completed' ? 'synthetic-backup' : '' };
+    await application.evaluate(({ BrowserWindow }, value) => {
+      const contents = BrowserWindow.getAllWindows()[0].webContents;
+      globalThis.__managerOriginalSend ??= contents.send.bind(contents);
+      contents.send = (channel, ...args) => globalThis.__managerOriginalSend(channel,
+        ...(channel === 'manager:state' ? [value] : args));
+      contents.send('manager:state', value);
+    }, { ...actual, busy: updateStatus === 'downloading' ? '正在下载管理器更新' : '', managerUpdate: synthetic });
+    for (const [width, height] of [[400, 550], [480, 690]]) {
+      await application.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setSize(...size), [width, height]);
+      await page.getByRole('region', { name: '管理器更新' }).scrollIntoViewIfNeeded();
+      if (!await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth &&
+        document.querySelector('footer').getBoundingClientRect().bottom <= innerHeight + 1)) {
+        throw new Error(`Manager update layout overflow: ${updateStatus}/${width}`);
+      }
+      if (updateStatus === 'downloading' &&
+        await page.getByRole('progressbar', { name: '管理器下载进度' }).getAttribute('value') !== '37') {
+        throw new Error('Manager byte progress not rendered');
+      }
+      await page.screenshot({ path: path.join(root,
+        `output/manager-smoke/${process.platform}-${packaged ? 'packaged' : 'source'}-manager-${updateStatus}-${width}.png`) });
+    }
+  }
+  await application.evaluate(({ BrowserWindow }, value) => {
+    const contents = BrowserWindow.getAllWindows()[0].webContents;
+    contents.send = globalThis.__managerOriginalSend;
+    delete globalThis.__managerOriginalSend;
+    contents.send('manager:state', value);
+  }, actual);
+  results.managerUpdateStates = ['available', 'downloading', 'downloaded', 'installing', 'error', 'completed', 'unsigned-mac'];
   for (const operation of ['minimize', 'close']) {
     await application.evaluate(({ BrowserWindow }, action) => BrowserWindow.getAllWindows()[0][action](), operation);
     await until(() => application.evaluate(({ BrowserWindow }) => !BrowserWindow.getAllWindows()[0].isVisible()), true, operation);

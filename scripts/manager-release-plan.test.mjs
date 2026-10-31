@@ -11,7 +11,7 @@ describe('independent manager releases', () => {
   it('packages a new manager version independently of Remote', () => {
     expect(managerReleasePlan('0.2.1', '0.2.0', ['desktop/main.mjs']))
       .toEqual({ version: '0.2.1', package: true });
-    expect(managerReleasePlan('0.2.0', '0.2.1', ['desktop/package.json']).package).toBe(true);
+    expect(() => managerReleasePlan('0.2.0', '0.2.1', ['desktop/package.json'])).toThrow('decrease');
   });
 
   it('blocks shipping manager edits under an unchanged version', () => {
@@ -23,6 +23,6 @@ describe('independent manager releases', () => {
 
   it('allows manager test and documentation changes without a package', () => {
     expect(managerReleasePlan('0.2.0', '0.2.0',
-      ['desktop/updater.test.mjs', 'desktop/README.md']).package).toBe(false);
+      ['desktop/updater.test.mjs', 'desktop/test-fixtures/manager-release.mjs', 'desktop/README.md']).package).toBe(false);
   });
 });

@@ -1,5 +1,12 @@
 # Codex Remote Guide
 
+Manager 0.2.1 adds independent Windows self-update under Version updates:
+check, read the summary, download with byte progress, then confirm installation.
+Program/settings backups and a restart receipt are retained. Older managers need
+one manual installer upgrade. Unsigned Mac builds offer installer downloads;
+automatic recovery of manager program files is not implemented. See the
+[manager guide](desktop-manager.md#manager-self-update) for boundaries.
+
 From 0.1.16, native runtime errors appear in their owning turns across main, side
 and subagent chats. Original messages, available HTTP codes and native retry state
 are retained; Remote does not retry model submissions. See [runtime error scope](native-runtime-errors.md).
