@@ -3,8 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { _electron } from '../desktop/node_modules/playwright/index.mjs';
+import { manageAuthentication } from '../desktop/security.mjs';
+import { run } from '../desktop/process.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -44,8 +46,16 @@ try {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   await fs.mkdir(path.join(fixture, 'scripts'), { recursive: true });
   await fs.mkdir(path.join(fixture, 'dist-server/server'), { recursive: true });
-  await fs.writeFile(path.join(fixture, 'package.json'), JSON.stringify({ name: 'codex-remote', version }), 'utf8');
+  await fs.writeFile(path.join(fixture, 'package.json'), JSON.stringify({ name: 'codex-remote', type: 'module', version }), 'utf8');
   await fs.writeFile(path.join(fixture, 'dist-server/server/index.js'), '// Synthetic fixture only.\n', 'utf8');
+  for (const name of ['auth.js', 'session-store.js', 'cli/manage-auth.js']) {
+    await fs.mkdir(path.dirname(path.join(fixture, 'dist-server/server', name)), { recursive: true });
+    await fs.copyFile(path.join(root, 'dist-server/server', name), path.join(fixture, 'dist-server/server', name));
+  }
+  await fs.mkdir(path.join(fixture, 'data'), { recursive: true });
+  await fs.writeFile(path.join(fixture, 'dist-server/server/config.js'),
+    `export const config = ${JSON.stringify({ dataDir: path.join(fixture, 'data'),
+      authFile: path.join(fixture, 'data/auth.json'), secretFile: path.join(fixture, 'data/session-secret'), sessionDays: 30 })};\n`);
   await fs.writeFile(path.join(fixture, '.env'),
     `PORT=${server.address().port}\nCODEX_DESKTOP_DEBUG_PORT=${server.address().port}\n`, 'utf8');
   const status = JSON.stringify({ running: true, installed: true, enabled: true, conflict: false, tunnelManaged: false });
@@ -53,6 +63,11 @@ try {
     `param([string]$Action,[switch]$Json)\nif ($Action -eq "Start") { exit 0 }\nif ($Action -ne "Status") { throw "Synthetic fixture" }\nWrite-Output '${status}'\n`, 'utf8');
   await fs.writeFile(path.join(fixture, 'scripts/remote-control-macos.sh'),
     `#!/bin/bash\nset -eu\n[[ "$1" != Start ]] || exit 0\n[[ "$1" == Status ]] || exit 1\nprintf '%s\\n' '${status}'\n`, 'utf8');
+  await manageAuthentication(fixture, { action: 'password', password: 'synthetic initial password' });
+  await run('node', ['--input-type=module', '-e',
+    `import {issueSession} from ${JSON.stringify(pathToFileURL(path.join(fixture, 'dist-server/server/auth.js')).href)};
+     process.stdout.write(JSON.stringify([issueSession('iPhone Safari/605'),issueSession('Windows Chrome/100')]))`],
+  { cwd: fixture });
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
   application = await _electron.launch({
@@ -218,6 +233,59 @@ try {
   if (!checked.ok) throw new Error(checked.error);
   if (await page.evaluate(() => window.__managerMarker) !== 'retained') throw new Error('Current-version check reloaded');
   results.currentCheckPreservesWindow = true;
+  await page.getByRole('button', { name: '设备与密码', exact: true }).click();
+  await until(() => page.evaluate(async () => (await window.manager.get()).value.security?.devices.length), 2, 'registered devices');
+  await page.getByText('iPhone · Safari', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '修改密码', exact: true }).click();
+  await page.getByLabel('新密码', { exact: true }).fill('synthetic changed password');
+  await page.getByLabel('确认新密码', { exact: true }).fill('different synthetic password');
+  await page.getByRole('button', { name: '保存密码', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: '两次输入的密码不一致' }).waitFor();
+  await page.getByRole('button', { name: '清除操作提示' }).click();
+  await page.getByLabel('确认新密码', { exact: true }).fill('synthetic changed password');
+  await page.screenshot({ path: path.join(root, `output/manager-smoke/${process.platform}-${packaged ? 'packaged' : 'source'}-security.png`) });
+  await application.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 0 }); });
+  await page.getByRole('button', { name: '保存密码', exact: true }).click();
+  await until(() => page.evaluate(async () => (await window.manager.get()).value.busy), '', 'cancelled password change');
+  if ((await manageAuthentication(fixture, { action: 'list' })).devices.length !== 2) throw new Error('Cancelled password change revoked devices');
+  await application.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
+  await page.getByRole('button', { name: '撤销 iPhone · Safari 的认证', exact: true }).click();
+  await until(() => page.evaluate(async () => (await window.manager.get()).value.security?.devices.length), 1, 'single device revoked');
+  await page.getByLabel('新密码', { exact: true }).fill('synthetic changed password');
+  await page.getByLabel('确认新密码', { exact: true }).fill('synthetic changed password');
+  await page.getByRole('button', { name: '保存密码', exact: true }).click();
+  await until(() => page.evaluate(async () => (await window.manager.get()).value.security?.devices.length), 0, 'password invalidated devices');
+  if ((await page.evaluate(async () => JSON.stringify((await window.manager.get()).value))).includes('synthetic changed password')) {
+    throw new Error('Password leaked into manager state');
+  }
+  const stored = await fs.readFile(path.join(fixture, 'data/auth.json'), 'utf8');
+  if (stored.includes('synthetic changed password')) throw new Error('Plaintext password persisted');
+  results.authenticationManagement = true;
+  await page.getByRole('button', { name: '概览', exact: true }).click();
+  await fs.appendFile(path.join(fixture, '.env'), 'PUBLIC_ORIGIN=https://remote.example.test\n');
+  await application.evaluate(({ net }) => {
+    const original = net.fetch.bind(net);
+    net.fetch = (url, options) => String(url).startsWith('https://remote.example.test/')
+      ? Promise.reject(Object.assign(new Error('Synthetic timeout'), { name: 'TimeoutError' })) : original(url, options);
+  });
+  await page.evaluate(() => window.manager.refresh());
+  await page.getByText('待确认', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '诊断公网连接' }).click();
+  await until(() => page.evaluate(async () => (await window.manager.get()).value.connectionReport?.state), 'unknown', 'uncertain public diagnosis');
+  await page.getByRole('region', { name: '连接诊断' }).getByText(/尚不能确认公网入口故障/).waitFor();
+  const externalRepair = await page.evaluate(() => window.manager.repair('Tunnel'));
+  if (externalRepair.ok || !externalRepair.error.includes('外部工具')) throw new Error('External tunnel was incorrectly adopted');
+  await page.getByRole('button', { name: '清除操作提示' }).click();
+  await page.getByRole('button', { name: '收起连接诊断' }).click();
+  await fs.writeFile(path.join(fixture, 'data/server.err.log'), 'password=synthetic-log-secret\nSynthetic service log');
+  await page.locator('.log-view summary').click();
+  await page.getByRole('button', { name: '服务日志', exact: true }).click();
+  await page.getByLabel('运行日志内容').waitFor();
+  if ((await page.getByLabel('运行日志内容').textContent()).includes('synthetic-log-secret')) throw new Error('Log secret not redacted');
+  results.actionableDiagnostics = true;
+  await page.locator('.log-view summary').click();
+  await page.locator('.content').evaluate(element => { element.scrollTop = 0; });
+  await page.evaluate(() => window.manager.dismiss());
   const actual = await page.evaluate(async () => (await window.manager.get()).value);
   await application.evaluate(({ BrowserWindow }, value) => {
     const contents = BrowserWindow.getAllWindows()[0].webContents;

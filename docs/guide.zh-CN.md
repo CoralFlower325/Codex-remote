@@ -1,5 +1,9 @@
 # Codex Remote 使用指南
 
+管理器 0.1.15 新增连接诊断、受管服务修复及本机密码和设备管理。
+公网超时仅表示尚未确认。请分别更新服务和管理器，操作范围见
+[管理器指南](desktop-manager.zh-CN.md)。
+
 本机 GUI 启停、托盘/菜单栏状态及确认更新见可选的[本机管理器](desktop-manager.zh-CN.md)。
 
 管理器 0.1.14 起优先使用 Windows x64／Apple Silicon 预构建运行包，标准安装更新不运行 npm 安装、

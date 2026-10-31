@@ -3,13 +3,14 @@ import { WebSocket } from 'ws';
 import type { TerminalClientMessage, TerminalServerMessage } from '../shared/terminal.js';
 import { TerminalManager, type TerminalWorkspace } from './terminal-manager.js';
 
-export function handleTerminalSocket(socket: WebSocket, manager: TerminalManager): void {
+export function handleTerminalSocket(socket: WebSocket, manager: TerminalManager, authorized = () => true): void {
   let workspace: TerminalWorkspace | null = null;
   let activeId: string | null = null;
   let detach: (() => void) | undefined;
   let unacknowledged = 0;
 
   function send(message: TerminalServerMessage) {
+    if (!authorized()) return;
     if (socket.readyState !== WebSocket.OPEN) return;
     if (message.type === 'terminal.output') unacknowledged += message.data.length;
     // A stalled phone can recover its screen from a snapshot without queuing unlimited output.
@@ -41,6 +42,7 @@ export function handleTerminalSocket(socket: WebSocket, manager: TerminalManager
   }
 
   socket.on('message', (raw) => {
+    if (!authorized()) return;
     try {
       const message = JSON.parse(raw.toString()) as TerminalClientMessage;
       if (message.type === 'ping') { send({ type: 'pong', at: new Date().toISOString() }); return; }

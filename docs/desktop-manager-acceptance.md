@@ -1,6 +1,20 @@
 # Desktop Manager Acceptance
 
-Latest functional batch: 0.1.14, 2026-10-31.
+Latest functional batch: 0.1.15, 2026-10-31.
+
+## Diagnostics And Device Administration
+
+Local validation passes 537 tests across 75 files, typecheck, web and manager
+builds. Synthetic Electron acceptance at 400/480/780 widths covers the simpler
+layout, uncertainty-aware public diagnostics, external-tunnel repair refusal,
+redacted log viewing, native cancellation, per-device revocation and password
+changes. Secrets are absent from manager state and plaintext output.
+Authentication tests cover legacy admission, logout revocation, corrupted storage,
+cross-process revocation and immediate/idle live-connection checks.
+Existing update/recovery, isolation and tray checks remain in the smoke harness.
+Final packaged CI and installed Windows evidence are tracked against the exact
+tagged source. Real user passwords and devices are never changed for acceptance.
+Physical Mac integration remains pending.
 
 ## Prebuilt Runtimes And Interrupted Updates
 

@@ -3,18 +3,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { config } from './config.js';
+import { listDeviceSessions, registerSession, revokeDeviceSession, sessionRegistered } from './session-store.js';
 
 interface AuthRecord {
   version: 1;
   salt: string;
   hash: string;
   updatedAt: string;
+  generation?: string;
 }
 
 interface SessionPayload {
   sid: string;
   exp: number;
   iat: number;
+  generation?: string;
+  version?: 2;
 }
 
 const COOKIE_NAME = 'codex_remote_session';
@@ -37,9 +41,14 @@ function readJson<T>(filePath: string): T | null {
 
 function writeJsonPrivate(filePath: string, value: unknown): void {
   ensureDataDir();
-  const temp = `${filePath}.${process.pid}.tmp`;
-  fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
-  fs.renameSync(temp, filePath);
+  const temp = `${filePath}.${crypto.randomUUID()}.tmp`;
+  const descriptor = fs.openSync(temp, 'wx', 0o600);
+  try {
+    fs.writeFileSync(descriptor, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    fs.fsyncSync(descriptor);
+  } finally { fs.closeSync(descriptor); }
+  try { fs.renameSync(temp, filePath); }
+  finally { fs.rmSync(temp, { force: true }); }
 }
 
 function getSessionSecret(): Buffer {
@@ -68,7 +77,7 @@ function parseCookies(header: string | undefined): Record<string, string> {
     if (separator === -1) continue;
     const key = part.slice(0, separator).trim();
     const value = part.slice(separator + 1).trim();
-    if (key) result[key] = decodeURIComponent(value);
+    if (key) { try { result[key] = decodeURIComponent(value); } catch { /* Ignore malformed cookies. */ } }
   }
   return result;
 }
@@ -89,7 +98,8 @@ export async function setPassword(password: string): Promise<void> {
     version: 1,
     salt: salt.toString('base64url'),
     hash: hash.toString('base64url'),
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    generation: crypto.randomUUID()
   } satisfies AuthRecord);
 }
 
@@ -112,20 +122,48 @@ function scrypt(password: string, salt: Buffer): Promise<Buffer> {
   });
 }
 
-export function issueSession(): string {
+function sessionGeneration(): string {
+  const record = readJson<AuthRecord>(config.authFile);
+  if (!record) {
+    if (fs.existsSync(config.authFile)) throw new Error('认证文件无法读取。');
+    return 'legacy';
+  }
+  return record.generation || 'legacy';
+}
+
+export function authenticatedDevices() {
+  const generation = sessionGeneration();
+  const devices = listDeviceSessions(config.dataDir, generation);
+  return { devices: devices.slice(0, 200), deviceCount: devices.length, legacyDevicesPossible: generation === 'legacy' };
+}
+
+export function revokeDevice(id: string): void {
+  revokeDeviceSession(config.dataDir, id);
+}
+
+export function revokeAllDevices(): void {
+  const record = readJson<AuthRecord>(config.authFile);
+  if (!record?.hash) throw new Error('尚未设置访问密码。');
+  writeJsonPrivate(config.authFile, { ...record, generation: crypto.randomUUID() });
+}
+
+export function issueSession(agent?: string): string {
   const secret = getSessionSecret();
   const payload: SessionPayload = {
     sid: crypto.randomBytes(24).toString('base64url'),
     iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + config.sessionDays * 24 * 60 * 60
+    exp: Math.floor(Date.now() / 1000) + config.sessionDays * 24 * 60 * 60,
+    generation: sessionGeneration(),
+    version: 2
   };
+  registerSession(config.dataDir, payload.sid, payload.iat, payload.exp, payload.generation!, agent);
   const encoded = base64UrlJson(payload);
   const signature = crypto.createHmac('sha256', secret).update(encoded).digest('base64url');
   return `${encoded}.${signature}`;
 }
 
-export function verifySessionToken(token: string | undefined): SessionPayload | null {
-  if (!token) return null;
+export function verifySessionToken(token: string | undefined, agent?: string): SessionPayload | null {
+  if (!token || token.length > 4096 || token.split('.').length !== 2) return null;
   const [encoded, signature] = token.split('.');
   if (!encoded || !signature) return null;
 
@@ -136,16 +174,27 @@ export function verifySessionToken(token: string | undefined): SessionPayload | 
 
   try {
     const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as SessionPayload;
-    if (!payload.sid || payload.exp <= Math.floor(Date.now() / 1000)) return null;
+    if (typeof payload.sid !== 'string' || !/^[a-zA-Z0-9_-]{32}$/.test(payload.sid) ||
+      !Number.isSafeInteger(payload.exp) || !Number.isSafeInteger(payload.iat) ||
+      payload.exp <= Math.floor(Date.now() / 1000)) return null;
+    const generation = sessionGeneration();
+    if ((payload.generation || 'legacy') !== generation) return null;
+    if (!payload.version) registerSession(config.dataDir, payload.sid, payload.iat, payload.exp, generation, agent);
+    if (!sessionRegistered(config.dataDir, payload.sid, generation)) return null;
     return payload;
   } catch {
     return null;
   }
 }
 
-export function readSessionCookie(cookieHeader: string | undefined): SessionPayload | null {
+export function readSessionCookie(cookieHeader: string | undefined, agent?: string): SessionPayload | null {
   const cookies = parseCookies(cookieHeader);
-  return verifySessionToken(cookies[COOKIE_NAME]);
+  return verifySessionToken(cookies[COOKIE_NAME], agent);
+}
+
+export function revokeSessionCookie(cookieHeader: string | undefined): void {
+  const session = readSessionCookie(cookieHeader);
+  if (session) revokeDevice(crypto.createHash('sha256').update(session.sid).digest('hex'));
 }
 
 export function sessionCookie(token: string, secure: boolean): string {

@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.1.15', changes: [
+    '简化本机管理器，按概览、设备与密码、版本更新组织，保留小窗口进度与托盘操作。',
+    '公网探测区分待确认和响应异常，新增连接复检、受管服务修复及脱敏日志查看。',
+    '支持在本机管理器修改访问密码、查看已认证设备并撤销单个或全部设备。',
+    '改密或撤销认证后，旧登录失效，现有网页与终端连接停止访问；兼容旧版有效登录。'
+  ] },
   { version: '0.1.14', changes: [
     '新增 Windows 和 Apple Silicon 预构建运行包，标准安装更新无需下载 npm 依赖或本机构建。',
     '下载按实际字节推进，安装前校验官方摘要、归档路径、所有文件和运行环境。',

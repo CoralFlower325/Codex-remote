@@ -1,7 +1,7 @@
 {
   "name": "codex-remote-manager",
   "productName": "Codex Remote Manager",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "private": true,
   "type": "module",
   "main": "main.mjs",

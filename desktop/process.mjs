@@ -1,9 +1,13 @@
 import { spawn } from 'node:child_process';
 
-export function run(file, args, { cwd, timeout = 30_000, env = process.env, onLine, raw = false } = {}) {
+export function run(file, args, { cwd, timeout = 30_000, env = process.env, onLine, raw = false, input } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(file, args, { cwd, env, windowsHide: true, shell: false,
       detached: process.platform !== 'win32' });
+    if (input !== undefined) {
+      child.stdin.on('error', () => {});
+      child.stdin.end(input);
+    }
     let output = '';
     const chunks = [];
     let size = 0;

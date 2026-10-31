@@ -31,6 +31,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: npm run build
       - run: npm run manager:install
       - run: npm run manager:build
       - run: npm --prefix desktop run smoke

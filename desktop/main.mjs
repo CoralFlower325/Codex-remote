@@ -7,6 +7,8 @@ import { latestRelease, prepareUpdate, installUpdate } from './updater.mjs';
 import { discoverInstallations, preferredInstallation } from './discovery.mjs';
 import { updateError, createUpdateProgress } from './update-progress.mjs';
 import { pendingUpdate, recoverPendingUpdate } from './update-transaction.mjs';
+import { manageAuthentication } from './security.mjs';
+import { repairControl, readDiagnosticLogs } from './diagnostics.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fetchRelease = (url, options) => net.fetch(url, { ...options, credentials: 'omit' });
@@ -21,7 +23,7 @@ let suppressActivationUntil = 0;
 let healthError = '';
 let settings = { root: '', launchAtLogin: false };
 let state = { status: null, busy: '', error: '', release: null, result: '', events: [], installations: [],
-  updateProgress: null, recoveryRequired: false };
+  updateProgress: null, recoveryRequired: false, security: null, connectionReport: null, logs: null };
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 function event(message) {
   state.events = [{ time: Date.now(), message }, ...state.events].slice(0, 60);
@@ -43,7 +45,7 @@ async function refresh() {
   if (state.busy || !settings.root) return;
   polling = (async () => {
     try {
-      state.status = await health(settings.root);
+      state.status = await health(settings.root, undefined, process.platform, fetchRelease);
       healthError = '';
     } catch (error) {
       healthError = error.message;
@@ -164,6 +166,68 @@ async function openRemote() {
   const info = await installation(settings.root);
   await shell.openExternal(info.publicUrl || info.localUrl);
 }
+async function diagnose() {
+  return exclusive('正在复检连接', async () => {
+    const status = await health(settings.root, undefined, process.platform, fetchRelease, { publicTimeout: 12_000 });
+    state.status = status;
+    state.connectionReport = { checkedAt: status.checkedAt, ...status.publicEntry };
+    event(status.publicEntry.reachable ? '公网复检通过' : '公网复检完成，需查看诊断结果');
+  });
+}
+async function repair(target) {
+  if (!['Server', 'Tunnel'].includes(target)) throw new Error('未知修复目标。');
+  const selectedRoot = settings.root;
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'question', title: target === 'Tunnel' ? '修复受管隧道' : '修复 Remote 服务',
+    message: target === 'Tunnel' ? '重启当前安装的受管隧道？' : '重启当前安装的 Remote 服务？',
+    detail: target === 'Tunnel' ? '公网连接会短暂中断，Remote 和 Codex Desktop 保持运行。'
+      : 'Remote 会短暂离线，Codex Desktop 和独立隧道保持运行。',
+    buttons: ['取消', '开始修复'], defaultId: 0, cancelId: 0
+  });
+  if (response !== 1) return;
+  return exclusive('正在修复连接', async () => {
+    if (settings.root !== selectedRoot) throw new Error('安装目录已改变，请重新确认修复。');
+    await requireCompletedUpdate();
+    const status = await health(settings.root, undefined, process.platform, fetchRelease);
+    if (['conflict', 'unowned'].includes(status.state)) throw new Error('请先解决服务归属或端口冲突。');
+    await repairControl(status, target);
+    if (target === 'Server') await verify({ requireDesktop: false });
+    const checked = await health(settings.root, undefined, process.platform, fetchRelease, { publicTimeout: 12_000 });
+    state.connectionReport = { checkedAt: checked.checkedAt, ...checked.publicEntry };
+    state.result = target === 'Tunnel' ? '受管隧道已重新启动，请查看连接复检结果。' : 'Remote 已重新启动，请查看健康状态。';
+  });
+}
+async function security(request) {
+  const selectedRoot = settings.root;
+  if (!request || !['list', 'password', 'revoke', 'revoke-all'].includes(request.action)) throw new Error('未知认证操作。');
+  if (request.action === 'password' && (typeof request.password !== 'string' || request.password.trim().length < 6 ||
+    request.password.length > 256 || request.password !== request.confirm)) throw new Error('请输入两次相同的新密码，长度为 6 至 256 位。');
+  if (request.action === 'revoke' && (typeof request.id !== 'string' || !/^[a-f0-9]{64}$/.test(request.id))) throw new Error('请选择有效设备。');
+  if (request.action !== 'list') {
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'warning', title: '管理设备认证',
+      message: request.action === 'password' ? '修改访问密码并退出所有设备？'
+        : request.action === 'revoke-all' ? '撤销所有设备的认证？' : '撤销此设备的认证？',
+      detail: '受影响浏览器需要重新登录，现有网页及终端连接将断开。系统推送权限需在设备上另行管理。',
+      buttons: ['取消', '确认操作'], defaultId: 0, cancelId: 0
+    });
+    if (response !== 1) return;
+  }
+  return exclusive(request.action === 'list' ? '正在读取已认证设备' : '正在更新设备认证', async () => {
+    if (settings.root !== selectedRoot) throw new Error('安装目录已改变，请重新确认认证操作。');
+    await requireCompletedUpdate();
+    const status = await health(settings.root, undefined, process.platform, fetchRelease);
+    if (['conflict', 'unowned'].includes(status.state)) throw new Error('请先解决服务归属或端口冲突。');
+    state.security = await manageAuthentication(settings.root, {
+      action: request.action, ...(request.action === 'password' ? { password: request.password } : {}),
+      ...(request.action === 'revoke' ? { id: request.id } : {})
+    });
+    if (request.action !== 'list') {
+      state.result = request.action === 'password' ? '访问密码已修改，旧登录已失效。' : '设备认证已撤销。';
+      event(state.result);
+    }
+  });
+}
 async function checkUpdate() {
   return exclusive('正在检查更新', async () => {
     const info = await installation(settings.root);
@@ -258,6 +322,7 @@ async function selectDirectory(directory, discoveredOnly = false) {
     }
     const info = await installation(directory);
     settings.root = info.root; state.release = null; state.status = null; state.result = ''; state.error = '';
+    state.security = null; state.connectionReport = null; state.logs = null;
     healthError = '';
     if (!discoveredOnly) state.installations = [];
     await saveSettings();
@@ -275,6 +340,7 @@ async function detectDirectory() {
     const selected = preferredInstallation(state.installations, settings.root);
     if (settings.root !== (selected?.root || '')) {
       state.release = null; state.status = null; healthError = '';
+      state.security = null; state.connectionReport = null; state.logs = null;
     }
     settings.root = selected?.root || '';
     state.recoveryRequired = Boolean(settings.root);
@@ -366,6 +432,13 @@ else {
   handle('check', checkUpdate);
   handle('update', update);
   handle('recover', recoverInstallation);
+  handle('diagnose', diagnose);
+  handle('repair', repair);
+  handle('security', security);
+  handle('logs', (kind) => exclusive('正在读取日志', async () => {
+    const info = await installation(settings.root);
+    state.logs = { kind, text: await readDiagnosticLogs(info, kind) };
+  }));
   handle('folder', async () => {
     const info = await installation(settings.root);
     const error = await shell.openPath(info.root);

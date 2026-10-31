@@ -102,7 +102,7 @@ Publish the protected web origin through an **HTTPS tunnel or reverse proxy**. T
 After setup, the host's `Start Remote.cmd` / `Stop Remote.cmd` or `.command` files manage background operation. Windows needs no persistent console window. Stopping Remote leaves Codex Desktop open. Windows controls also manage the configured Tunnel task; macOS manages an independent tunnel separately.
 
 The optional [Desktop Manager](docs/desktop-manager.md) detects installed hosts and adds local start/stop,
-health checks and confirmed version updates, with a Windows notification-area icon
+actionable health checks, password/device administration and confirmed version updates, with a Windows notification-area icon
 or macOS top menu-bar icon. Updates show Chinese stages, percentage progress and elapsed
 time. Standard installations prefer verified prebuilt runtimes; customized source
 installations retain isolated builds. Interrupted installs recover when the manager restarts.

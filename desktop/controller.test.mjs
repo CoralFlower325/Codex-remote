@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { controlCommand, summarize, probe, serviceStatus, externalEntry, health, diagnostics, startupReady } from './controller.mjs';
+import { controlCommand, summarize, probe, serviceStatus, externalEntry, health, diagnostics, startupReady, publicDiagnosis } from './controller.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -64,7 +64,7 @@ describe('local manager control boundary', () => {
       const body = { ok: true, codex: 'ready', transport: 'desktop', passwordConfigured: true };
       const fetcher = vi.fn().mockImplementation(async () => ({ ok: true, json: async () => body }));
       const result = await health(root, execute, 'darwin', fetcher);
-      expect(result.publicEntry).toEqual({ configured: true, reachable: true });
+      expect(result.publicEntry).toMatchObject({ configured: true, reachable: true, state: 'reachable' });
       expect(result.tunnel).toEqual({ managed: false, ready: false });
       expect(result.state).toBe('healthy');
       expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
@@ -86,6 +86,23 @@ describe('local manager control boundary', () => {
     expect(externalEntry({ reachable: true, body: { ok: true } })).toBe(false);
     expect(externalEntry({ reachable: false, body: { ok: true, codex: 'ready', transport: 'desktop' } })).toBe(false);
     expect(externalEntry({ reachable: true, body: { ok: true, codex: 'offline', transport: 'desktop' } })).toBe(true);
+  });
+  it('distinguishes uncertain network probes from HTTP and wrong-origin failures', async () => {
+    const timeout = await probe('https://remote.example.com/health', true,
+      async () => { throw Object.assign(new Error('timeout'), { name: 'TimeoutError' }); });
+    expect(publicDiagnosis(timeout)).toMatchObject({ state: 'unknown' });
+    expect(publicDiagnosis(timeout).detail).toContain('不能确认');
+    const http = await probe('https://remote.example.com/health', true, async () => ({ ok: false, status: 530 }));
+    expect(publicDiagnosis(http)).toMatchObject({ state: 'http-error' });
+    expect(publicDiagnosis(http).detail).toContain('530');
+    expect(publicDiagnosis({ reachable: true, body: { ok: true } }).state).toBe('unexpected');
+    expect(publicDiagnosis(null).state).toBe('unconfigured');
+  });
+  it('sends sensitive subprocess input through stdin without including it in argv', async () => {
+    const password = 'synthetic-secret-with-spaces';
+    const value = await run(process.execPath, ['-e', 'let b="";process.stdin.on("data",c=>b+=c);process.stdin.on("end",()=>process.stdout.write(JSON.stringify({same:b==="synthetic-secret-with-spaces",args:process.argv.slice(1)})))'],
+      { input: password });
+    expect(JSON.parse(value)).toEqual({ same: true, args: [] });
   });
   it('allows a started service to await Desktop while preserving strict update verification', () => {
     const status = { state: 'degraded', service: { running: true }, backend: { ready: true },

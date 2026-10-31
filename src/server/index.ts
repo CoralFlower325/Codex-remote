@@ -17,6 +17,7 @@ import {
   isPasswordConfigured,
   issueSession,
   readSessionCookie,
+  revokeSessionCookie,
   sessionCookie,
   setPassword,
   verifyPassword
@@ -43,6 +44,7 @@ import { metadataRouter } from './metadata-router.js';
 import { threadDockRouter } from './thread-dock-router.js';
 import { historyItemRouter } from './history-item-router.js';
 import { readThreadSummaryPage } from './thread-summary.js';
+import { SessionConnections } from './session-connections.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -75,7 +77,12 @@ const queueDispatcher = new QueueDispatcher(<T,>(method: import('../shared/proto
   codexBridge.request(method, params) as Promise<T>);
 const terminalWss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
 const terminals = new TerminalManager(config.codexWorkdir);
-terminalWss.on('connection', (socket) => handleTerminalSocket(socket, terminals));
+const sessionConnections = new SessionConnections();
+terminalWss.on('connection', (socket, req) => {
+  sessionConnections.add(socket, () => Boolean(readSessionCookie(req.headers.cookie, req.headers['user-agent'])));
+  socket.on('close', () => sessionConnections.delete(socket));
+  handleTerminalSocket(socket, terminals, () => sessionConnections.allowed(socket));
+});
 
 app.set('trust proxy', config.trustProxy);
 app.disable('x-powered-by');
@@ -85,14 +92,14 @@ app.use('/api/connection', requireAuth, (req, _res, next) => {
   next();
 }, express.json({ limit: '100mb' }), httpConnections({
   session: req => readSessionCookie(req.headers.cookie)!.sid,
-  connect: connectClient,
+  connect: (peer, req) => connectClient(peer, () => isAuthenticated(req)),
   disconnect: disconnectClient,
   message: handleClientMessage
 }));
 app.use(express.json({ limit: '1mb' }));
 
 function isAuthenticated(req: Request): boolean {
-  return Boolean(readSessionCookie(req.headers.cookie));
+  return Boolean(readSessionCookie(req.headers.cookie, req.headers['user-agent']));
 }
 
 function isLocalRequest(req: Request): boolean {
@@ -207,7 +214,7 @@ app.post(
 
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     await setPassword(password);
-    const token = issueSession();
+    const token = issueSession(req.headers['user-agent']);
     res.setHeader('Set-Cookie', sessionCookie(token, isSecureRequest(req)));
     res.json({ ok: true });
   })
@@ -233,7 +240,7 @@ app.post(
     }
 
     clearLoginFailures(key);
-    const token = issueSession();
+    const token = issueSession(req.headers['user-agent']);
     res.setHeader('Set-Cookie', sessionCookie(token, isSecureRequest(req)));
     res.json({ ok: true });
   })
@@ -243,6 +250,7 @@ app.post(
   '/api/auth/logout',
   asyncRoute(async (req, res) => {
     assertTrustedOrigin(req);
+    revokeSessionCookie(req.headers.cookie);
     res.setHeader('Set-Cookie', clearSessionCookie(isSecureRequest(req)));
     res.json({ ok: true });
   })
@@ -460,7 +468,7 @@ const handleUpgrade = (req: http.IncomingMessage, socket: Duplex, head: Buffer) 
       return;
     }
 
-    if (!readSessionCookie(req.headers.cookie)) {
+    if (!readSessionCookie(req.headers.cookie, req.headers['user-agent'])) {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
       socket.destroy();
       return;
@@ -477,15 +485,16 @@ const handleUpgrade = (req: http.IncomingMessage, socket: Duplex, head: Buffer) 
 server.on('upgrade', handleUpgrade);
 lanServer?.on('upgrade', handleUpgrade);
 
-wss.on('connection', (socket) => {
-  connectClient(socket);
+wss.on('connection', (socket, req) => {
+  connectClient(socket, () => Boolean(readSessionCookie(req.headers.cookie, req.headers['user-agent'])));
   socket.on('message', (data) => {
     void handleClientMessage(socket, data.toString());
   });
   socket.on('close', () => disconnectClient(socket));
 });
 
-function connectClient(socket: RemotePeer): void {
+function connectClient(socket: RemotePeer, authorized?: () => boolean): void {
+  if (authorized) sessionConnections.add(socket, authorized);
   clients.add(socket);
   watchedThreads.set(socket, new Set());
   send(socket, {
@@ -507,6 +516,7 @@ function connectClient(socket: RemotePeer): void {
 }
 
 function disconnectClient(socket: RemotePeer): void {
+  sessionConnections.delete(socket);
   clients.delete(socket);
   synchronizedClients.delete(socket);
   watchedThreads.delete(socket);
@@ -514,6 +524,7 @@ function disconnectClient(socket: RemotePeer): void {
 }
 
 async function handleClientMessage(socket: RemotePeer, raw: string): Promise<void> {
+  if (!sessionConnections.allowed(socket)) return;
   let message: ClientMessage;
   try {
     message = JSON.parse(raw) as ClientMessage;
@@ -539,7 +550,10 @@ async function handleClientMessage(socket: RemotePeer, raw: string): Promise<voi
     watchedThreads.set(socket, ids);
     ephemeralChats.claim(message.additionalThreadIds ?? [], socket);
     const replay = eventJournal.resume(message.epoch, message.after, ids);
-    for (const entry of replay.entries) socket.send(entry.payload);
+    for (const entry of replay.entries) {
+      if (!sessionConnections.allowed(socket)) break;
+      socket.send(entry.payload);
+    }
     send(socket, { type: 'questions.snapshot', counts: questionTracker.snapshot() });
     send(socket, { type: 'server.request.snapshot', requests: codexBridge.getPendingServerRequests() });
     send(socket, { type: 'sync.ready', epoch: replay.epoch, sequence: replay.sequence, resumed: replay.resumed });
@@ -604,12 +618,14 @@ function broadcast(message: ServerMessage): void {
   );
   if (recipients.length === 0) return;
   for (const client of recipients) {
+    if (!sessionConnections.allowed(client)) continue;
     if (client.bufferedAmount > 2 * 1024 * 1024) client.close(1013, 'Connection congested; resume.');
     else client.send(entry.payload);
   }
 }
 
 function send(socket: RemotePeer, message: ServerMessage): void {
+  if (!sessionConnections.allowed(socket)) return;
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 }
 
@@ -705,6 +721,7 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 function shutdown(): void {
+  sessionConnections.dispose();
   for (const client of terminalWss.clients) client.close();
   terminals.dispose();
   for (const client of clients) client.close();

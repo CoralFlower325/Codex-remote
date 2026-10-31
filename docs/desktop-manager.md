@@ -69,6 +69,27 @@ probe; they do not need to be edited before opening the manager.
 - Bounded operation records contain manager actions only and stay in memory.
   Installation files open locally; diagnostics are not uploaded.
 
+## Diagnosis And Device Access
+
+Version 0.1.15 organizes controls into Overview, Devices and Password, and Updates.
+Network failures/timeouts show an unknown public-entry state; HTTP errors and
+unexpected health responses remain distinct. Recheck uses a longer bounded probe
+through the system network stack. Open the entry or inspect bounded, redacted local
+logs. Confirmed repair restarts only the selected owned Remote service or Windows
+managed tunnel. It never restarts Desktop or takes over external macOS tunnels.
+Repair does not fix DNS, proxy settings or a disabled Desktop debug endpoint.
+
+Devices and Password uses local IPC and a stdin-only administration command, with
+native confirmation before changing credentials. Change the access password or
+revoke one/all browser sessions; password changes invalidate every old login.
+Existing WS/SSE/terminal connections stop accepting access immediately on activity
+or within five seconds when idle. Already dispatched model work continues.
+Device records contain browser/OS labels and timestamps, not cookies, raw user
+agents or IPs. Each browser profile/login is a separate session. Up to 200 recent
+active sessions are shown; legacy logins appear on their next use. Revoke all also
+invalidates unseen legacy logins. OS Web Push permissions are managed separately.
+Install the new manager and update the host to enable these controls.
+
 ## Local Updates
 
 Check the release in **Version updates**, read its summary and confirm installation

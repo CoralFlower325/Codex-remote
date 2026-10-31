@@ -252,6 +252,12 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Persist installation phases before mutations; recover unfinished transactions
   before service actions on startup. Retain recovery evidence across crashes,
   preserve stopped state, and block overwriting edits made after interruption.
+  Public probe timeout/network failures are unknown observations, not proof of
+  downtime. Repairs require confirmation and fresh ownership checks, target only
+  the selected service, and never adopt external tunnels or restart Desktop.
+  Password/device administration uses local IPC and stdin, never HTTP routes or
+  command-line secrets. Password changes invalidate all sessions; revoke live
+  WS/SSE/terminal access as well as later requests. Store private device metadata.
 - Windows Tunnel tasks run the owned Node supervisor. Restart exited cloudflared
   after one second, backing off repeated crashes to five seconds. Poll readiness
   every two seconds and wake on native address/availability events. Rebuild only

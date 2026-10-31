@@ -100,7 +100,7 @@ cd Codex-remote
 
 安装完成后，主机上的 `Start Remote.cmd` / `Stop Remote.cmd` 或 `.command` 文件管理后台运行，Windows 无需常驻终端。关闭 Remote 会保留 Codex Desktop；Windows 开关也管理已配置的 Tunnel 任务，macOS 的独立隧道需单独管理。
 
-可选的[本机管理器](docs/desktop-manager.zh-CN.md)自动探测安装目录，提供启停、健康检测与确认后的版本更新，
+可选的[本机管理器](docs/desktop-manager.zh-CN.md)自动探测安装目录，提供启停、诊断修复、密码和设备管理与确认后的版本更新，
 Windows 常驻右下通知区域，macOS 常驻顶部菜单栏。
 更新显示中文步骤、百分比和耗时；标准安装优先使用校验后的预构建运行包，
 源码定制安装保留隔离构建。管理器重启后可恢复中断的安装。

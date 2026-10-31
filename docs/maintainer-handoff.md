@@ -15,7 +15,15 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The 0.1.14 batch adds verified platform runtime assets and durable installation
+The 0.1.15 batch simplifies the manager and adds uncertainty-aware public diagnosis,
+bounded redacted logs and confirmed repair of owned services. Device/password
+administration is local-only, with stdin secrets and durable session revocation.
+Old logins remain compatible until observed/revoked; password changes invalidate
+all generations. Active WS/SSE/terminal peers check revocation on activity and at
+five-second idle intervals. External tunnels and Desktop remain independently
+owned. Install both the manager and host update for the security controls.
+
+The preceding 0.1.14 batch adds verified platform runtime assets and durable installation
 transactions. Standard updates use release-provided source baselines and production
 dependencies without Git/npm/build; customized inputs retain the source path.
 `runtime.yml` builds Windows x64 and Apple Silicon assets, validates the unpacked

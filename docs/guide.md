@@ -1,5 +1,9 @@
 # Codex Remote Guide
 
+Manager 0.1.15 adds connection diagnosis/owned-service repair and local password/
+device administration. Public timeouts remain unconfirmed observations. Update
+both host and manager; see [the manager guide](desktop-manager.md) for scope.
+
 Manager 0.1.14+ prefers Windows x64 / Apple Silicon prebuilt runtimes. Standard
 updates skip npm installation, tests and local compilation; Node.js 22.19+ is still
 required. Source customizations or unavailable baselines use isolated source builds.

@@ -67,15 +67,28 @@ export async function serviceStatus(info, execute = run, platform = process.plat
   }
 }
 
-export async function probe(url, json = true, fetcher = fetch) {
+export async function probe(url, json = true, fetcher = fetch, timeout = 2500) {
   const started = Date.now();
   try {
-    const response = await fetcher(url, { signal: AbortSignal.timeout(2500), redirect: 'error',
+    const response = await fetcher(url, { signal: AbortSignal.timeout(timeout), redirect: 'error',
       cache: 'no-store' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) return { reachable: false, ms: Date.now() - started, body: null,
+      failure: 'http', httpStatus: response.status };
     const body = json ? await response.json() : null;
     return { reachable: true, ms: Date.now() - started, body };
-  } catch { return { reachable: false, ms: Date.now() - started, body: null }; }
+  } catch (error) {
+    return { reachable: false, ms: Date.now() - started, body: null,
+      failure: ['TimeoutError', 'AbortError'].includes(error.name) ? 'timeout' : 'network' };
+  }
+}
+
+export function publicDiagnosis(result) {
+  if (externalEntry(result)) return { state: 'reachable', detail: '公网健康接口响应正常。' };
+  if (!result) return { state: 'unconfigured', detail: '未配置公网入口。' };
+  if (result.failure === 'http') return { state: 'http-error', detail: `公网入口返回 HTTP ${result.httpStatus}，需要检查隧道或上游代理。` };
+  if (result.failure === 'timeout') return { state: 'unknown', detail: '本次探测超时，尚不能确认公网入口故障。可复检，或从其他设备打开入口。' };
+  if (result.reachable) return { state: 'unexpected', detail: '入口已响应，但不是预期的 Remote 健康接口，请检查域名指向。' };
+  return { state: 'unknown', detail: '本机未能完成公网请求，可能与 DNS、代理或网络有关。可复检，或从其他设备打开入口。' };
 }
 
 export function portListening(localUrl) {
@@ -131,7 +144,7 @@ export function startupReady(status, requireDesktop = true) {
     (!status.tunnel.managed || status.tunnel.ready) && (!requireDesktop || status.desktop);
 }
 
-export async function health(directory, execute = run, platform = process.platform, fetcher = fetch) {
+export async function health(directory, execute = run, platform = process.platform, fetcher = fetch, { publicTimeout = 5000 } = {}) {
   const info = await installation(directory);
   const service = await serviceStatus(info, execute, platform);
   const [local, tunnel, listening, external] = await Promise.all([
@@ -139,7 +152,7 @@ export async function health(directory, execute = run, platform = process.platfo
     service.tunnelManaged ? probe('http://127.0.0.1:20241/ready', false, fetcher)
       : Promise.resolve({ reachable: false, body: null }),
     portListening(info.localUrl),
-    info.publicUrl ? probe(`${info.publicUrl}/health`, true, fetcher) : Promise.resolve(null)
+    info.publicUrl ? probe(`${info.publicUrl}/health`, true, fetcher, publicTimeout) : Promise.resolve(null)
   ]);
   const desktop = local.body?.codex === 'ready' && local.body?.transport === 'desktop';
   const debug = local.body?.ok === true && !desktop
@@ -154,7 +167,7 @@ export async function health(directory, execute = run, platform = process.platfo
           target.url.includes('app://-/index.html'))) },
     passwordConfigured: local.body?.passwordConfigured === true,
     tunnel: { managed: Boolean(service.tunnelManaged), ready: tunnel.reachable },
-    publicEntry: { configured: Boolean(info.publicUrl), reachable: externalEntry(external) },
+    publicEntry: { configured: Boolean(info.publicUrl), reachable: externalEntry(external), ...publicDiagnosis(external) },
     state: summarize(service, { ...local, listening }, tunnel) };
   return { ...status, diagnostics: diagnostics(status) };
 }

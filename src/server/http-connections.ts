@@ -25,7 +25,7 @@ export function httpConnections({
   session, connect, disconnect, message
 }: {
   session: (req: Request) => string;
-  connect: (peer: RemotePeer) => void;
+  connect: (peer: RemotePeer, req: Request) => void;
   disconnect: (peer: RemotePeer) => void;
   message: (peer: RemotePeer, raw: string) => Promise<void>;
 }): Router {
@@ -53,7 +53,7 @@ export function httpConnections({
       if (peers.get(id) === peer) peers.delete(id);
       disconnect(peer);
     });
-    connect(peer);
+    connect(peer, req);
   });
   router.post('/', (req, res) => {
     const id = key(req);
