@@ -1,6 +1,7 @@
 # Codex Remote 使用指南
 
-Remote 0.2.3 将晚到的原生事件留在所属轮次，不改写消息内容和原生时间锚点。
+Remote 0.2.4 将晚到的原生事件留在所属轮次，随后原生读取校准不重复条目，
+保留消息内容和原生时间锚点。
 详见[原生聊天顺序](native-history-order.md)。稳定管理器为 Remote v0.2.2 配套的
 0.2.0，仍通过安装包手动升级。管理器自更新保存为暂停的 0.2.0AU 开发线，
 详见[开发断点](manager-self-update-checkpoints.md)。

@@ -131,23 +131,33 @@ export function mergeLatestHistoryItems(
   latest: ThreadItem[],
   snapshotBaseline?: ThreadItem[]
 ): ThreadItem[] {
-  const currentById = new Map(current.map((item, index) => [itemKey(item), { item, index }]));
+  const currentById = new Map(current.map(item => [itemKey(item), item]));
   const baseline = snapshotBaseline && new Map(snapshotBaseline.map((item) => [itemKey(item), item]));
-  const firstShared = latest.map((item) => currentById.get(itemKey(item))?.index).find((index) => index !== undefined);
-  let cursor = firstShared ?? current.length;
-  const next = current.slice(0, cursor);
-  for (const item of latest) {
-    const existing = currentById.get(itemKey(item));
-    if (!existing) {
-      next.push(item);
-      continue;
+  const native = new Map(latest.map(item => [itemKey(item), item]));
+  const before = new Map<string, ThreadItem[]>();
+  let prefix: ThreadItem[] = [], remaining: ThreadItem[] = [];
+  let anchored = false;
+  // Native reads may reorder late events. Anchor live-only entries to their next
+  // native neighbour instead of walking backwards through the current array.
+  for (const item of current) {
+    const key = itemKey(item);
+    if (native.has(key)) {
+      if (!anchored) { prefix = remaining; anchored = true; }
+      else before.set(key, remaining);
+      remaining = [];
+    } else {
+      remaining.push(item);
     }
-    while (cursor < existing.index) next.push(current[cursor++]!);
-    const changedDuringRequest = baseline && baseline.get(itemKey(item)) !== existing.item;
-    next.push(changedDuringRequest || JSON.stringify(existing.item) === JSON.stringify(item) ? existing.item : item);
-    cursor = existing.index + 1;
   }
-  next.push(...current.slice(cursor));
+  if (!anchored) { prefix = remaining; remaining = []; }
+  const next = [...prefix];
+  for (const [key, item] of native) {
+    const existing = currentById.get(key);
+    const changedDuringRequest = existing && baseline && baseline.get(key) !== existing;
+    next.push(...(before.get(key) ?? []), existing &&
+      (changedDuringRequest || JSON.stringify(existing) === JSON.stringify(item)) ? existing : item);
+  }
+  next.push(...remaining);
   return next.length === current.length && next.every((item, index) => item === current[index]) ? current : next;
 }
 

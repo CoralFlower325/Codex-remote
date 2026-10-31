@@ -52,6 +52,32 @@ describe('remote thread state', () => {
     expect(mergeLatestHistoryItems(items, [{ ...second }])).toBe(items);
     expect(mergeLatestHistoryItems(items, [{ ...second, text: 'Updated' }])).toEqual([first, { ...second, text: 'Updated' }]);
   });
+  it('follows native history order after delayed events without duplicating or rewinding live text', () => {
+    const answer: ThreadItem = { type: 'agentMessage', id: 'answer', turnId: 'old', text: 'Answer' };
+    const command: ThreadItem = { type: 'commandExecution', id: 'command', turnId: 'old',
+      command: 'echo test', cwd: '/project', status: 'completed', aggregatedOutput: 'test',
+      exitCode: 0, durationMs: 1 };
+    const user: ThreadItem = { type: 'userMessage', id: 'user', turnId: 'new', content: [] };
+    const partial: ThreadItem = { type: 'agentMessage', id: 'answer', turnId: 'new', text: 'Partial' };
+    const live: ThreadItem = { ...partial, text: 'Partial plus live' };
+    const baseline = [answer, command, user, partial];
+    const current = [answer, command, user, live];
+    const native = [command, answer, user, partial];
+    const result = mergeLatestHistoryItems(current, native, baseline);
+    expect(result).toEqual([command, answer, user, live]);
+    expect(new Set(result.map(item => JSON.stringify([item.turnId, item.id]))).size).toBe(result.length);
+    expect(mergeLatestHistoryItems(result, native, baseline)).toBe(result);
+  });
+  it('keeps every authoritative permutation once while retaining a live-only neighbour', () => {
+    const message = (id: string): ThreadItem => ({ type: 'agentMessage', id, turnId: 't', text: id });
+    const a = message('a'), b = message('b'), c = message('c'), live = message('live');
+    for (const native of [[a, b, c], [a, c, b], [b, a, c], [b, c, a], [c, a, b], [c, b, a]]) {
+      const result = mergeLatestHistoryItems([a, b, live, c], native);
+      expect(result.filter(item => item !== live)).toEqual(native);
+      expect(result.filter(item => item === live)).toHaveLength(1);
+      expect(result.indexOf(live)).toBeLessThan(result.indexOf(c));
+    }
+  });
   it('restores the latest in-progress turn', () => {
     expect(
       findActiveTurnId([

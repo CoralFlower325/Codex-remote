@@ -1,7 +1,8 @@
 # Codex Remote Guide
 
-Remote 0.2.3 keeps late native events inside their owning turn without changing
-message content or native time anchors. See [native history ordering](native-history-order.md).
+Remote 0.2.4 keeps late native events inside their owning turn and reconciles
+subsequent native reads without duplicates, preserving message content and time
+anchors. See [native history ordering](native-history-order.md).
 The stable manager is 0.2.0, supplied with Remote v0.2.2, and uses manual installer
 upgrades. Manager self-update is preserved on the paused 0.2.0AU development line;
 see [the checkpoint](manager-self-update-checkpoints.md).

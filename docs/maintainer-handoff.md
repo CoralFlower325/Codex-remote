@@ -15,7 +15,10 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The 0.2.3 batch fixes late native items/deltas being appended after a newer
+The 0.2.4 completion of the native-order batch reconciles late events with
+subsequent native reads without duplicating items or rewinding newer live text.
+Native arrays determine shared-item order; retain live-only neighbours and
+idempotent reconciliation. The preceding 0.2.3 fixes late native items/deltas being appended after a newer
 conversation, which displayed the earlier turn's duration under the latest reply.
 Keep native turn/item identity, timestamp anchors and bounded history; stale
 completion events cannot clear a newer active turn. See [native order](native-history-order.md).

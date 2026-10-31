@@ -127,6 +127,8 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   item has no timing yet. Late native item events/deltas stay in their owning
   loaded turn; native turn timing must not pull unseen older turns into the
   latest window. A stale completion cannot clear a newer active turn.
+  Native snapshots may reorder shared items; reconcile once per identity while
+  retaining newer live text and live-only neighbours.
   Ignore window-external live items while reading older
   history. Follow-up user marks missing from native summaries are added as their
   history is loaded; do not claim a complete unread steering-message index.
