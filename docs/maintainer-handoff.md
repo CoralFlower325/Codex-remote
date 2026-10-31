@@ -23,6 +23,9 @@ See [code ownership](code-organization.md) and
 [baseline acceptance](refactor-acceptance.md). Version changes follow acceptance,
 not the initial extraction. Keep final platform package/CI evidence distinct
 from synthetic UI comparison and physical-device acceptance.
+Final source is tagged at `6bd9543b711ac06310ed0bda26b6e26a6d52a804`.
+Three-platform CI and both platform package workflows passed; source/packaged
+manager smoke and actual runtime upgrade/rollback acceptance passed on both.
 
 The preceding 0.1.16 batch maps native runtime error events and failed-turn metadata across
 main, side and subagent chats, outside process folds. Preserve actual native HTTP
