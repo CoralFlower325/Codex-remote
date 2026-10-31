@@ -1,6 +1,6 @@
 # 管理器自更新断点与恢复
 
-本轮目标：Remote 保持 0.2.2，管理器独立升级为 0.2.1。
+本轮目标：Remote 保持 0.2.2，管理器独立升级为 0.2.2。
 功能状态与实际验收分开记录；发布与本机安装结果以本页末尾的验收记录为准。
 
 ## 实现位置
@@ -15,6 +15,10 @@
 
 ## 已知断点
 
+首个 0.2.1 实机验收发现 ASAR 虚拟文件系统拦截程序备份，因而未完成安装；
+该版本已标为预发布并保留标签。修正后通过 `original-fs` 复制与校验物理文件，
+并将真实打包程序备份纳入 Windows/Mac 打包验收，不能只用普通 Node 的备份测试替代。
+
 | 断点 | 当前处理 | 接续条件 |
 | --- | --- | --- |
 | 旧管理器无自更新代码 | 首次手动安装支持自更新的管理器 | 后续从 GUI 更新 |
@@ -28,8 +32,8 @@
 
 ## 恢复方法
 
-管理器用户数据目录默认位于 Windows 的 `%APPDATA%/codex-remote-manager`，
-macOS 的 `~/Library/Application Support/codex-remote-manager`，以 Electron 实际
+管理器用户数据目录默认位于 Windows 的 `%APPDATA%/Codex Remote Manager`，
+macOS 的 `~/Library/Application Support/Codex Remote Manager`，以 Electron 实际
 `app.getPath('userData')` 为准。自定义启动参数可能改变目录。
 
 1. 保留 `manager-self-update.json`、已下载安装包和 `manager-update-backups/<id>`。
@@ -42,8 +46,8 @@ macOS 的 `~/Library/Application Support/codex-remote-manager`，以 Electron �
 
 ## 发布接续
 
-管理器使用 `manager-v0.2.1` 标签，Release 中分别列出 Remote 0.2.2（无改动）
-和管理器 0.2.1（本轮改动）。发布时必须使用 `--latest=false`，保留 Remote 的
+管理器使用 `manager-v0.2.2` 标签，Release 中分别列出 Remote 0.2.2（无改动）
+和管理器 0.2.2（本轮改动）。发布时必须使用 `--latest=false`，保留 Remote 的
 `v0.2.2` 最新版入口。上传 Windows EXE、Mac arm64 DMG/ZIP 以及
 `latest.yml`、`latest-mac.yml`。元数据和安装包均须有 GitHub SHA-256 摘要。
 

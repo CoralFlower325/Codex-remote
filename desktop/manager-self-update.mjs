@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
-import { createReadStream } from 'node:fs';
+import nodeFs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -8,9 +9,10 @@ import { latestManagerRelease } from './manager-release.mjs';
 import { compareVersions, versionPattern } from './release.mjs';
 
 const execute = promisify(execFile);
-const hashFile = async filename => {
+const rawDisk = process.versions.electron ? createRequire(import.meta.url)('original-fs') : nodeFs;
+const hashFile = async (filename, disk = rawDisk) => {
   const hash = crypto.createHash('sha256');
-  for await (const bytes of createReadStream(filename)) hash.update(bytes);
+  for await (const bytes of disk.createReadStream(filename, { fs: disk })) hash.update(bytes);
   return hash.digest('hex');
 };
 
@@ -39,40 +41,46 @@ export async function managerUpdateSupport(app, platform = process.platform, arc
 }
 
 export async function backupApplication(app, version, targetVersion, directory, platform) {
+  const files = rawDisk.promises;
   const executable = app.getPath('exe');
-  const source = await fs.realpath(platform === 'darwin' ? path.resolve(path.dirname(executable), '../..') : path.dirname(executable));
+  const source = await files.realpath(platform === 'darwin' ? path.resolve(path.dirname(executable), '../..') : path.dirname(executable));
   if ((platform === 'darwin' && !source.endsWith('.app')) ||
     (platform === 'win32' && path.basename(executable) !== 'Codex Remote Manager.exe')) {
     throw new Error('无法确认当前管理器安装目录，已停止更新。');
   }
   const backup = path.join(directory, crypto.randomUUID());
-  await fs.mkdir(backup, { recursive: true });
-  const relative = path.relative(source, await fs.realpath(backup));
+  await files.mkdir(backup, { recursive: true });
+  const relative = path.relative(source, await files.realpath(backup));
   if (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative)) {
     throw new Error('备份目录不能位于管理器程序目录内。');
   }
   const application = path.join(backup, 'application');
-  await fs.cp(source, application, { recursive: true, verbatimSymlinks: true });
   const entries = [];
-  async function verify(relative = '') {
-    for (const entry of await fs.readdir(path.join(source, relative), { withFileTypes: true })) {
+  // Copy physical files through original-fs: Electron treats .asar as a virtual directory.
+  async function copyAndVerify(relative = '') {
+    const mode = (await files.stat(path.join(source, relative))).mode;
+    await files.mkdir(path.join(application, relative), { recursive: true, mode });
+    for (const entry of await files.readdir(path.join(source, relative), { withFileTypes: true })) {
       const name = path.join(relative, entry.name);
-      if (entry.isDirectory()) await verify(name);
+      if (entry.isDirectory()) await copyAndVerify(name);
       else if (entry.isSymbolicLink()) {
-        const link = await fs.readlink(path.join(source, name));
-        if (link !== await fs.readlink(path.join(application, name))) throw new Error('管理器备份链接校验失败。');
+        const link = await files.readlink(path.join(source, name));
+        const target = await files.stat(path.join(source, name));
+        await files.symlink(link, path.join(application, name), target.isDirectory() ? 'dir' : 'file');
+        if (link !== await files.readlink(path.join(application, name))) throw new Error('管理器备份链接校验失败。');
         entries.push({ path: name, link });
       } else if (entry.isFile()) {
-        const sha256 = await hashFile(path.join(source, name));
-        if (sha256 !== await hashFile(path.join(application, name))) throw new Error('管理器备份文件校验失败。');
+        await files.copyFile(path.join(source, name), path.join(application, name));
+        const sha256 = await hashFile(path.join(source, name), rawDisk);
+        if (sha256 !== await hashFile(path.join(application, name), rawDisk)) throw new Error('管理器备份文件校验失败。');
         entries.push({ path: name, sha256 });
       } else throw new Error('管理器目录包含不支持的文件，已停止更新。');
     }
   }
-  await verify();
+  await copyAndVerify();
   const settings = path.join(app.getPath('userData'), 'settings.json');
-  if (await fs.stat(settings).catch(() => null)) await fs.copyFile(settings, path.join(backup, 'settings.json'));
-  await fs.writeFile(path.join(backup, 'backup.json'),
+  if (await files.stat(settings).catch(() => null)) await files.copyFile(settings, path.join(backup, 'settings.json'));
+  await files.writeFile(path.join(backup, 'backup.json'),
     JSON.stringify({ version, targetVersion, source, entries }, null, 2), 'utf8');
   return backup;
 }

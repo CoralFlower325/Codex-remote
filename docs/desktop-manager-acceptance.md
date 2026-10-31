@@ -1,6 +1,6 @@
 # Desktop Manager Acceptance
 
-## Manager 0.2.1 Self-Update
+## Manager 0.2.2 Self-Update
 
 The 2026-10-31 manager batch preserves Remote 0.2.2. Local validation passes
 594 tests across 84 files, typecheck and both builds. The 26 additional cases
@@ -9,6 +9,10 @@ explicit download/install, cancellation races, changed metadata/installers,
 real program/settings backup, corrupt receipts and actual-version confirmation.
 Synthetic Electron checks retain existing behavior and add manager current-version
 IPC checks plus seven update states at 400/480 widths. No page errors were seen.
+
+The first 0.2.1 live attempt exposed ASAR interception during program backup.
+It is retained as a prerelease. The fix uses original-fs and physical file copies;
+packaged Windows/Mac smoke now executes and verifies a real program backup.
 
 Exact-source packaging, published asset verification and installed Windows
 handoff results are recorded in the private deployment receipt. Mac automatic

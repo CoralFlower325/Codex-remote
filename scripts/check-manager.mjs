@@ -115,6 +115,22 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   await until(() => page.evaluate(async () => (await window.manager.get()).value.status?.state), 'healthy', 'synthetic health');
   results.health = 'healthy';
+  if (packaged) {
+    const saved = await application.evaluate(async ({ app }, directory) => {
+      const require = process.getBuiltinModule('node:module').createRequire(app.getAppPath() + '/main.mjs');
+      const { backupApplication } = require(app.getAppPath() + '/manager-self-update.mjs');
+      return backupApplication(app, app.getVersion(), app.getVersion(), directory, process.platform);
+    }, path.join(fixture, 'program-backups'));
+    const manifest = JSON.parse(await fs.readFile(path.join(saved, 'backup.json'), 'utf8'));
+    if (!manifest.entries.some(entry => entry.path.replaceAll('\\', '/') === 'resources/app.asar' ||
+      entry.path.replaceAll('\\', '/') === 'Contents/Resources/app.asar')) {
+      throw new Error('Packaged manager ASAR was not backed up as a physical file');
+    }
+    const archived = path.join(saved, 'application', process.platform === 'darwin'
+      ? 'Contents/Resources/app.asar' : 'resources/app.asar');
+    if (!(await fs.stat(archived)).isFile()) throw new Error('Backup expanded the manager ASAR archive');
+    results.physicalProgramBackup = { verified: true, files: manifest.entries.length };
+  }
   await application.evaluate(({ Tray }) => {
     globalThis.__trayImages = [];
     const original = Tray.prototype.setImage;

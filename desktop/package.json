@@ -1,7 +1,7 @@
 {
   "name": "codex-remote-manager",
   "productName": "Codex Remote Manager",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "main": "main.mjs",
@@ -29,7 +29,7 @@
     "npmRebuild": false,
     "publish": {
       "provider": "generic",
-      "url": "https://github.com/CoralFlower325/Codex-remote/releases/download/manager-v0.2.1"
+      "url": "https://github.com/CoralFlower325/Codex-remote/releases/download/manager-v0.2.2"
     },
     "directories": {
       "output": "../output/manager"

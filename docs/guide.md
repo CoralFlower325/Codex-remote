@@ -1,6 +1,6 @@
 # Codex Remote Guide
 
-Manager 0.2.1 adds independent Windows self-update under Version updates:
+Manager 0.2.2 adds independent Windows self-update under Version updates:
 check, read the summary, download with byte progress, then confirm installation.
 Program/settings backups and a restart receipt are retained. Older managers need
 one manual installer upgrade. Unsigned Mac builds offer installer downloads;

@@ -274,6 +274,8 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   handoff receipt. Actual app version confirms completion after restart.
   Never auto-install on ordinary quit or claim automatic program rollback.
   Unsigned Mac builds offer installer download and block automatic installation.
+  Program backups and hashes must use Electron original-fs for physical ASAR files.
+  Packaged smoke on both platforms must execute and verify the real backup.
   Keep locally modified Markdown documentation/rules during updates and retain
   incoming copies for reconciliation; source/configuration conflicts still block.
   Windows tasks use the windowless host with logs and owned-process shutdown.

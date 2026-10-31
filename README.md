@@ -106,7 +106,7 @@ actionable health checks, password/device administration and confirmed version u
 or macOS top menu-bar icon. Updates show Chinese stages, percentage progress and elapsed
 time. Standard installations prefer verified prebuilt runtimes; customized source
 installations retain isolated builds. Interrupted host installs recover when the manager restarts.
-Manager 0.2.1 adds a separate Windows self-update flow with verified downloads and
+Manager 0.2.2 adds a separate Windows self-update flow with verified downloads and
 program/settings backups; unsigned Mac builds offer installer downloads instead.
 Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance

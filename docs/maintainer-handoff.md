@@ -23,7 +23,7 @@ Remote or manager tag and rejects manager source edits without a version change.
 must list both versions and separate changes, explicitly stating no changes
 where applicable. Existing published tags remain historical records.
 
-Manager 0.2.1 adds a separate self-update coordinator and renderer section.
+Manager 0.2.2 adds a separate self-update coordinator and renderer section.
 `manager-release.mjs` validates the independent manager-v channel;
 `manager-self-update.mjs` owns download, digests, backup and durable handoff.
 Trusted IPC and the existing session serializer isolate this from host updates.
@@ -31,6 +31,9 @@ Publish manager tags with `--latest=false`, attach installers plus latest*.yml,
 and preserve Remote 0.2.2. Unsigned Mac builds intentionally offer manual download.
 Program rollback, Mac signing/notarization and real signed Mac update acceptance
 remain explicit checkpoints in [the recovery record](manager-self-update-checkpoints.md).
+The first 0.2.1 install attempt exposed Electron ASAR interception during backup;
+that Release remains a prerelease. Backups must use original-fs physical files,
+and packaged smoke must execute that exact backup on Windows and Mac.
 
 The 0.2.1 batch adds service-state tray/menu-bar images and editing of the latest
 interrupted turn's original input in the main chat. `message-edit.ts` owns fresh
