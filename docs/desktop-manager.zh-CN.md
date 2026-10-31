@@ -36,6 +36,8 @@ macOS 的 `com.codex.remote` LaunchAgent、程序附近和用户常见目录。
   `npm start` 仍是开发时使用的前台命令。
 - 最小化或关闭窗口后，Windows 常驻右下通知区域，macOS 常驻**顶部菜单栏**；
   从图标重新打开窗口。macOS Dock 是另一个位置。
+- Remote 关闭或状态未知时，驻留图标为半透明灰色；受管服务运行时使用实色，
+  深色系统区域显示白色，浅色区域显示深色。Desktop 或公网入口异常不等同于服务停止。
 - 托盘菜单提供状态、显示窗口、打开 Remote、启停、检查更新和退出。
   退出管理器保持 Remote 当前状态。
 - macOS 的 Dock 切换结束后，通过 Finder、Spotlight 或 Dock 再次打开会恢复隐藏窗口。

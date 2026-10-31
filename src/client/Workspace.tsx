@@ -33,6 +33,8 @@ import { layoutForViewport, modelDisplayName, reasoningLabel, resolveReasoningEf
 import { collaborationMode, slashCommands, type SlashCommandId } from './slash-commands';
 import { permissionLabel } from '../shared/permissions';
 import type { ChatInput } from './queued-messages';
+import { editableInterruptedMessage, type UserMessage } from './message-edit';
+import { EditMessageDialog } from './components/EditMessageDialog';
 import { turnInput } from './slash-commands';
 import { QueuedMessages } from './components/QueuedMessages';
 import { PreviewLinks } from './components/PreviewLinks';
@@ -693,6 +695,10 @@ function ThreadScreen({
   insertRequest: { id: number; text: string } | null;
 }) {
   const [queueEnabled, setQueueEnabled] = useState(true);
+  const [editing, setEditing] = useState<UserMessage | null>(null);
+  const editDisabled = !remote.connected || !remote.threadReady || remote.showArchived || Boolean(remote.activeTurnId);
+  const editable = !editDisabled && !remote.viewingHistory
+    ? editableInterruptedMessage(remote.items, remote.turnTimings, remote.activeTurnId) : null;
   const forkReply = useCallback((turnId: string) => remote.forkThread(thread.id, turnId), [remote.forkThread, thread.id]);
   useEffect(() => { if (!remote.activeTurnId) setQueueEnabled(true); }, [remote.activeTurnId]);
   return (
@@ -721,13 +727,20 @@ function ThreadScreen({
         onReturnToLatest={remote.returnToLatest}
         onFork={forkReply}
         onActionError={onError}
+        editableMessageId={!remote.messageEditPending ? editable?.id : undefined}
+        onEditMessage={setEditing}
       />
+      {editing && <EditMessageDialog item={editing} threadId={thread.id} disabled={editDisabled}
+        onClose={() => setEditing(null)}
+        onSubmit={text => remote.editInterruptedMessage(thread.id, editing, text, {
+          model, effort, permissions
+        })} />}
 
       <div className="thread-bottom">
-        <GoalStatus key={thread.id} goal={remote.activeGoal} disabled={!remote.connected || !remote.threadReady || remote.showArchived}
+        <GoalStatus key={thread.id} goal={remote.activeGoal} disabled={!remote.connected || !remote.threadReady || remote.showArchived || remote.messageEditPending}
           onUpdate={update => remote.setGoal(thread.id, update)} onDelete={() => remote.clearGoal(thread.id)} onError={onError} />
         {!remote.viewingHistory && <QuestionDock items={remote.items}
-          disabled={!remote.connected || !remote.threadReady || remote.showArchived}
+          disabled={!remote.connected || !remote.threadReady || remote.showArchived || remote.messageEditPending}
           onSubmit={text => onSubmit(text, [], [])} onError={onError} />}
         <ApprovalDock
           requests={remote.serverRequests.filter((request) => request.params.threadId === thread.id)}
@@ -736,7 +749,7 @@ function ThreadScreen({
         />
         {!remote.isNewThread && <QueuedMessages transport={remote.chatTransport} threadId={thread.id}
           readable={remote.authenticated && !remote.showArchived}
-          activeTurnId={remote.activeTurnId} connected={remote.connected && remote.threadReady}
+          activeTurnId={remote.activeTurnId} connected={remote.connected && remote.threadReady && !remote.messageEditPending}
           onError={onError} onOpenSideChat={onOpenSideChat}
           queueEnabled={queueEnabled} onQueueEnabledChange={setQueueEnabled} />}
         <Composer
@@ -744,7 +757,7 @@ function ThreadScreen({
           variant="thread"
           draftKey={thread.id}
           insertRequest={insertRequest}
-          disabled={!remote.connected || !remote.threadReady || remote.showArchived}
+          disabled={!remote.connected || !remote.threadReady || remote.showArchived || remote.messageEditPending}
           layout={layout}
           model={model}
           effort={effort}

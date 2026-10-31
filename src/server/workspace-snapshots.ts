@@ -120,7 +120,7 @@ export class WorkspaceSnapshots {
     const threadId = typeof params.threadId === 'string' ? params.threadId : thread?.id;
     if (/^(thread|turn)\//.test(method)) this.lists.invalidate();
     if (!threadId || !/^(thread|turn|item)\//.test(method)) return;
-    if (method === 'thread/deleted' || method === 'thread/archived') {
+    if (method === 'thread/deleted' || method === 'thread/archived' || method === 'thread/reverted' || method === 'thread/revert') {
       this.lists.clear();
       this.chats.remove(threadId);
       this.timings.remove(threadId);
@@ -131,7 +131,7 @@ export class WorkspaceSnapshots {
   }
 
   action(method: string, params: Record<string, unknown>): void {
-    if (/^turn\/|^review\/start$|^thread\/(?:start|fork|resume|archive|unarchive|name\/set|settings\/update|compact\/start|queue\/start)$/.test(method)) {
+    if (/^turn\/|^review\/start$|^thread\/(?:start|fork|revert|resume|archive|unarchive|name\/set|settings\/update|compact\/start|queue\/start)$/.test(method)) {
       this.event(method, params);
       this.lists.invalidate();
     }

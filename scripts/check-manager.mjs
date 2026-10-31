@@ -59,10 +59,12 @@ try {
   await fs.writeFile(path.join(fixture, '.env'),
     `PORT=${server.address().port}\nCODEX_DESKTOP_DEBUG_PORT=${server.address().port}\n`, 'utf8');
   const status = JSON.stringify({ running: true, installed: true, enabled: true, conflict: false, tunnelManaged: false });
+  const statusFile = path.join(fixture, 'service-state.json');
+  await fs.writeFile(statusFile, status, 'utf8');
   await fs.writeFile(path.join(fixture, 'scripts/remote-control-windows.ps1'),
-    `param([string]$Action,[switch]$Json)\nif ($Action -eq "Start") { exit 0 }\nif ($Action -ne "Status") { throw "Synthetic fixture" }\nWrite-Output '${status}'\n`, 'utf8');
+    `param([string]$Action,[switch]$Json)\nif ($Action -eq "Start") { exit 0 }\nif ($Action -ne "Status") { throw "Synthetic fixture" }\nGet-Content -LiteralPath (Join-Path $PSScriptRoot '../service-state.json') -Raw\n`, 'utf8');
   await fs.writeFile(path.join(fixture, 'scripts/remote-control-macos.sh'),
-    `#!/bin/bash\nset -eu\n[[ "$1" != Start ]] || exit 0\n[[ "$1" == Status ]] || exit 1\nprintf '%s\\n' '${status}'\n`, 'utf8');
+    `#!/bin/bash\nset -eu\n[[ "$1" != Start ]] || exit 0\n[[ "$1" == Status ]] || exit 1\ncat "$(dirname "$0")/../service-state.json"\n`, 'utf8');
   await manageAuthentication(fixture, { action: 'password', password: 'synthetic initial password' });
   await run('node', ['--input-type=module', '-e',
     `import {issueSession} from ${JSON.stringify(pathToFileURL(path.join(fixture, 'dist-server/server/auth.js')).href)};
@@ -113,6 +115,40 @@ try {
   page.on('pageerror', (error) => errors.push(error.message));
   await until(() => page.evaluate(async () => (await window.manager.get()).value.status?.state), 'healthy', 'synthetic health');
   results.health = 'healthy';
+  await application.evaluate(({ Tray }) => {
+    globalThis.__trayImages = [];
+    const original = Tray.prototype.setImage;
+    Tray.prototype.setImage = function(image) {
+      const bytes = image.toBitmap();
+      let maxAlpha = 0, transparent = 0;
+      for (let i = 3; i < bytes.length; i += 4) {
+        maxAlpha = Math.max(maxAlpha, bytes[i]);
+        if (bytes[i] === 0) transparent++;
+      }
+      globalThis.__trayImages.push({ maxAlpha, transparent, template: image.isTemplateImage() });
+      return original.call(this, image);
+    };
+  });
+  await fs.writeFile(statusFile, JSON.stringify({ ...JSON.parse(status), running: false }), 'utf8');
+  await page.evaluate(() => window.manager.refresh());
+  const dim = await application.evaluate(() => globalThis.__trayImages.at(-1));
+  if (!dim || dim.maxAlpha <= 0 || dim.maxAlpha >= 200 || !dim.transparent ||
+      (process.platform === 'darwin' && !dim.template)) throw new Error('Stopped tray icon is not translucent');
+  await fs.writeFile(statusFile, status, 'utf8');
+  await page.evaluate(() => window.manager.refresh());
+  const bright = await application.evaluate(() => globalThis.__trayImages.at(-1));
+  if (!bright || bright.maxAlpha < 230 || bright.maxAlpha <= dim.maxAlpha || !bright.transparent ||
+      (process.platform === 'darwin' && !bright.template)) throw new Error('Running tray icon is not opaque: ' + JSON.stringify({ dim, bright }));
+  results.trayStateImages = { dim, bright };
+  const beforeTheme = await application.evaluate(({ nativeTheme }) => {
+    const previous = nativeTheme.themeSource;
+    nativeTheme.themeSource = 'dark'; nativeTheme.emit('updated');
+    nativeTheme.themeSource = 'light'; nativeTheme.emit('updated');
+    nativeTheme.themeSource = previous; nativeTheme.emit('updated');
+    return globalThis.__trayImages.every(image => image.transparent > 0);
+  });
+  if (!beforeTheme) throw new Error('Tray theme transition lost transparency');
+  results.trayThemeTransition = true;
   const preferences = await application.evaluate(({ BrowserWindow }) => {
     const p = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();
     return { sandbox: p.sandbox, contextIsolation: p.contextIsolation, nodeIntegration: p.nodeIntegration };
@@ -151,7 +187,7 @@ try {
   if (!warningLayout) throw new Error('Desktop diagnostic layout overflow');
   await page.screenshot({ path: path.join(root, `output/manager-smoke/${process.platform}-${packaged ? 'packaged' : 'source'}-desktop-unavailable.png`) });
   const second = path.join(fixture, 'codex-remote');
-  for (const file of ['package.json', '.env', 'dist-server/server/index.js',
+  for (const file of ['package.json', '.env', 'service-state.json', 'dist-server/server/index.js',
     'scripts/remote-control-windows.ps1', 'scripts/remote-control-macos.sh']) {
     await fs.mkdir(path.dirname(path.join(second, file)), { recursive: true });
     await fs.copyFile(path.join(fixture, file), path.join(second, file));

@@ -41,6 +41,10 @@ probe; they do not need to be edited before opening the manager.
   and `data/server.err.log`. `npm start` remains a foreground developer command.
 - Close/minimize keeps the manager in the Windows notification area or macOS
   **top menu bar**. The macOS Dock is separate. Use the icon to reopen the window.
+- The resident icon is translucent gray while Remote is stopped or its status
+  is unknown. An owned running service uses a solid icon: white on dark system
+  surfaces and dark on light surfaces. Desktop/public-entry faults do not turn
+  an owned running service into a stopped indication.
 - Tray menus offer status, show/open, start/stop, update checks and quit.
   Quitting the manager preserves Remote's current state.
 - Reopening the running macOS app through Finder, Spotlight or the Dock restores

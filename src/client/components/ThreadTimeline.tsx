@@ -12,6 +12,7 @@ import { HistoryScroll, historyScrollDelta, type BeforeHistoryCommit } from '../
 import { isReadableHistoryItem } from '../history-prefetch';
 import { NativeTurnError } from './NativeTurnError';
 import { ResponseSection, MessageItem, TurnDuration } from './TurnResponse';
+import type { UserMessage } from '../message-edit';
 export { MarkdownText } from './MarkdownText';
 
 interface ThreadTimelineProps {
@@ -37,6 +38,8 @@ interface ThreadTimelineProps {
   onReturnToLatest?: () => Promise<void>;
   onFork?: (turnId: string) => Promise<void>;
   onActionError?: (error: unknown) => void;
+  editableMessageId?: string | undefined;
+  onEditMessage?: ((item: UserMessage) => void) | undefined;
 }
 
 export function ThreadTimeline({
@@ -61,7 +64,9 @@ export function ThreadTimeline({
   onCancelHistoryReveal,
   onReturnToLatest,
   onFork,
-  onActionError
+  onActionError,
+  editableMessageId,
+  onEditMessage
 }: ThreadTimelineProps) {
   const streamRef = useRef<HTMLDivElement | null>(null);
   const innerRef = useRef<HTMLDivElement | null>(null);
@@ -448,7 +453,9 @@ export function ThreadTimeline({
       {sections.map((section, index) => section.user
         ? <Fragment key={section.key}>
           <MessageItem item={(section.entries[0] as Extract<TimelineEntry, { type: 'message' }>).item}
-            showFull={navigationContext || viewingHistory} />
+            showFull={navigationContext || viewingHistory}
+            onEdit={(section.entries[0] as Extract<TimelineEntry, { type: 'message' }>).item.id === editableMessageId
+              ? onEditMessage : undefined} />
           {section.turnId && turnTimings[section.turnId]?.error && !sections.some(other => !other.user && other.turnId === section.turnId) &&
             !sections.slice(index + 1).some(other => other.turnId === section.turnId) &&
             <NativeTurnError turn={turnTimings[section.turnId]} />}

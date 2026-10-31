@@ -140,6 +140,27 @@ describe('bounded native workspace snapshots', () => {
     expect(request.mock.calls.filter(([method]) => method === 'thread/read')).toHaveLength(8);
   });
 
+  it('discards reverted chat and timing snapshots, including reads already in flight', async () => {
+    const request = native();
+    const snapshots = new WorkspaceSnapshots(request);
+    await snapshots.open('chat', 'read');
+    await snapshots.readTimings('chat');
+    snapshots.action('thread/revert', { threadId: 'chat', beforeTurnId: 'stopped' });
+    await snapshots.open('chat', 'read');
+    await snapshots.readTimings('chat');
+    expect(request.mock.calls.filter(([method]) => method === 'thread/read')).toHaveLength(2);
+    expect(request.mock.calls.filter(([method]) => method === 'thread/turns/list')).toHaveLength(2);
+    snapshots.event('thread/reverted', { threadId: 'chat' });
+    const pending: Array<(value: unknown) => void> = [];
+    request.mockImplementation(async () => new Promise(resolve => { pending.push(resolve); }));
+    const chat = snapshots.open('chat', 'read').catch(error => error);
+    const timing = snapshots.readTimings('chat').catch(error => error);
+    snapshots.event('thread/reverted', { threadId: 'chat' });
+    for (const resolve of pending) resolve({ thread: { id: 'chat' }, data: [], nextCursor: null });
+    expect(await chat).toHaveProperty('message', expect.stringContaining('no longer available'));
+    expect(await timing).toHaveProperty('message', expect.stringContaining('no longer available'));
+  });
+
   it('clears memory on bridge loss, and keeps timings independent from chat text', async () => {
     let finish!: (value: unknown) => void;
     const request = native();

@@ -18,6 +18,7 @@ export const rpcMethods = {
   'thread/goal/clear': 'write',
   'thread/compact/start': 'write',
   'thread/fork': 'write',
+  'thread/revert': 'write',
   'thread/queue/list': 'read',
   'thread/queue/add': 'write',
   'thread/queue/update': 'write',

@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Copy, GitFork, MoreHorizontal } from 'lucide-react';
+import { Check, ChevronRight, Copy, GitFork, MoreHorizontal, Pencil } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { memo, useEffect, useId, useMemo, useState } from 'react';
 import type { TimelineEntry, TimelineSection } from '../timeline-model';
@@ -15,6 +15,7 @@ import { isSubagentItem } from '../subagents';
 import { NativeTurnError } from './NativeTurnError';
 import { MarkdownText } from './MarkdownText';
 import { ActivityGroup, ActivityItem } from './TimelineActivity';
+import type { UserMessage } from '../message-edit';
 
 export const ResponseSection = memo(function ResponseSection({ section, timing, active, onInteract, onFork, onError }: {
   section: TimelineSection;
@@ -139,7 +140,9 @@ export function TurnDuration({ timing, active, finalStartedAtMs }: {
   return <span className="turn-duration">{text}</span>;
 }
 
-export const MessageItem = memo(function MessageItem({ item, showFull = false }: { item: ThreadItem; showFull?: boolean }) {
+export const MessageItem = memo(function MessageItem({ item, showFull = false, onEdit }: {
+  item: ThreadItem; showFull?: boolean; onEdit?: ((item: UserMessage) => void) | undefined;
+}) {
   const [expanded, setExpanded] = useState(false);
   if (item.type === 'userMessage') {
     const text = (item.content ?? []).filter((entry) => entry.type === 'text')
@@ -161,6 +164,11 @@ export const MessageItem = memo(function MessageItem({ item, showFull = false }:
               {expanded ? '收起消息' : '展开消息'}
             </button>
           )}
+        {onEdit && <div className="user-message-actions">
+          <button type="button" className="icon-button" aria-label="编辑消息" title="编辑消息" onClick={() => onEdit(item)}>
+            <Pencil size={15} />
+          </button>
+        </div>}
         </div>
       </article>
     );

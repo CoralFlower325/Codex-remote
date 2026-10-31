@@ -34,6 +34,7 @@ import { HistoryPrefetch, prepareHistoryPage } from './history-prefetch';
 import type { BeforeHistoryCommit } from './history-scroll';
 import { markStartup } from './startup';
 import { parseThreadGoal, goalUpdateParams, type GoalUpdate } from './goal';
+import { replaceInterruptedMessage, type UserMessage } from './message-edit';
 
 interface PendingRpc {
   resolve: (value: unknown) => void;
@@ -99,6 +100,9 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const [timedThreadId, setTimedThreadId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [messageEditPending, setMessageEditPending] = useState(false);
+  const messageEditRef = useRef(false);
+  const editSelectionRef = useRef(0);
   const socketRef = useRef<RemoteChannel | null>(null);
   const pendingRef = useRef(new Map<string, PendingRpc>());
   const pendingServerResponsesRef = useRef(new Map<string, PendingServerResponse>());
@@ -316,6 +320,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       })) : [];
       const sameThread = activeThreadRef.current === threadId;
       if (!options.silent) {
+        editSelectionRef.current += 1;
         prioritizeInteraction();
         earlierPageRef.current.clear();
         selectionVersionRef.current += 1;
@@ -715,6 +720,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const cancelHistoryReveal = useCallback(() => {
     const pending = pendingRevealRef.current;
     if (!pending) return;
+    editSelectionRef.current += 1;
     selectionVersionRef.current += 1;
     historyRequestsRef.current.cancel();
     earlierPageRef.current.clear();
@@ -845,6 +851,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   }, [activeThreadId]);
 
   const closeThread = useCallback(() => {
+    editSelectionRef.current += 1;
     selectionVersionRef.current += 1;
     earlierPageRef.current.clear();
     historyRequestsRef.current.cancel();
@@ -901,6 +908,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         };
       }
       setThreads((current) => dedupeThreads([...current, thread]));
+      editSelectionRef.current += 1;
       selectionVersionRef.current += 1;
       earlierPageRef.current.clear();
       historyRequestsRef.current.cancel();
@@ -1063,6 +1071,67 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     await openThread(result.thread.id);
     await refreshThreads();
   }, [rpc, openThread, refreshThreads]);
+
+  const resetRevertedHistory = useCallback((threadId: string) => {
+    historyCacheRef.current.delete(threadId);
+    void removeDeviceChat(threadId);
+    if (activeThreadRef.current !== threadId) return;
+    selectionVersionRef.current += 1;
+    turnRevisionRef.current += 1;
+    historyRequestsRef.current.cancel();
+    earlierPageRef.current.clear();
+    navigationCacheRef.current.clear();
+    clearStreamingDeltas();
+    setItems([]);
+    itemsRef.current = [];
+    setTurnTimings({});
+    turnTimingsRef.current = {};
+    setOutlineTurns([]);
+    setActiveTurnId(null);
+    activeTurnIdRef.current = null;
+    turnsCursorRef.current = null;
+    olderHistoryCursorRef.current = null;
+    newerHistoryCursorRef.current = null;
+    viewingHistoryRef.current = false;
+    setViewingHistory(false);
+    setHasNewerHistory(false);
+    setHasMoreHistory(false);
+    setLoadingHistory(false);
+    loadingHistoryRef.current = false;
+    setLoadingLaterHistory(false);
+    setRevealingHistory(false);
+    pendingRevealRef.current = null;
+  }, [clearStreamingDeltas]);
+
+  const editInterruptedMessage = useCallback(async (threadId: string, item: UserMessage, text: string,
+    settings: ThreadSettingsPatch = {}) => {
+    if (messageEditRef.current) throw new Error('消息正在更新，请等待操作完成。');
+    const selection = editSelectionRef.current;
+    const channel = socketRef.current;
+    const current = () => activeThreadRef.current === threadId && !activeTurnIdRef.current &&
+      editSelectionRef.current === selection && socketRef.current === channel &&
+      !archivedRef.current && channel?.readyState === WebSocket.OPEN;
+    if (!current() || viewingHistoryRef.current) throw new Error('请等待任务停止并返回最新消息后再编辑。');
+    messageEditRef.current = true; setMessageEditPending(true);
+    try {
+      const result = await replaceInterruptedMessage(rpc, threadId, item, text, {
+        ...(settings.model ? { model: settings.model } : {}),
+        ...(settings.effort ? { effort: settings.effort } : {}),
+        ...(settings.permissions ? permissionProfileUpdate(settings.permissions) : {}),
+        ...(settings.collaborationMode ? { collaborationMode: settings.collaborationMode } : {})
+      }, current, () => resetRevertedHistory(threadId));
+      if (result.turn?.id && activeThreadRef.current === threadId) {
+        turnRevisionRef.current += 1;
+        activeTurnIdRef.current = result.turn.id;
+        setActiveTurnId(result.turn.id);
+        setTurnTimings(value => ({ ...value, [result.turn.id]: projectTurnTiming(result.turn) }));
+      }
+      void refreshThreads().catch(() => undefined);
+    } finally {
+      messageEditRef.current = false; setMessageEditPending(false);
+      if (activeThreadRef.current === threadId) void openThread(threadId, { silent: true }).catch(() => undefined);
+    }
+  }, [rpc, resetRevertedHistory, refreshThreads, openThread]);
 
   const refreshActiveHistory = useCallback(() => {
     const threadId = activeThreadRef.current;
@@ -1334,6 +1403,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       window.removeEventListener('focus', recoverTasks);
       document.removeEventListener('visibilitychange', recoverTasks);
       disposedRef.current = true;
+      editSelectionRef.current += 1;
       earlierPageRef.current.clear();
       selectionVersionRef.current += 1;
       permissionRequestVersionRef.current += 1;
@@ -1505,6 +1575,13 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       refreshActiveHistory();
     }
     if (method === 'thread/compacted' && params.threadId === activeThreadRef.current) refreshActiveHistory();
+    if (method === 'thread/reverted') {
+      resetRevertedHistory(eventThreadId);
+      scheduleThreadRefresh();
+      if (eventThreadId === activeThreadRef.current && !messageEditRef.current) {
+        void openThread(eventThreadId, { silent: true }).catch(() => undefined);
+      }
+    }
     if (method === 'thread/goal/updated') {
       const threadId = String(params.threadId ?? '');
       if (threadId === activeThreadRef.current) { goalRevisionRef.current++; setActiveGoal(parseThreadGoal(params)); }
@@ -1719,6 +1796,8 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     threadReady: threadReady && timedThreadId === activeThreadId && verifiedThreadId === activeThreadId,
     showArchived,
     lastError,
+    messageEditPending,
+    editInterruptedMessage,
     reconnect,
     refreshThreads,
     refreshProjects,

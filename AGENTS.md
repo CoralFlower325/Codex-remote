@@ -230,6 +230,12 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   model actions or new-chat creation.
 - Do not resume a new unsent chat before its first persisted turn.
 - Native `turn/steer` uses `expectedTurnId`.
+- Edit only the latest interrupted main-chat turn's original input. Before
+  `thread/revert`, recheck the latest native turn and original item; preserve
+  attachments/skills and file/application context. Revert and resend once each,
+  stop dependent sends after selection/transport changes, and retain uncertain
+  drafts without replay. Reversion clears stale history/question caches and
+  does not undo executed file changes.
 - Composer slash commands use native RPC actions, not text prompts. Skills come
   from `skills/list` for the current directory and submit as native skill input.
   Keep collaboration mode synchronized through resume/settings notifications.
@@ -257,7 +263,10 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 - Starting or stopping Remote must not terminate Codex Desktop.
 - The desktop manager reuses owned platform controls. Close/minimize hides to the
   tray/menu bar; quitting preserves service state. Never expose manager operations
-  through HTTP. Updates require confirmation, conflict checks, isolated build,
+  through HTTP. Resident images reflect owned service run state: dim while stopped
+  or unknown, solid while running; independent Desktop/public failures do not
+  imply a stopped service. Adapt native images to the system surface theme.
+  Updates require confirmation, conflict checks, isolated build,
   backup, old-process exit and recovery. Preserve explicit stopped state and
   private runtime data. External edge assets and the manager update separately.
   Keep locally modified Markdown documentation/rules during updates and retain

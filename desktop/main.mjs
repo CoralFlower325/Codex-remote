@@ -1,10 +1,11 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, dialog, shell, net } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, nativeTheme, ipcMain, dialog, shell, net } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installation } from './controller.mjs';
 import { readDiagnosticLogs } from './diagnostics.mjs';
 import { createManagerSession } from './manager-session.mjs';
+import { trayAppearance } from './tray-state.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fetchRelease = (url, options) => net.fetch(url, { ...options, credentials: 'omit' });
@@ -16,6 +17,7 @@ let win; let tray; let timer; let quitting = false;
 let dockTimer; let lastDockChange = 0;
 let showingDock = null;
 let suppressActivationUntil = 0;
+let trayImageKey = '';
 const session = createManagerSession({
   app, dialog, shell, fetchRelease, getWindow: () => win, publish, here
 });
@@ -62,6 +64,15 @@ function hideWindow() {
 function updateTray() {
   if (!tray) return;
   const { healthError } = snapshot();
+  const appearance = trayAppearance(state.status, healthError, nativeTheme.shouldUseDarkColorsForSystemIntegratedUI);
+  const imageKey = process.platform === 'darwin' ? appearance.template : appearance.windows;
+  if (imageKey !== trayImageKey) {
+    let icon = nativeImage.createFromPath(path.join(here, 'assets', imageKey));
+    if (process.platform === 'darwin') icon.setTemplateImage(true);
+    else icon = icon.resize({ width: 20, height: 20 });
+    tray.setImage(icon);
+    trayImageKey = imageKey;
+  }
   const text = healthError ? '状态检测失败' : labels[state.status?.state] || '未选择安装目录';
   tray.setToolTip(`Codex Remote · ${state.busy || text}`);
   const ready = Boolean(settings.root) && !state.busy && !state.recoveryRequired && !healthError &&
@@ -131,12 +142,14 @@ else {
   win.webContents.on('will-navigate', (e) => e.preventDefault());
   win.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   try {
-    const trayImage = process.platform === 'darwin'
-      ? nativeImage.createFromPath(path.join(here, 'assets', 'trayTemplate.png')) : image.resize({ width: 20, height: 20 });
+    let trayImage = nativeImage.createFromPath(path.join(here, 'assets',
+      process.platform === 'darwin' ? 'trayStoppedTemplate.png' : 'trayStopped.png'));
     if (process.platform === 'darwin') trayImage.setTemplateImage(true);
+    else trayImage = trayImage.resize({ width: 20, height: 20 });
     tray = new Tray(trayImage);
     tray.on('click', showWindow);
     tray.on('double-click', showWindow);
+    nativeTheme.on('updated', updateTray);
   } catch (error) { state.error = `无法创建托盘：${error.message}`; }
   win.on('minimize', (e) => { if (tray) { e.preventDefault(); hideWindow(); } });
   win.on('close', (e) => { if (!quitting && tray) { e.preventDefault(); hideWindow(); } });

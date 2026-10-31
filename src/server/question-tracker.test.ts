@@ -42,6 +42,15 @@ describe('count-only native question summaries', () => {
     tracker.ingest('chat', [question(), { type: 'userMessage', content: [{ type: 'text', text: 'A' }] }]);
     expect(tracker.snapshot()).toEqual({ chat: 2 });
   });
+  it('removes reverted questions and rehydrates only retained history', () => {
+    const tracker = new QuestionTracker();
+    tracker.ingest('chat', [question('removed')]);
+    tracker.ingest('other', [question('kept')]);
+    expect(tracker.event('thread/reverted', { threadId: 'chat' })).toBe(true);
+    expect(tracker.snapshot()).toEqual({ other: 2 });
+    tracker.ingest('chat', [question('retained')]);
+    expect(tracker.snapshot()).toEqual({ other: 2, chat: 2 });
+  });
   it('bounds memory and publishes no private bodies through the global replay path', () => {
     const tracker = new QuestionTracker({ threads: 2, idsPerThread: 2 });
     for (const threadId of ['first', 'second', 'third']) tracker.ingest(threadId, [question(), question('next')]);

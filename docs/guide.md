@@ -301,6 +301,14 @@ The source release excludes local runtime data and old development history. Docu
 
 ## Features
 
+Since 0.2.1, manually stopping the current turn exposes Edit Message on that
+latest turn's original input. Before resending, Remote checks fresh native state,
+uses `thread/revert` to replace that turn and later conversation records, and
+preserves the input's attachments and skills. Executed file changes are retained.
+Running turns, completed historical turns and steering messages cannot be edited.
+Cancelling leaves history unchanged. An uncertain acknowledgement keeps the draft
+and never triggers automatic resubmission; check the conversation before proceeding.
+
 - **Shared desktop chats.** Open and continue chats through the same desktop backend, including activity originating in Desktop.
 - **Projects and task navigation.** Browse all providers' tasks with paginated loading, search, archived browsing, rename, archive, and restore.
 - **Readable long histories.** Load older pages on demand, preserve the reading position, and use Desktop-style activity summaries and completed-turn disclosures.

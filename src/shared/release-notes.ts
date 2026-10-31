@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.1', changes: [
+    'Windows 通知区和 macOS 菜单栏图标随 Remote 启停切换：关闭时灰色半透明，运行时显示实色，并适应系统主题。',
+    '最新被停止轮次的原始消息新增编辑入口，确认后替换原生对话记录并重新发送，保留附件和技能。',
+    '编辑前重新核对原生轮次，取消不改变记录；中断或结果不确定时保留修改内容，不自动重发。',
+    '同步清除回退前的历史缓存及待答标识，保留已执行的文件修改。'
+  ] },
   { version: '0.2.0', changes: [
     '整理聊天渲染、任务目录、服务端路由和连接处理，明确模块职责，保留现有功能与界面。',
     '拆分管理器窗口、安装操作与更新准备，保留设备管理、托盘驻留及中断恢复流程。',

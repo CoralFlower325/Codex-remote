@@ -5,12 +5,13 @@ This map describes ownership boundaries. It does not change product behavior.
 | Area | Entry / Owner | Supporting Modules |
 | --- | --- | --- |
 | Main chat | `src/client/useRemote.ts` | `useWorkspaceDirectory.ts` owns task/catalog reads; `remote-connection.ts` owns connection recovery |
+| Stopped input editing | `src/client/message-edit.ts` | `EditMessageDialog.tsx` owns drafts; `useRemote.ts` owns selection guards and history invalidation |
 | Other chat views | `useSideChats.ts`, `useSubagentChats.ts` | `conversation-state.ts` shares event projection, while each hook retains its own creation/history/closing policy |
 | Conversation rendering | `components/ThreadTimeline.tsx` | `TurnResponse.tsx`, `TimelineActivity.tsx`, `MarkdownText.tsx` |
 | Styles | `styles.css` | Ordered imports from `styles/`; declaration order is significant |
 | Host assembly | `src/server/index.ts` | `thread-router.ts` handles bounded reads; `peer-hub.ts` shares peer policy across WS and SSE |
 | Native RPC policy | `src/shared/rpc-methods.ts` | Both protocol typing and the host allowlist derive from this catalog |
-| Manager window | `desktop/main.mjs` | Trusted IPC, window and tray/menu-bar lifecycle |
+| Manager window | `desktop/main.mjs` | Trusted IPC, window and tray/menu-bar lifecycle; `tray-state.mjs` maps owned service state to native images |
 | Manager operations | `desktop/manager-session.mjs` | Installation selection, serialization, health, security, update and recovery operations |
 | Updates | `release.mjs`, `update-inputs.mjs`, `update-prepare.mjs` | Release lookup, input validation and preparation; `updater.mjs` installs; `update-transaction.mjs` owns crash recovery |
 | Manager rendering | `desktop/renderer/main.tsx` | `contract.ts` declares the renderer bridge and state |

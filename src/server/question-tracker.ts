@@ -63,7 +63,7 @@ export class QuestionTracker {
 
   event(method: string, params: Record<string, unknown>): boolean {
     if (typeof params.threadId !== 'string' || !params.threadId) return false;
-    if (method === 'thread/deleted' || method === 'thread/archived') {
+    if (method === 'thread/deleted' || method === 'thread/archived' || method === 'thread/reverted') {
       const hadQuestions = Boolean(this.threads.get(params.threadId)?.pending.size);
       this.threads.delete(params.threadId);
       return hadQuestions;

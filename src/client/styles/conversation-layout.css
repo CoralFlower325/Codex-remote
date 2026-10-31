@@ -1305,3 +1305,12 @@
   font-size: 0.84rem;
 }
 
+.user-message-actions { display: flex; justify-content: flex-end; }
+.user-message-actions .icon-button { width: 44px; height: 44px; color: var(--muted); }
+.message-edit-dialog { max-height: calc(100dvh - 32px); overflow-y: auto; }
+.message-edit-dialog textarea { width: 100%; min-height: 120px; max-height: 45dvh; resize: vertical; }
+.message-edit-note { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.message-edit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.message-edit-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; }
+.app-shell[data-layout="mobile"] .message-edit-dialog textarea { font-size: 16px; }
+

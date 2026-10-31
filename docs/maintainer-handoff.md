@@ -15,7 +15,18 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The 0.2.0 batch organizes chat rendering, directory reads, host routes/peers,
+The 0.2.1 batch adds service-state tray/menu-bar images and editing of the latest
+interrupted turn's original input in the main chat. `message-edit.ts` owns fresh
+native preflight and the once-only `thread/revert` then `turn/start` sequence;
+the dialog retains drafts after failure. Preserve images, skills and native
+file/application context. Navigation/reconnection must stop dependent sends.
+Reverted history invalidates host/browser/device caches and observed question
+counts; executed file changes remain. Synthetic acceptance covers eight
+viewports, cancellation, changed history and uncertain acknowledgements.
+Manager smoke checks actual native-image transitions on both packaged platforms.
+Live signed-in Mac and physical-phone acceptance remain separate.
+
+The preceding 0.2.0 batch organizes chat rendering, directory reads, host routes/peers,
 manager operations and update preparation without changing the UI or native
 behavior. Browser libraries are build dependencies; runtime staging removes
 caches, symbols and foreign prebuilds while retaining the target PTY/helper.
