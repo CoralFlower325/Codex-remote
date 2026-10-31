@@ -23,9 +23,11 @@ Remote or manager tag and rejects manager source edits without a version change.
 must list both versions and separate changes, explicitly stating no changes
 where applicable. Existing published tags remain historical records.
 
-Manager 0.2.2 adds a separate self-update coordinator and renderer section.
+Manager 0.2.3 provides a separate self-update coordinator and renderer section.
 `manager-release.mjs` validates the independent manager-v channel;
 `manager-self-update.mjs` owns download, digests, backup and durable handoff.
+`desktop/installer.nsh` makes NSIS launch the installed executable directly,
+through its standard unelevated launcher, instead of opening a Start Menu link.
 Trusted IPC and the existing session serializer isolate this from host updates.
 Publish manager tags with `--latest=false`, attach installers plus latest*.yml,
 and preserve Remote 0.2.2. Unsigned Mac builds intentionally offer manual download.

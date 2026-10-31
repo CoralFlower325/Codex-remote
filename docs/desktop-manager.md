@@ -193,7 +193,7 @@ or delete the local documents.
 
 ## Manager Self-Update
 
-Manager 0.2.2 checks the independent `manager-vX.Y.Z` release channel. Remote
+Manager 0.2.3 checks the independent `manager-vX.Y.Z` release channel. Remote
 releases keep `vX.Y.Z`; manager releases must not become GitHub's latest release.
 An unchanged/latest manager check never downloads, installs or reloads the window.
 Older managers require one manual upgrade to a supporting installer.
