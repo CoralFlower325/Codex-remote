@@ -36,6 +36,14 @@ remain explicit checkpoints in [the recovery record](manager-self-update-checkpo
 The first 0.2.1 install attempt exposed Electron ASAR interception during backup;
 that Release remains a prerelease. Backups must use original-fs physical files,
 and packaged smoke must execute that exact backup on Windows and Mac.
+Windows official 0.2.2-to-0.2.3 self-update now has independent standard-desktop
+post-install acceptance: completed receipt, installed version, automatic restart,
+all 80 program-backup entries, settings/private-file hashes and unchanged
+Remote/Desktop listener PIDs passed; local health remains ready/desktop.
+Keep Store-host AppData virtualization separate from ordinary Explorer launches.
+The recovery record contains evidence locations and the still-pending Mac
+Developer ID signing/notarization setup. Mac automatic install and automatic
+program rollback remain unverified/unimplemented respectively.
 
 The 0.2.1 batch adds service-state tray/menu-bar images and editing of the latest
 interrupted turn's original input in the main chat. `message-edit.ts` owns fresh
