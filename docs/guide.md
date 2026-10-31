@@ -1,5 +1,9 @@
 # Codex Remote Guide
 
+From 0.1.16, native runtime errors appear in their owning turns across main, side
+and subagent chats. Original messages, available HTTP codes and native retry state
+are retained; Remote does not retry model submissions. See [runtime error scope](native-runtime-errors.md).
+
 Manager 0.1.15 adds connection diagnosis/owned-service repair and local password/
 device administration. Public timeouts remain unconfirmed observations. Update
 both host and manager; see [the manager guide](desktop-manager.md) for scope.

@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as randomUUID } from 'uuid';
 
 import type { ClientRpcMethod, ServerMessage } from '../shared/protocol';
-import type { TurnTiming } from '../shared/turn-timing';
+import { projectTurnTiming, runtimeTurnError, type TurnTiming } from '../shared/turn-timing';
+import { nativeRpcErrorMessage } from '../shared/native-error';
 import type { OutlineTurn } from '../shared/thread-outline';
 import { permissionProfileId, permissionProfileUpdate, type PermissionProfile, type PermissionSettings } from '../shared/permissions';
 import { api, HttpError, isAbortedRequest, ReadRequests } from './api';
@@ -958,6 +959,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     setOutlineError(null);
     const readPage = async (cursor: string | null) => {
         await yieldToInteraction(controller.signal);
+        const timingBaseline = turnTimingsRef.current;
         const query = new URLSearchParams({ threadId, ...(cursor ? { cursor } : {}) });
         const page: { turns: OutlineTurn[]; nextCursor: string | null } = await api(
           `/api/thread/outline?${query}`, { cache: 'no-store', signal: controller.signal });
@@ -966,7 +968,12 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         setTurnTimings(current => {
           const next = { ...current };
           for (const { messages: _messages, ...timing } of page.turns) {
-            if (!next[timing.id] || next[timing.id]!.status === 'inProgress') next[timing.id] = timing;
+            const existing = next[timing.id];
+            if (!existing) next[timing.id] = timing;
+            else if (existing.status === 'inProgress' && existing === timingBaseline[timing.id]) {
+              next[timing.id] = existing.errorWillRetry && existing.error && timing.status === 'inProgress'
+                ? { ...timing, error: existing.error, errorWillRetry: true } : timing;
+            }
           }
           return next;
         });
@@ -1099,7 +1106,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         turnRevisionRef.current += 1;
         activeTurnIdRef.current = result.turn.id;
         setActiveTurnId(result.turn.id);
-        setTurnTimings((current) => ({ ...current, [result.turn.id]: result.turn }));
+        setTurnTimings((current) => ({ ...current, [result.turn.id]: projectTurnTiming(result.turn) }));
       }
       return result.turn?.id;
     },
@@ -1550,7 +1557,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       if (pending) {
         window.clearTimeout(pending.timer);
         pendingRef.current.delete(message.id);
-        pending.reject(new Error(message.error.message));
+        pending.reject(new Error(nativeRpcErrorMessage(message.error)));
       }
       return;
     }
@@ -1627,6 +1634,10 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   }
 
   function handleCodexEvent(method: string, params: Record<string, unknown>): void {
+    if (params.threadId === activeThreadRef.current) {
+      setTurnTimings(current => viewingHistoryRef.current && typeof params.turnId === 'string' && !current[params.turnId]
+        ? current : runtimeTurnError(current, method, params));
+    }
     for (const listener of eventListenersRef.current) listener(method, params);
     const eventThread = params.thread as Thread | undefined;
     const eventThreadId = String(params.threadId ?? eventThread?.id ?? '');
@@ -1769,7 +1780,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         activeTurnIdRef.current = turn.id;
         setActiveTurnId(turn.id);
         const { items: turnItems, ...timing } = turn;
-        setTurnTimings((current) => ({ ...current, [turn.id]: timing }));
+        setTurnTimings((current) => ({ ...current, [turn.id]: projectTurnTiming(timing) }));
         ingestTurnItems(turn.id, turnItems);
       }
     }
@@ -1805,7 +1816,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         const turn = params.turn as Turn | undefined;
         if (turn?.id) {
           const { items: turnItems, ...timing } = turn;
-          setTurnTimings((current) => ({ ...current, [turn.id]: timing }));
+          setTurnTimings((current) => ({ ...current, [turn.id]: projectTurnTiming(timing) }));
           ingestTurnItems(turn.id, turnItems);
         }
         turnRevisionRef.current += 1;

@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import readline from 'node:readline';
 import { EventEmitter } from 'node:events';
+import { NativeRpcError } from '../shared/native-error.js';
 
 import type { ClientRpcMethod } from '../shared/protocol.js';
 import { config } from './config.js';
@@ -273,7 +274,7 @@ export class CodexBridge extends EventEmitter {
       if (!pending) return;
       this.pending.delete(message.id);
       if (message.error) {
-        pending.reject(new Error(message.error.message || 'Codex app-server request failed.'));
+        pending.reject(new NativeRpcError({ ...message.error, message: message.error.message || 'Codex app-server request failed.' }));
       } else {
         pending.resolve(message.result);
       }

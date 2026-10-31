@@ -1,4 +1,4 @@
-import type { TurnTiming } from '../shared/turn-timing.js';
+import { projectTurnTiming, runtimeTurnError, type TurnTiming } from '../shared/turn-timing.js';
 
 export interface EphemeralSnapshot {
   items: Array<Record<string, unknown>>;
@@ -45,9 +45,14 @@ export class EphemeralChats<Owner> {
   record(method: string, params: Record<string, unknown>) {
     const entry = this.entries.get(String(params.threadId ?? ''));
     if (!entry) return;
+    const runtimeId = typeof params.turnId === 'string' ? params.turnId : '';
+    const previous = entry.turns.get(runtimeId);
+    const errors = runtimeTurnError(previous ? { [runtimeId]: previous } : {}, method, params);
+    const runtime = errors[runtimeId];
+    if (runtime) entry.turns.set(runtime.id, runtime);
     if (method === 'turn/started' || method === 'turn/completed') {
       const { items = [], ...turn } = params.turn as TurnTiming & { items?: Array<Record<string, unknown>> };
-      entry.turns.set(turn.id, turn);
+      entry.turns.set(turn.id, projectTurnTiming(turn));
       entry.activeTurnId = method === 'turn/started' ? turn.id : null;
       for (const item of items) {
         const key = JSON.stringify([turn.id, item.id]);

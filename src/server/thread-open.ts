@@ -1,5 +1,5 @@
 import type { ClientRpcMethod } from '../shared/protocol.js';
-import type { TurnTiming } from '../shared/turn-timing.js';
+import { projectTurnTiming, type TurnTiming } from '../shared/turn-timing.js';
 import { isReadableHistoryItem } from '../shared/history-context.js';
 import { compactHistoryEntries } from './history-payload.js';
 
@@ -72,8 +72,7 @@ export async function readThreadTimings(request: Request, threadId: string, curs
     threadId, limit: cursor ? 100 : 40, itemsView: 'notLoaded', ...(cursor ? { cursor } : {})
   }) as { data: TurnTiming[]; nextCursor?: string | null };
   return {
-    turns: result.data.map(({ id, status, startedAt, completedAt, durationMs }) =>
-      ({ id, status, startedAt, completedAt, durationMs })),
+    turns: result.data.map(projectTurnTiming),
     turnsCursor: result.nextCursor ?? null,
     activeTurnId: result.data.find(turn => turn.status === 'inProgress')?.id ?? null
   };

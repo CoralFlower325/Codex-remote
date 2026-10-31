@@ -17,7 +17,9 @@ export function mergeTurnTimings(current: Record<string, TurnTiming>, latest: Tu
   const next = { ...current };
   for (const turn of latest) {
     const existing = current[turn.id];
-    next[turn.id] = existing && existing !== baseline[turn.id] ? existing : turn;
+    next[turn.id] = existing && existing !== baseline[turn.id] ? existing
+      : existing?.errorWillRetry && existing.error && turn.status === 'inProgress'
+        ? { ...turn, error: existing.error, errorWillRetry: true } : turn;
   }
   return next;
 }

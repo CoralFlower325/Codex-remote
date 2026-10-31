@@ -112,6 +112,9 @@ remains pending.
 
 ## Built For Ongoing Sessions
 
+Native Codex runtime errors remain visible in their turns, including available
+HTTP status codes and Codex retry state. See [runtime errors](docs/native-runtime-errors.md).
+
 - **Read long conversations.** Bounded history pages preserve reading position; execution bodies load when expanded.
 - **Handle native questions.** Explicit answers work in main and temporary chats. Pending badges reflect observed questions; they are not a complete search of unread history.
 - **Keep context close.** Inspect files, previews, PR attachments, outputs and sources beside the conversation. Summary coverage depends on the native resource metadata provided.

@@ -1065,6 +1065,30 @@ kbd {
 .review--wrap .diff-line > code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .diff-unavailable { padding: 8px; color: var(--muted); font-size: 0.75rem; }
 
+.native-turn-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 12px 0 16px;
+  padding: 12px;
+  color: #8d2828;
+  background: #fff4f3;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.native-turn-error > svg { flex: 0 0 16px; margin-top: 3px; }
+.native-turn-error > div { min-width: 0; flex: 1; }
+.native-turn-error strong { font-weight: 600; }
+.native-turn-error p { margin: 4px 0 0; white-space: pre-wrap; }
+.native-turn-error details { margin-top: 6px; }
+.native-turn-error summary { cursor: pointer; }
+.native-turn-error code, .native-turn-error pre { font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.native-turn-error pre { margin: 4px 0 0; max-height: 240px; overflow: auto; }
+.native-turn-error--retrying { color: #725015; background: #fff9e9; }
+.native-error-retry { display: block; }
+
 .error-banner {
   display: flex;
   flex: 0 0 auto;

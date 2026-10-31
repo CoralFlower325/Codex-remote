@@ -1,9 +1,39 @@
+import { nativeTurnError, type NativeTurnError } from './native-error.js';
+
 export interface TurnTiming {
   id: string;
   status: 'completed' | 'interrupted' | 'failed' | 'inProgress';
   startedAt: number | null;
   completedAt: number | null;
   durationMs: number | null;
+  error?: NativeTurnError | null;
+  errorWillRetry?: boolean;
+}
+
+export function projectTurnTiming(turn: TurnTiming): TurnTiming {
+  const { id, status, startedAt, completedAt, durationMs } = turn;
+  return { id, status, startedAt, completedAt, durationMs,
+    ...(turn.error ? { error: nativeTurnError(turn.error) } : {}) };
+}
+
+export function runtimeTurnError(current: Record<string, TurnTiming>, method: string,
+  params: Record<string, unknown>): Record<string, TurnTiming> {
+  const id = typeof params.turnId === 'string' ? params.turnId : '';
+  if (!id) return current;
+  const previous = current[id];
+  if (method === 'error') {
+    const error = nativeTurnError(params.error);
+    if (!error) return current;
+    return { ...current, [id]: { ...(previous ?? { id, status: 'inProgress', startedAt: null,
+      completedAt: null, durationMs: null }), error, errorWillRetry: params.willRetry === true } };
+  }
+  if (previous?.error && previous.errorWillRetry && ['item/started', 'item/completed',
+    'item/agentMessage/delta', 'item/commandExecution/outputDelta', 'item/plan/delta',
+    'item/reasoning/summaryTextDelta', 'item/reasoning/textDelta', 'item/reasoning/summaryPartAdded'].includes(method)) {
+    const { error: _error, errorWillRetry: _retry, ...recovered } = previous;
+    return { ...current, [id]: recovered };
+  }
+  return current;
 }
 
 export function elapsedTurnMs(turn: TurnTiming, nowMs: number, finalStartedAtMs?: number | null): number | null {

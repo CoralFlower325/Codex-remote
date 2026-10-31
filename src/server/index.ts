@@ -45,6 +45,7 @@ import { threadDockRouter } from './thread-dock-router.js';
 import { historyItemRouter } from './history-item-router.js';
 import { readThreadSummaryPage } from './thread-summary.js';
 import { SessionConnections } from './session-connections.js';
+import { nativeRpcFailure } from '../shared/native-error.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -589,7 +590,7 @@ async function handleClientMessage(socket: RemotePeer, raw: string): Promise<voi
       send(socket, {
         type: 'rpc.error',
         id: message.id,
-        error: { message: error instanceof Error ? error.message : String(error) }
+        error: nativeRpcFailure(error)
       });
     }
     return;

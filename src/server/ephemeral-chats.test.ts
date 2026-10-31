@@ -3,6 +3,16 @@ import { EphemeralChats } from './ephemeral-chats.js';
 
 afterEach(() => vi.useRealTimers());
 describe('temporary chat ownership', () => {
+  it('keeps native retry errors in reconnect memory and clears them on resumed output', () => {
+    const chats = new EphemeralChats<string>(async () => {});
+    chats.add('side', 'socket');
+    chats.record('turn/started', { threadId: 'side', turn: { id: 't', status: 'inProgress' } });
+    chats.record('error', { threadId: 'side', turnId: 't', willRetry: true,
+      error: { message: 'Native retry', codexErrorInfo: 'serverOverloaded' } });
+    expect(chats.snapshot('side')?.turns[0]).toMatchObject({ errorWillRetry: true, error: { message: 'Native retry' } });
+    chats.record('item/agentMessage/delta', { threadId: 'side', turnId: 't', itemId: 'a', delta: 'Recovered' });
+    expect(chats.snapshot('side')?.turns[0]?.error).toBeUndefined();
+  });
   it('keeps reconnected chats but releases abandoned tabs after the disconnect grace', async () => {
     vi.useFakeTimers();
     const release = vi.fn().mockResolvedValue({});

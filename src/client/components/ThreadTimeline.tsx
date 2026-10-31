@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { Copy, Check, MoreHorizontal, GitFork } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -39,6 +39,7 @@ import { SubagentRows } from './Subagents';
 import { isSubagentItem } from '../subagents';
 import { HistoryScroll, historyScrollDelta, type BeforeHistoryCommit } from '../history-scroll';
 import { isReadableHistoryItem } from '../history-prefetch';
+import { NativeTurnError } from './NativeTurnError';
 
 interface ThreadTimelineProps {
   threadId: string;
@@ -365,7 +366,7 @@ export function ThreadTimeline({
     return () => window.cancelAnimationFrame(frame);
   }, [items.length, loading, loadingHistory, prefetchEarlier]);
 
-  if (loading && items.length === 0) {
+  if (loading && items.length === 0 && !Object.values(turnTimings).some(turn => turn.error)) {
     return (
       <div className="message-stream message-stream--loading" aria-label="正在加载任务">
         <div className="message-skeleton message-skeleton--short" />
@@ -375,7 +376,9 @@ export function ThreadTimeline({
     );
   }
 
-  if (items.length === 0) {
+  const emptyError = items.length === 0 ? turnTimings[activeTurnId ?? ''] ??
+    Object.values(turnTimings).find(turn => turn.error) : undefined;
+  if (items.length === 0 && !emptyError?.error) {
     return (
       <div className="message-stream message-stream--empty">
         <div className="empty-thread-icon">
@@ -472,13 +475,19 @@ export function ThreadTimeline({
           {loadingHistory && <LoaderCircle size={15} className="spin" role="status" aria-label="正在加载更早记录" />}
         </div>
       )}
-      {sections.map((section) => section.user
-        ? <MessageItem item={(section.entries[0] as Extract<TimelineEntry, { type: 'message' }>).item}
-            showFull={navigationContext || viewingHistory} key={section.key} />
+      {sections.map((section, index) => section.user
+        ? <Fragment key={section.key}>
+          <MessageItem item={(section.entries[0] as Extract<TimelineEntry, { type: 'message' }>).item}
+            showFull={navigationContext || viewingHistory} />
+          {section.turnId && turnTimings[section.turnId]?.error && !sections.some(other => !other.user && other.turnId === section.turnId) &&
+            !sections.slice(index + 1).some(other => other.turnId === section.turnId) &&
+            <NativeTurnError turn={turnTimings[section.turnId]} />}
+        </Fragment>
         : <ResponseSection section={section} timing={section.showTiming && section.turnId ? turnTimings[section.turnId] : undefined}
             active={section.turnId === activeTurnId} onInteract={preserveActivityPosition} key={section.key}
             onFork={onFork} onError={onActionError} />
       )}
+      {emptyError?.error && <NativeTurnError turn={emptyError} />}
       {!viewingHistory && activeTurnId && !sections.some((section) => !section.user && section.turnId === activeTurnId) && (
         <div className="turn-response"><div className="worked-divider">
           <TurnDuration timing={turnTimings[activeTurnId]} active />
@@ -563,6 +572,7 @@ const ResponseSection = memo(function ResponseSection({ section, timing, active,
     {(!completed || open) && <div className="turn-activity" id={bodyId}>{trace.map(renderEntry)}</div>}
     {completed && agentItems.length > 0 && <SubagentRows items={agentItems} />}
     {answer.map(renderEntry)}
+    <NativeTurnError turn={timing} />
     {!active && finalIndex >= 0 && <ReplyActions text={section.entries.slice(finalIndex).flatMap(entry =>
       entry.type === 'message' && entry.item.type === 'agentMessage' ? [entry.item.text] : []).join('\n\n')}
       turnId={section.turnId} onFork={onFork} onError={onError} />}

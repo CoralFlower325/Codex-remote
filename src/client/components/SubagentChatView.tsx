@@ -28,6 +28,7 @@ export function SubagentChatView({ chat, onLoadEarlier, onPrefetchEarlier, onRet
     <ThreadTimeline threadId={chat.id} items={chat.items} turnTimings={chat.timings}
       activeTurnId={chat.activeTurnId} loading={chat.loading} hasMoreHistory={Boolean(chat.cursor)}
       loadingHistory={chat.loadingHistory} onLoadEarlier={onLoadEarlier} onPrefetchEarlier={onPrefetchEarlier} />
-    {!chat.loading && !chat.error && !chat.items.length && <div className="subagent-empty" role="status">暂无消息</div>}
+    {!chat.loading && !chat.error && !chat.items.length && !Object.values(chat.timings).some(turn => turn.error) &&
+      <div className="subagent-empty" role="status">暂无消息</div>}
   </div></PreviewLinks>;
 }

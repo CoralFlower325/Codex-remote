@@ -42,7 +42,7 @@ export function SideChatView({ chat, remote, layout, onPatch, onSend, onNew }: {
   return <PreviewLinks cwd={chat.cwd ?? ''}><div className="side-chat-view">
     {chat.error && <div className="error-banner" role="alert"><CircleAlert size={15} /><span>{chat.error}</span>
       <button type="button" aria-label="关闭侧聊错误" onClick={() => onPatch({ error: null })}><X size={14} /></button></div>}
-    {chat.items.length ? <ThreadTimeline threadId={chat.threadId ?? chat.id}
+    {chat.items.length || Object.values(chat.timings).some(turn => turn.error) ? <ThreadTimeline threadId={chat.threadId ?? chat.id}
       items={chat.items} turnTimings={chat.timings} activeTurnId={chat.activeTurnId}
       loading={false} hasMoreHistory={false} loadingHistory={false} onLoadEarlier={async () => {}} onActionError={onError} />
       : <div className="side-chat-empty"><MessageCirclePlus size={28} strokeWidth={1.5} /><h2>侧边聊天</h2>

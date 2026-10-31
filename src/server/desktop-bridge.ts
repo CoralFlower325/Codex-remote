@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { WebSocket } from 'ws';
+import { NativeRpcError } from '../shared/native-error.js';
 
 interface DebugTarget {
   type: string;
@@ -230,7 +231,7 @@ export class DesktopBridge extends EventEmitter {
       const response = data.message;
       const pending = this.requests.get(String(response.id));
       this.requests.delete(String(response.id));
-      if (response.error) pending?.reject(new Error(response.error.message));
+      if (response.error) pending?.reject(new NativeRpcError(response.error));
       else pending?.resolve(response.result);
     }
   }

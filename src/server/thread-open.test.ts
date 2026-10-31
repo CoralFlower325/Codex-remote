@@ -8,7 +8,8 @@ const entry = (id: string, type: string, fields = {}) => ({
 describe('HTTP timing pagination', () => {
   it('reads opaque older cursors independently of the browser realtime connection', async () => {
     const request = vi.fn().mockResolvedValue({
-      data: [{ id: 'old', status: 'completed', startedAt: 1, completedAt: 2, durationMs: 1000, items: ['private'] }],
+      data: [{ id: 'old', status: 'failed', startedAt: 1, completedAt: 2, durationMs: 1000, items: ['private'],
+        error: { message: 'Native limit', codexErrorInfo: 'usageLimitExceeded', additionalDetails: 'Synthetic detail' } }],
       nextCursor: 'next:native'
     });
     const page = await readThreadTimings(request, 'thread', 'opaque:native');
@@ -17,6 +18,7 @@ describe('HTTP timing pagination', () => {
     });
     expect(page.turnsCursor).toBe('next:native');
     expect(page.turns[0]).not.toHaveProperty('items');
+    expect(page.turns[0]?.error).toMatchObject({ message: 'Native limit', codexErrorInfo: 'usageLimitExceeded' });
   });
 });
 const user = () => entry('user', 'userMessage', { content: [{ type: 'text', text: 'Question' }] });

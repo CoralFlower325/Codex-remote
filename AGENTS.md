@@ -228,6 +228,13 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   bodies just to measure history projection size in production.
 - Native approvals arrive through `mcp-request`; responses use `mcp-response`.
   Respect the request's available decisions.
+- Render native runtime `error` notifications and failed `turn.error` per turn in
+  main/side/subagent chats, outside process folds. Preserve original text, public
+  error metadata, actual HTTP codes and `willRetry`; never invent 429 from a
+  usage limit or repeat model actions. Clear transient errors on resumed output
+  or native completion, preserve them through late in-progress snapshots, and
+  retain final errors in bounded native history reads. RPC bridges preserve
+  numeric codes and projected public error data, never arbitrary result payloads.
 - Permissions apply per chat. Do not rewrite global Codex config to change them.
 - Do not start a second backend that replaces an active Desktop relay.
 - Starting or stopping Remote must not terminate Codex Desktop.

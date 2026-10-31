@@ -15,7 +15,14 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The 0.1.15 batch simplifies the manager and adds uncertainty-aware public diagnosis,
+The 0.1.16 batch maps native runtime error events and failed-turn metadata across
+main, side and subagent chats, outside process folds. Preserve actual native HTTP
+codes and retry flags without inferring 429 or resubmitting model work. Bounded
+history/outline projections retain final errors; late in-progress snapshots retain
+active retry indications. RPC hops preserve numeric codes and public error data.
+See [runtime errors](native-runtime-errors.md). Tests use synthetic failures.
+
+The preceding 0.1.15 batch simplifies the manager and adds uncertainty-aware public diagnosis,
 bounded redacted logs and confirmed repair of owned services. Device/password
 administration is local-only, with stdin secrets and durable session revocation.
 Old logins remain compatible until observed/revoked; password changes invalidate

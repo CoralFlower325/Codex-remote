@@ -43,7 +43,6 @@ export interface Thread {
 
 export interface Turn extends TurnTiming {
   items: ThreadItem[];
-  error?: { message?: string } | null;
 }
 
 export type ThreadItem = (

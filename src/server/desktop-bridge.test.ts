@@ -33,7 +33,8 @@ async function desktop(pendingRequests: unknown[] = []) {
           relay({ type: 'mcp-response', message: {
             id: message.request.id,
             ...(message.request.method === 'bad'
-              ? { error: { message: 'Native failure' } }
+              ? { error: { message: 'Native failure', code: -32000,
+                data: { codexErrorInfo: { httpConnectionFailed: { httpStatusCode: 429 } } } } }
               : { result: { threadId: message.request.params.threadId } })
           } });
         }
@@ -55,6 +56,9 @@ describe('desktop RPC transport', () => {
     expect(await Promise.all([bridge.connect(), bridge.connect()])).toEqual([true, true]);
     expect(await bridge.request('thread/read', { threadId: 'other-task' })).toEqual({ threadId: 'other-task' });
     await expect(bridge.request('bad', {})).rejects.toThrow('Native failure');
+    await expect(bridge.request('bad', {})).rejects.toMatchObject({
+      code: -32000, data: { codexErrorInfo: { httpConnectionFailed: { httpStatusCode: 429 } } }
+    });
   });
 
   it('forwards live desktop notifications and retains approvals across client reconnects', async () => {

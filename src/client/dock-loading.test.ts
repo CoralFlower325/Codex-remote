@@ -363,6 +363,27 @@ describe('on-demand execution bodies', () => {
 
 
 describe('new native question arrivals', () => {
+  it('maps native runtime errors to the selected turn, clears recovered retries and retains final failures', async () => {
+    const f = fixture(() => new Promise(() => {}));
+    void f.remote.openThread(thread.id).catch(() => {}); await settle();
+    const emit = async (method: string, params: Record<string, unknown>) => {
+      connection.options.onMessage({ type: 'event', method, params });
+      await settle();
+    };
+    await emit('turn/started', { threadId: thread.id, turn: { id: 't', status: 'inProgress' } });
+    await emit('error', { threadId: 'other', turnId: 't', willRetry: true, error: { message: 'Other error' } });
+    expect(f.remote.turnTimings.t?.error).toBeUndefined();
+    await emit('error', { threadId: thread.id, turnId: 't', willRetry: true,
+      error: { message: 'Native retry', codexErrorInfo: { responseStreamConnectionFailed: { httpStatusCode: 429 } } } });
+    expect(f.remote.activeTurnId).toBe('t');
+    expect(f.remote.turnTimings.t).toMatchObject({ errorWillRetry: true, error: { message: 'Native retry' } });
+    await emit('item/agentMessage/delta', { threadId: thread.id, turnId: 't', itemId: 'a', delta: 'Recovered' });
+    expect(f.remote.turnTimings.t?.error).toBeUndefined();
+    await emit('turn/completed', { threadId: thread.id, turn: { id: 't', status: 'failed',
+      error: { message: 'Native final', codexErrorInfo: 'usageLimitExceeded' } } });
+    expect(f.remote.activeTurnId).toBeNull();
+    expect(f.remote.turnTimings.t?.error?.message).toBe('Native final');
+  });
   it.each(['turn/started', 'turn/completed'])('shows questions embedded in %s immediately without a history refresh', async method => {
     const f = fixture(() => new Promise(() => {}));
     void f.remote.openThread(thread.id).catch(() => {}); await settle();

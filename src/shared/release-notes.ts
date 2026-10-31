@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.1.16', changes: [
+    '原生映射 Codex 运行时错误，显示错误原文、类型、已有的 HTTP 状态码及原生重试状态。',
+    '主会话、侧聊和子智能体均显示轮次错误，失败提示保持在执行折叠之外，重开历史仍可查看。',
+    '实际输出恢复后清除暂时性错误，后台快照不再覆盖原生重试提示；不自动重复提交模型请求。',
+    '保留原生请求错误码和公开详情，区分限流、额度耗尽、服务繁忙及连接中断。'
+  ] },
   { version: '0.1.15', changes: [
     '简化本机管理器，按概览、设备与密码、版本更新组织，保留小窗口进度与托盘操作。',
     '公网探测区分待确认和响应异常，新增连接复检、受管服务修复及脱敏日志查看。',

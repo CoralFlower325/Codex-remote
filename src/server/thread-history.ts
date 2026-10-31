@@ -1,5 +1,5 @@
 import type { ClientRpcMethod } from '../shared/protocol.js';
-import type { TurnTiming } from '../shared/turn-timing.js';
+import { projectTurnTiming, type TurnTiming } from '../shared/turn-timing.js';
 import { outlineMessages, type OutlineItem, type OutlineTurn } from '../shared/thread-outline.js';
 import { isReadableHistoryItem } from '../shared/history-context.js';
 import { compactHistoryEntries } from './history-payload.js';
@@ -27,8 +27,7 @@ export async function readThreadHistoryPage(
     items: compactHistoryEntries(direction === 'desc' ? [...history.data].reverse() : history.data),
     nextCursor: history.nextCursor,
     activeTurnId: turns?.data.find((turn) => turn.status === 'inProgress')?.id ?? null,
-    turns: turns?.data.map(({ id, status, startedAt, completedAt, durationMs }) =>
-      ({ id, status, startedAt, completedAt, durationMs })) ?? [],
+    turns: turns?.data.map(projectTurnTiming) ?? [],
     turnsCursor: turns?.nextCursor ?? null
   };
 }
@@ -37,8 +36,8 @@ export async function readThreadOutline(request: Request, threadId: string, curs
   const result = await request('thread/turns/list', {
     threadId, limit: 100, itemsView: 'summary', ...(cursor ? { cursor } : {})
   }) as { data: Array<TurnTiming & { items: OutlineItem[] }>; nextCursor: string | null };
-  const turns: OutlineTurn[] = [...result.data].reverse().map(({ id, status, startedAt, completedAt, durationMs, items }) =>
-    ({ id, status, startedAt, completedAt, durationMs, messages: outlineMessages(items) }));
+  const turns: OutlineTurn[] = [...result.data].reverse().map(turn =>
+    ({ ...projectTurnTiming(turn), messages: outlineMessages(turn.items) }));
   return { turns, nextCursor: result.nextCursor };
 }
 

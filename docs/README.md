@@ -38,6 +38,7 @@ the authority for what is actually installed.
 ## Design And Behavior / 设计与机制
 
 - [Native summary panel / 原生会话摘要](native-summary-panel.md)
+- [Native runtime errors / 原生运行错误](native-runtime-errors.md)
 - [Manual updates and recovery / 手动更新与恢复](manual-version-update.md)
 - [Native questions and history payloads / 原生提问与历史传输](history-questions-investigation.md)
 - [Question visibility / 提问显示](question-visibility-investigation.md)

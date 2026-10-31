@@ -7,6 +7,17 @@ const chat: SideChat = { id: 'tab', threadId: 'side', title: 'Side chat', model:
   permissions: ':read-only', mode: 'default', items: [], timings: {}, activeTurnId: null, error: null };
 
 describe('independent temporary chat state', () => {
+  it('keeps retrying and final errors in the owning turn without a stale global banner', () => {
+    let state = sideChatEvent(chat, 'error', { threadId: 'side', turnId: 't', willRetry: true,
+      error: { message: 'Limited', codexErrorInfo: 'rateLimitExceeded' } });
+    expect(state.timings.t).toMatchObject({ error: { message: 'Limited' }, errorWillRetry: true });
+    expect(state.error).toBeNull();
+    state = sideChatEvent(state, 'turn/completed', { threadId: 'side', turn: {
+      id: 't', status: 'failed', error: { message: 'Final', codexErrorInfo: 'rateLimitExceeded' }
+    } });
+    expect(state.timings.t).toMatchObject({ status: 'failed', error: { message: 'Final' } });
+    expect(state.timings.t?.errorWillRetry).toBeUndefined();
+  });
   it('isolates main and other tab events and replaces streamed text on completion', () => {
     expect(sideChatEvent(chat, 'turn/started', { threadId: 'main', turn: { id: 't' } })).toBe(chat);
     let state = sideChatEvent(chat, 'turn/started', { threadId: 'side', turn: { id: 't', status: 'inProgress' } });

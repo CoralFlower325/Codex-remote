@@ -4,7 +4,7 @@ import type { ChatTransport } from './chat-transport';
 import type { ChatInput } from './queued-messages';
 import { upsertItem, mergeLatestHistoryItems, mergeTurnTimings } from './remote-state';
 import type { CollaborationMode, ContextUsage, Thread, ThreadItem } from './types';
-import type { TurnTiming } from '../shared/turn-timing';
+import { projectTurnTiming, runtimeTurnError, type TurnTiming } from '../shared/turn-timing';
 import { permissionProfileUpdate } from '../shared/permissions';
 import { collaborationMode } from './slash-commands';
 import { api } from './api';
@@ -32,13 +32,14 @@ export interface SideChat {
 
 export function sideChatEvent(chat: SideChat, method: string, params: Record<string, unknown>): SideChat {
   if (params.threadId !== chat.threadId) return chat;
+  const timings = runtimeTurnError(chat.timings, method, params);
+  if (timings !== chat.timings) chat = { ...chat, timings };
   const turnId = String(params.turnId ?? '');
   if (method === 'turn/started' || method === 'turn/completed') {
     const { items: turnItems = [], ...turn } = params.turn as TurnTiming & { items?: ThreadItem[] };
     return { ...chat, activeTurnId: method === 'turn/started' ? turn.id : null,
       items: turnItems.reduce((items, item) => upsertItem(items, { ...item, turnId: turn.id }), chat.items),
-      timings: { ...chat.timings, [turn.id]: turn },
-      error: (params.turn as { error?: { message: string } }).error?.message ?? chat.error };
+      timings: { ...chat.timings, [turn.id]: projectTurnTiming(turn) } };
   }
   if (method === 'item/started' || method === 'item/completed') {
     return { ...chat, items: upsertItem(chat.items, { ...params.item as ThreadItem, turnId,
