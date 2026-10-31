@@ -13,7 +13,18 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 
 - `src/client/`: responsive workspace, native metadata menus, history, approvals.
 - `src/client/remote-connection.ts`: socket lifecycle and recovery.
+- `src/client/useWorkspaceDirectory.ts`: task/catalog reads and reconciliation;
+  `useRemote.ts` retains native chat lifecycle and transport orchestration.
+- `src/client/conversation-state.ts`: shared side/subagent event projection;
+  their creation, history and closing policies stay in their own hooks.
+- `src/client/components/{ThreadTimeline,TurnResponse,TimelineActivity,MarkdownText}.tsx`:
+  viewport/history anchoring, response rendering, activity details and Markdown.
+- `src/client/styles/`: ordered style sections; preserve declaration order.
 - `src/server/`: authentication, HTTP/WebSocket transport, native desktop bridge.
+- `src/server/thread-router.ts` and `peer-hub.ts`: bounded thread HTTP reads and
+  the shared WS/SSE peer policy, assembled by `index.ts`.
+- `src/shared/rpc-methods.ts`: the native RPC allowlist; classification never
+  authorizes automatic action retries.
 - `src/server/thread-history.ts`: native bounded history pagination.
 - `src/shared/`: protocol and permission profiles.
 - `scripts/`: Windows/macOS setup, services, tunnel, and platform controls.
@@ -21,6 +32,12 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   staged local updates. Build with `npm run manager:build`; install its separate
   dependencies with `npm run manager:install`; package with `npm run manager:dist`.
   Backend installs do not download Electron.
+- `desktop/manager-session.mjs`: serialized installation operations and state;
+  `main.mjs` owns the Electron window, trusted IPC and tray/menu-bar lifecycle.
+  `update-prepare.mjs` prepares inputs, `update-inputs.mjs` validates files/tools,
+  `updater.mjs` installs, and `update-transaction.mjs` persists recovery.
+- `scripts/runtime-files.mjs`: staging-only package exclusions. Preserve the
+  target PTY binaries/helper and executable mode; archive debug symbols separately.
 
 ## Product Constraints
 

@@ -3,62 +3,19 @@ import { v4 as randomUUID } from 'uuid';
 import type { ChatTransport } from './chat-transport';
 import type { ChatInput } from './queued-messages';
 import { upsertItem, mergeLatestHistoryItems, mergeTurnTimings } from './remote-state';
-import type { CollaborationMode, ContextUsage, Thread, ThreadItem } from './types';
-import { projectTurnTiming, runtimeTurnError, type TurnTiming } from '../shared/turn-timing';
+import type { CollaborationMode, Thread, ThreadItem } from './types';
+import { type TurnTiming } from '../shared/turn-timing';
 import { permissionProfileUpdate } from '../shared/permissions';
 import { collaborationMode } from './slash-commands';
 import { api } from './api';
+import { conversationEvent, type ChatViewState } from './conversation-state';
 
-export interface SideChat {
-  id: string;
-  title: string;
-  cwd?: string;
-  projectId?: string;
-  sourceThreadId?: string;
-  threadId?: string;
-  model: string;
-  effort: string;
-  permissions: string;
-  mode: 'default' | 'plan';
-  initialInput?: ChatInput;
-  items: ThreadItem[];
-  timings: Record<string, TurnTiming>;
-  activeTurnId: string | null;
-  contextUsage?: ContextUsage;
-  error: string | null;
-  unavailable?: boolean;
-  closing?: boolean;
-}
+export type SideChat = ChatViewState;
 
 export function sideChatEvent(chat: SideChat, method: string, params: Record<string, unknown>): SideChat {
-  if (params.threadId !== chat.threadId) return chat;
-  const timings = runtimeTurnError(chat.timings, method, params);
-  if (timings !== chat.timings) chat = { ...chat, timings };
-  const turnId = String(params.turnId ?? '');
-  if (method === 'turn/started' || method === 'turn/completed') {
-    const { items: turnItems = [], ...turn } = params.turn as TurnTiming & { items?: ThreadItem[] };
-    return { ...chat, activeTurnId: method === 'turn/started' ? turn.id : null,
-      items: turnItems.reduce((items, item) => upsertItem(items, { ...item, turnId: turn.id }), chat.items),
-      timings: { ...chat.timings, [turn.id]: projectTurnTiming(turn) } };
-  }
-  if (method === 'item/started' || method === 'item/completed') {
-    return { ...chat, items: upsertItem(chat.items, { ...params.item as ThreadItem, turnId,
-      ...(method === 'item/started' ? { startedAtMs: params.startedAtMs as number | null ?? null }
-        : { completedAtMs: params.completedAtMs as number | null ?? null }) }) };
-  }
-  if (method === 'item/agentMessage/delta') {
-    return { ...chat, items: upsertItem(chat.items, {
-      type: 'agentMessage', id: String(params.itemId), turnId, text: String(params.delta)
-    }, true) };
-  }
-  if (method === 'item/commandExecution/outputDelta') {
-    return { ...chat, items: chat.items.map(item => item.type === 'commandExecution' &&
-      item.id === params.itemId && item.turnId === turnId
-      ? { ...item, aggregatedOutput: `${item.aggregatedOutput ?? ''}${String(params.delta)}` } : item) };
-  }
-  if (method === 'thread/tokenUsage/updated') return { ...chat, contextUsage: params.tokenUsage as ContextUsage };
-  if (method === 'thread/closed') return { ...chat, activeTurnId: null, unavailable: true, error: '临时聊天已关闭，请新建侧边聊天。' };
-  return chat;
+  const next = conversationEvent(chat, method, params);
+  if (params.threadId === chat.threadId && method === 'thread/closed') return { ...next, activeTurnId: null, unavailable: true, error: '临时聊天已关闭，请新建侧边聊天。' };
+  return next;
 }
 
 export function useSideChats(transport: ChatTransport, connected: boolean) {

@@ -1,3 +1,4 @@
+import { isAllowedRpcMethod } from '../shared/rpc-methods.js';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import readline from 'node:readline';
 import { EventEmitter } from 'node:events';
@@ -30,60 +31,7 @@ type Pending = {
   reject: (error: Error) => void;
 };
 
-const READ_METHODS = new Set<ClientRpcMethod>([
-  'thread/list',
-  'thread/read',
-  'thread/goal/get',
-  'thread/turns/list',
-  'thread/items/list',
-  'thread/items/read',
-  'thread/attachment/list',
-  'thread/queue/list',
-  'model/list',
-  'permissionProfile/list',
-  'skills/list',
-  'collaborationMode/list',
-  'project/list',
-  'project/read',
-  'getAuthStatus',
-  'account/read',
-  'account/rateLimits/read',
-  'config/read',
-  'mcpServerStatus/list',
-  'fs/readFile',
-  'fs/readDirectory',
-  'fs/getMetadata',
-  'gitDiffToRemote',
-  'getConversationSummary'
-]);
-
-const WRITE_METHODS = new Set<ClientRpcMethod>([
-  'thread/goal/set',
-  'thread/goal/clear',
-  'project/create',
-  'fs/createDirectory',
-  'thread/start',
-  'thread/unsubscribe',
-  'thread/resume',
-  'thread/name/set',
-  'thread/archive',
-  'thread/unarchive',
-  'thread/settings/update',
-  'thread/compact/start',
-  'thread/fork',
-  'thread/queue/add',
-  'thread/queue/update',
-  'thread/queue/delete',
-  'thread/queue/start',
-  'review/start',
-  'turn/start',
-  'turn/steer',
-  'turn/interrupt'
-]);
-
-export function isAllowedRpcMethod(method: string): method is ClientRpcMethod {
-  return READ_METHODS.has(method as ClientRpcMethod) || WRITE_METHODS.has(method as ClientRpcMethod);
-}
+export { isAllowedRpcMethod } from '../shared/rpc-methods.js';
 
 export class CodexBridge extends EventEmitter {
   private child: ChildProcessWithoutNullStreams | null = null;
@@ -161,7 +109,7 @@ export class CodexBridge extends EventEmitter {
   }
 
   async request(method: ClientRpcMethod, params: unknown): Promise<unknown> {
-    if (!READ_METHODS.has(method) && !WRITE_METHODS.has(method)) {
+    if (!isAllowedRpcMethod(method)) {
       throw new Error(`Method ${method} is not allowed by this remote client.`);
     }
     validateGoalMutation(method, params);

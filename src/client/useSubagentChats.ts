@@ -4,11 +4,11 @@ import type { ChatTransport } from './chat-transport';
 import { mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings } from './remote-state';
 import { subagentSource, type Subagent } from './subagents';
 import type { Thread, ThreadHistoryPage } from './types';
-import { sideChatEvent, type SideChat } from './useSideChats';
+import { conversationEvent, type ChatViewState } from './conversation-state';
 import { HistoryPrefetch, prepareHistoryPage } from './history-prefetch';
 import type { BeforeHistoryCommit } from './history-scroll';
 
-export interface SubagentChat extends SideChat {
+export interface SubagentChat extends ChatViewState {
   agent: Subagent;
   thread?: Thread;
   loading: boolean;
@@ -158,7 +158,7 @@ export function useSubagentChats(transport: ChatTransport, connected: boolean, p
           if (name === 'thread/closed') return { ...entry, activeTurnId: null,
             ...(entry.thread ? { thread: { ...entry.thread, status: { type: 'idle' as const } } } : {}),
             agent: { ...entry.agent, status: 'shutdown' as const } };
-          const next = sideChatEvent(entry, name, data);
+          const next = conversationEvent(entry, name, data);
           const turnEvent = name === 'turn/started' || name === 'turn/completed';
           const turnStatus = (data.turn as { status?: string } | undefined)?.status;
           return { ...entry, ...next, ...(turnEvent ? {

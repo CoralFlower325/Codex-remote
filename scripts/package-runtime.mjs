@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { c as archive } from 'tar';
 import { runtimeNames, runtimePath, sha256, runtimeRepository, sourceHash } from '../desktop/runtime-package.mjs';
+import { runtimeFile } from './runtime-files.mjs';
 
 const git = (...args) => execFileSync('git', args, { maxBuffer: 16 * 1024 * 1024 }).toString('utf8').trim();
 export function treeSources(ref) {
@@ -35,7 +36,8 @@ export async function packageRuntime(root, output) {
     }
     for (const directory of ['dist', 'dist-server', 'node_modules']) {
       await fs.cp(path.join(root, directory), path.join(stage, directory), {
-        recursive: true, dereference: false, filter: (source) => !source.split(path.sep).includes('.bin')
+        recursive: true, dereference: false,
+        filter: (source) => runtimeFile(path.relative(root, source))
       });
     }
     const files = {};

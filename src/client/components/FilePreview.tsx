@@ -5,7 +5,7 @@ import type { PreviewFile, PreviewTarget } from '../../shared/file-preview';
 import { api } from '../api';
 import { copyText } from '../clipboard';
 import { previewLabel } from '../preview-links';
-import { MarkdownText } from './ThreadTimeline';
+import { MarkdownText } from './MarkdownText';
 import { PreviewLinks } from './PreviewLinks';
 import { previewDocument } from '../preview-rendering';
 

@@ -1,3 +1,4 @@
+import { useWorkspaceDirectory } from './useWorkspaceDirectory';
 import { historyConfig } from './history-config';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as randomUUID } from 'uuid';
@@ -10,13 +11,11 @@ import { permissionProfileId, permissionProfileUpdate, type PermissionProfile, t
 import { api, HttpError, isAbortedRequest, ReadRequests } from './api';
 import { beginForegroundRead, constrainedNetwork, prioritizeInteraction, yieldToInteraction } from './background-work';
 import { readDeviceWorkspace, saveDeviceWorkspace, readDeviceChat, saveDeviceChat, removeDeviceChat } from './device-snapshots';
-import { applyTaskPage, provisionalHistory, provisionalThread, type OpenThreadPage, type ThreadListPage } from './loading-snapshots';
+import { provisionalHistory, provisionalThread, type OpenThreadPage } from './loading-snapshots';
 import { RemoteConnection, type RemoteChannel } from './remote-connection';
-import { itemKey, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings, reconcileThreadList, upsertItem } from './remote-state';
+import { itemKey, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings, upsertItem } from './remote-state';
 import type {
   BridgeStatus,
-  ModelInfo,
-  ProjectInfo,
   ServerRequest,
   Thread,
   ThreadGoal,
@@ -74,12 +73,8 @@ export interface CreateThreadOptions {
 export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRequest }: UseRemoteOptions) {
   const [connected, setConnected] = useState(false);
   const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>({ status: 'offline' });
-  const [threads, setThreads] = useState<Thread[]>(() => dedupeThreads((bootstrap?.threads?.data ?? []).filter(isTaskThread)));
-  const [threadsLoading, setThreadsLoading] = useState(!bootstrap?.threads);
-  const [models, setModels] = useState<ModelInfo[]>(bootstrap?.models?.data ?? []);
   const [permissionProfiles, setPermissionProfiles] = useState<PermissionProfile[]>([]);
   const [defaultPermissionProfile, setDefaultPermissionProfile] = useState<string | null>(null);
-  const [projects, setProjects] = useState<ProjectInfo[]>(bootstrap?.projects?.data ?? []);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
@@ -109,7 +104,6 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const pendingServerResponsesRef = useRef(new Map<string, PendingServerResponse>());
   const refreshThreadsTimerRef = useRef<number | null>(null);
   const activeThreadRef = useRef<string | null>(null);
-  const threadsRef = useRef(threads);
   const activeTurnIdRef = useRef<string | null>(null);
   const turnRevisionRef = useRef(0);
   const itemsRef = useRef(items);
@@ -121,16 +115,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const turnTimingsRef = useRef(turnTimings);
   const selectionVersionRef = useRef(0);
   const historyRefreshRef = useRef<Promise<void> | null>(null);
-  const listRefreshRef = useRef<Promise<Thread[]> | null>(null);
-  const listPaginationRef = useRef<AbortController | null>(null);
-  const listRetryTimerRef = useRef<number | undefined>(undefined);
-  const listFailuresRef = useRef(0);
-  const listStartedAtRef = useRef(0);
-  const listFirstPagePendingRef = useRef(false);
-  const listErrorRef = useRef<string | null>(null);
-  const retryThreadsRef = useRef<() => void>(() => {});
   const connectionRef = useRef<RemoteConnection | null>(null);
-  const archivedRef = useRef(false);
   const newThreadsRef = useRef(new Set<string>());
   const permissionRequestVersionRef = useRef(0);
   const loadingHistoryRef = useRef(false);
@@ -144,14 +129,6 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const navigationRevisionRef = useRef(0);
   const navigationCacheRef = useRef(new Map<string, { threadId: string; turnId: string; savedAt: number;
     page: Pick<ThreadHistoryPage, 'items' | 'nextCursor'> & { newerCursor: string | null } }>());
-  const nativeListSeenRef = useRef(false);
-  const nativeProjectsSeenRef = useRef(false);
-  const nativeModelsSeenRef = useRef(false);
-  const metadataVersionsRef = useRef({ models: 0, projects: 0 });
-  const metadataFailuresRef = useRef(new Set<'models' | 'projects'>());
-  const metadataErrorsRef = useRef<Partial<Record<'models' | 'projects', string>>>({});
-  const retryMetadataRef = useRef<() => void>(() => {});
-  const provisionalListRef = useRef(new Map<string, Thread>());
   const verifiedThreadRef = useRef<string | null>(null);
   const timedThreadRef = useRef<string | null>(null);
   const timingErrorRef = useRef<string | null>(null);
@@ -164,9 +141,16 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const outlineRefreshRef = useRef<(() => void) | null>(null);
   const historyRequestsRef = useRef(new ReadRequests());
   const permissionRequestsRef = useRef(new ReadRequests());
-  const listRequestsRef = useRef(new ReadRequests());
-  const metadataRequestsRef = useRef(new ReadRequests());
   const earlierPageRef = useRef(new HistoryPrefetch());
+
+  const {
+    threads, threadsLoading, models, projects, setThreads,
+    setModels, setProjects, threadsRef, listRefreshRef, listPaginationRef,
+    listRetryTimerRef, listFailuresRef, listStartedAtRef, listFirstPagePendingRef, retryThreadsRef,
+    archivedRef, nativeListSeenRef, nativeProjectsSeenRef, nativeModelsSeenRef, metadataVersionsRef,
+    metadataFailuresRef, metadataErrorsRef, retryMetadataRef, provisionalListRef, listRequestsRef,
+    metadataRequestsRef, refreshThreads, restartTaskRead, refreshMetadata, refreshProjects,
+  } = useWorkspaceDirectory({ bootstrap, disposedRef, authExpiredRef, setLastError });
 
   activeThreadRef.current = activeThreadId;
   threadsRef.current = threads;
@@ -216,111 +200,6 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     }
   }), [rpc, watchThread]);
 
-  const refreshThreads = useCallback((firstPage?: NonNullable<WorkspaceBootstrap['threads']>): Promise<Thread[]> => {
-    if (listRefreshRef.current) return listRefreshRef.current;
-    window.clearTimeout(listRetryTimerRef.current);
-    const archived = archivedRef.current;
-    const controller = new AbortController();
-    listPaginationRef.current = controller;
-    listStartedAtRef.current = Date.now();
-    listFirstPagePendingRef.current = true;
-    const baseline = [...threadsRef.current];
-    const knownIds = new Set(baseline.map(thread => thread.id));
-    const request = (async () => {
-    setThreadsLoading(true);
-    try {
-      const collected: Thread[] = [];
-      const seenCursors = new Set<string>();
-      let cursor: string | null = null;
-      while (true) {
-        if (controller.signal.aborted) throw controller.signal.reason;
-        const query = new URLSearchParams({ archived: String(archived) });
-        if (cursor) query.set('cursor', cursor);
-        let result: ThreadListPage = firstPage && cursor === null ? firstPage
-          : await listRequestsRef.current.get(`/api/threads?${query}`,
-            cursor === null && listFailuresRef.current === 0 ? 4000 : 15000);
-        if (controller.signal.aborted) throw controller.signal.reason;
-        if (result.snapshot?.stale) {
-          if (archived === archivedRef.current) {
-            const preview = result.data.filter(isTaskThread).map(provisionalThread);
-            setThreads(current => {
-              const additions = preview.filter(thread => !current.some(entry => entry.id === thread.id));
-              additions.forEach(thread => provisionalListRef.current.set(thread.id, thread));
-              return dedupeThreads([...additions, ...current]);
-            });
-            markStartup('tasks-snapshot');
-          }
-          query.set('fresh', '1');
-          result = await listRequestsRef.current.get(`/api/threads?${query}`);
-        }
-        if (controller.signal.aborted) throw controller.signal.reason;
-        listFirstPagePendingRef.current = false;
-        nativeListSeenRef.current = true;
-        const priorListError = listErrorRef.current;
-        setLastError(current => current === priorListError ? null : current);
-        listErrorRef.current = null;
-        const page = (result.data ?? []).filter(isTaskThread).map((thread) => ({ ...thread, archived }));
-        collected.push(...page);
-        for (const thread of provisionalListRef.current.values()) {
-          if (!knownIds.has(thread.id)) { knownIds.add(thread.id); baseline.push(thread); }
-        }
-        const additions = page.filter(thread => !knownIds.has(thread.id));
-        for (const thread of additions) {
-          knownIds.add(thread.id);
-          baseline.push(thread);
-        }
-        if (archived === archivedRef.current) {
-          if (cursor === null) markStartup('tasks');
-          setThreads((current) => {
-            // Existing rows reconcile once at the end, preserving live changes between pages.
-            const partial = dedupeThreads([...additions, ...applyTaskPage(current, page, provisionalListRef.current)]);
-            return current.length === partial.length && partial.every((thread, index) => thread === current[index]) ? current : partial;
-          });
-        }
-        if (archived !== archivedRef.current || !result.nextCursor || seenCursors.has(result.nextCursor)) break;
-        seenCursors.add(result.nextCursor);
-        cursor = result.nextCursor;
-        await yieldToInteraction(controller.signal);
-      }
-      const nextThreads = dedupeThreads(collected);
-      if (archived === archivedRef.current) {
-        setThreads(current => reconcileThreadList(current, nextThreads, baseline));
-      }
-      listFailuresRef.current = 0;
-      return nextThreads;
-    } catch (error) {
-      if (error instanceof HttpError && error.status === 401) authExpiredRef.current?.();
-      else if (!controller.signal.aborted && !disposedRef.current && !isAbortedRequest(error)) {
-        const message = error instanceof Error ? error.message : String(error);
-        listErrorRef.current = message;
-        setLastError(message);
-        const delay = Math.min(500 * 2 ** Math.min(listFailuresRef.current++, 4), 5000);
-        listRetryTimerRef.current = window.setTimeout(() => {
-          if (!disposedRef.current && navigator.onLine) retryThreadsRef.current();
-        }, delay);
-      }
-      throw error;
-    } finally {
-      if (listPaginationRef.current === controller) {
-        listFirstPagePendingRef.current = false;
-        setThreadsLoading(false);
-      }
-    }
-    })().finally(() => {
-      if (listRefreshRef.current === request) listRefreshRef.current = null;
-    });
-    listRefreshRef.current = request;
-    return request;
-  }, []);
-  retryThreadsRef.current = () => { void refreshThreads().catch(() => undefined); };
-
-  const restartTaskRead = useCallback(() => {
-    listPaginationRef.current?.abort();
-    listRequestsRef.current.cancel();
-    listRefreshRef.current = null;
-    retryThreadsRef.current();
-  }, []);
-
   const reconnect = useCallback(() => {
     if (!authenticated) return;
     setLastError(null);
@@ -329,39 +208,6 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     historyRequestsRef.current.cancel();
     connectionRef.current?.reconnect();
   }, [authenticated, restartTaskRead]);
-
-  const refreshMetadata = useCallback(async (kind: 'models' | 'projects') => {
-    const version = ++metadataVersionsRef.current[kind];
-    try {
-      const result = await metadataRequestsRef.current.get<{ data: ModelInfo[] | ProjectInfo[] }>(
-        `/api/metadata?kind=${kind}`, 10000, 3);
-      if (disposedRef.current || metadataVersionsRef.current[kind] !== version) return;
-      metadataFailuresRef.current.delete(kind);
-      const previousError = metadataErrorsRef.current[kind];
-      delete metadataErrorsRef.current[kind];
-      if (previousError) setLastError(current => current === previousError
-        ? metadataErrorsRef.current.models ?? metadataErrorsRef.current.projects ?? null : current);
-      if (kind === 'models') {
-        nativeModelsSeenRef.current = true;
-        setModels((result.data ?? []) as ModelInfo[]);
-      } else {
-        nativeProjectsSeenRef.current = true;
-        setProjects((result.data ?? []) as ProjectInfo[]);
-      }
-    } catch (error) {
-      if (disposedRef.current || metadataVersionsRef.current[kind] !== version || isAbortedRequest(error)) return;
-      if (error instanceof HttpError && error.status === 401) authExpiredRef.current?.();
-      else {
-        metadataFailuresRef.current.add(kind);
-        const message = error instanceof Error ? error.message : String(error);
-        metadataErrorsRef.current[kind] = message;
-        setLastError(message);
-      }
-      throw error;
-    }
-  }, []);
-
-  const refreshProjects = useCallback(() => refreshMetadata('projects'), [refreshMetadata]);
 
   const fetchHistoryPage = useCallback(async (threadId: string, before: string | null = null, direction: 'before' | 'after' = 'before') => {
     const query = new URLSearchParams({ threadId, limit: before === null ? '40' : '100' });

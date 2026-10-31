@@ -1,3 +1,6 @@
+import { createPeerHub } from './peer-hub.js';
+import { threadRouter } from './thread-router.js';
+import { asyncRoute } from './http-route.js';
 import fs from 'node:fs';
 import http from 'node:http';
 import type { Duplex } from 'node:stream';
@@ -6,10 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import express, { type NextFunction, type Request, type Response } from 'express';
 import compression from 'compression';
-import { WebSocket, WebSocketServer } from 'ws';
-
-import type { ClientMessage, ServerMessage } from '../shared/protocol.js';
-import { permissionProfileId, type PermissionProfile, type PermissionSettings } from '../shared/permissions.js';
+import { WebSocketServer } from 'ws';
 import {
   authFilePath,
   clearSessionCookie,
@@ -25,9 +25,7 @@ import {
 import { codexBridge } from './codex-bridge.js';
 import { config } from './config.js';
 import { desktopBridge } from './desktop-bridge.js';
-import { readConversationHistoryPage, readThreadHistoryAround, readThreadHistoryPage, readThreadOutline } from './thread-history.js';
-import { readThreadTimings } from './thread-open.js';
-import { MetadataReader, readWorkspaceBootstrap, withReadDeadline } from './bootstrap.js';
+import { MetadataReader, readWorkspaceBootstrap } from './bootstrap.js';
 import { WorkspaceSnapshots } from './workspace-snapshots.js';
 import { TerminalManager } from './terminal-manager.js';
 import { handleTerminalSocket } from './terminal-socket.js';
@@ -38,14 +36,11 @@ import { EventJournal } from './event-journal.js';
 import { filePreviewRouter } from './file-preview.js';
 import { LocalImages, imageExtensions } from './local-images.js';
 import { PushNotifications } from './push-notifications.js';
-import { isTaskThread } from '../shared/thread-source.js';
 import { httpConnections, type RemotePeer } from './http-connections.js';
 import { metadataRouter } from './metadata-router.js';
 import { threadDockRouter } from './thread-dock-router.js';
 import { historyItemRouter } from './history-item-router.js';
-import { readThreadSummaryPage } from './thread-summary.js';
 import { SessionConnections } from './session-connections.js';
-import { nativeRpcFailure } from '../shared/native-error.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -60,8 +55,6 @@ const wss = new WebSocketServer({
     concurrencyLimit: 4
   }
 });
-const clients = new Set<RemotePeer>();
-const synchronizedClients = new Set<RemotePeer>();
 const eventJournal = new EventJournal();
 const questionTracker = new QuestionTracker();
 const localImages = new LocalImages(path.join(config.dataDir, 'image-attachments'));
@@ -72,13 +65,16 @@ const pushNotifications = new PushNotifications(
   config.publicOrigin ?? 'https://example.com',
   threadId => codexBridge.request('thread/read', { threadId, includeTurns: false })
 );
-const watchedThreads = new Map<RemotePeer, Set<string>>();
 const ephemeralChats = new EphemeralChats<RemotePeer>(threadId => codexBridge.request('thread/unsubscribe', { threadId }));
 const queueDispatcher = new QueueDispatcher(<T,>(method: import('../shared/protocol.js').ClientRpcMethod, params: unknown) =>
   codexBridge.request(method, params) as Promise<T>);
 const terminalWss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
 const terminals = new TerminalManager(config.codexWorkdir);
 const sessionConnections = new SessionConnections();
+const { clients, connectClient, disconnectClient, handleClientMessage, broadcast } = createPeerHub({
+  codexBridge, eventJournal, questionTracker, metadataReader, workspaceSnapshots,
+  ephemeralChats, pushNotifications, queueDispatcher, sessionConnections
+});
 terminalWss.on('connection', (socket, req) => {
   sessionConnections.add(socket, () => Boolean(readSessionCookie(req.headers.cookie, req.headers['user-agent'])));
   socket.on('close', () => sessionConnections.delete(socket));
@@ -127,14 +123,6 @@ function assertTrustedOrigin(req: Request): void {
   if (!origin) return;
   if (allowedOrigins().includes(origin)) return;
   throw new Error('Untrusted request origin.');
-}
-
-function asyncRoute(
-  handler: (req: Request, res: Response, next: NextFunction) => Promise<void> | void
-): (req: Request, res: Response, next: NextFunction) => void {
-  return (req, res, next) => {
-    Promise.resolve(handler(req, res, next)).catch(next);
-  };
 }
 
 function requireAuth(req: Request, res: Response, next: NextFunction): void {
@@ -315,117 +303,8 @@ app.get(
   })
 );
 
-app.get(
-  '/api/thread/open',
-  requireAuth,
-  asyncRoute(async (req, res) => {
-    const threadId = typeof req.query.threadId === 'string' ? req.query.threadId.trim() : '';
-    if (!threadId) {
-      res.status(400).json({ error: 'threadId is required.' });
-      return;
-    }
-    const mode = req.query.mode === 'new' || req.query.mode === 'read' ? req.query.mode : 'resume';
-    res.setHeader('Cache-Control', 'no-store');
-    const result = await workspaceSnapshots.open(threadId, mode, req.query.fresh === '1');
-    const thread = (result.result as { thread?: { id: string; source?: unknown; ephemeral?: boolean } }).thread;
-    if (thread && isTaskThread(thread)) pushNotifications.watch(thread.id);
-    recordQuestions(threadId, result.items.map(entry => entry.item));
-    for (const entry of result.items) void localImages.remember(entry.item).catch(reportImageFailure);
-    if (!res.destroyed) res.json(result);
-  })
-);
-
-app.get('/api/thread/summary', requireAuth, asyncRoute(async (req, res) => {
-  const threadId = typeof req.query.threadId === 'string' ? req.query.threadId.trim() : '';
-  if (!threadId) { res.status(400).json({ error: 'threadId is required.' }); return; }
-  const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : null;
-  const attachmentCursor = typeof req.query.attachmentsCursor === 'string' ? req.query.attachmentsCursor : null;
-  res.json(await withReadDeadline(readThreadSummaryPage(
-    (method, params) => codexBridge.request(method, params), threadId, cursor, attachmentCursor,
-    req.query.attachmentsOnly === '1'
-  )));
-}));
-
-app.get('/api/thread/timings', requireAuth, asyncRoute(async (req, res) => {
-  const threadId = typeof req.query.threadId === 'string' ? req.query.threadId.trim() : '';
-  if (!threadId) { res.status(400).json({ error: 'threadId is required.' }); return; }
-  const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : null;
-  res.json(await (cursor ? withReadDeadline(readThreadTimings(
-    (method, params) => codexBridge.request(method, params), threadId, cursor
-  )) : workspaceSnapshots.readTimings(threadId, req.query.fresh === '1')));
-}));
-
-app.get(
-  '/api/thread/history',
-  requireAuth,
-  asyncRoute(async (req, res) => {
-    const threadId = typeof req.query.threadId === 'string' ? req.query.threadId.trim() : '';
-    if (!threadId) {
-      res.status(400).json({ error: 'threadId is required.' });
-      return;
-    }
-    const direction = typeof req.query.after === 'string' ? 'asc' : 'desc';
-    const cursor = typeof req.query.after === 'string' ? req.query.after : typeof req.query.before === 'string' ? req.query.before : null;
-    const limitValue =
-      typeof req.query.limit === 'string' ? Number.parseInt(req.query.limit, 10) : 200;
-    const limit = Number.isFinite(limitValue) ? Math.min(400, Math.max(1, limitValue)) : 200;
-    res.setHeader('Cache-Control', 'no-store');
-    const request = (method: import('../shared/protocol.js').ClientRpcMethod, params: unknown) => codexBridge.request(method, params);
-    const result = await withReadDeadline(cursor && direction === 'desc' && req.query.conversation === '1'
-      ? readConversationHistoryPage(request, threadId, cursor, Math.min(limit, 100))
-      : readThreadHistoryPage(request, threadId, cursor, limit, direction));
-    recordQuestions(threadId, result.items.map(entry => entry.item));
-    for (const entry of result.items) void localImages.remember(entry.item).catch(reportImageFailure);
-    res.json(result);
-  })
-);
-
-app.get(
-  '/api/thread/outline',
-  requireAuth,
-  asyncRoute(async (req, res) => {
-    const threadId = typeof req.query.threadId === 'string' ? req.query.threadId.trim() : '';
-    if (!threadId) { res.status(400).json({ error: 'threadId is required.' }); return; }
-    const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : null;
-    res.setHeader('Cache-Control', 'no-store');
-    res.json(await readThreadOutline((method, params) => codexBridge.request(method, params), threadId, cursor));
-  })
-);
-
-app.get(
-  '/api/thread/around',
-  requireAuth,
-  asyncRoute(async (req, res) => {
-    const { threadId, turnId, itemId } = req.query;
-    if (typeof threadId !== 'string' || !threadId || typeof turnId !== 'string' || !turnId ||
-        typeof itemId !== 'string' || !itemId) {
-      res.status(400).json({ error: 'threadId, turnId and itemId are required.' }); return;
-    }
-    res.setHeader('Cache-Control', 'no-store');
-    res.json(await readThreadHistoryAround((method, params) => codexBridge.request(method, params), threadId, turnId, itemId));
-  })
-);
-
-app.get(
-  '/api/permissions',
-  requireAuth,
-  asyncRoute(async (req, res) => {
-    const cwd = typeof req.query.cwd === 'string' && req.query.cwd ? req.query.cwd : config.codexWorkdir;
-    const profiles: PermissionProfile[] = [];
-    let cursor: string | null = null;
-    do {
-      const result = await codexBridge.request('permissionProfile/list', { cwd, limit: 100, ...(cursor ? { cursor } : {}) }) as {
-        data: PermissionProfile[]; nextCursor?: string | null;
-      };
-      profiles.push(...result.data.filter((profile) => profile.allowed));
-      cursor = result.nextCursor ?? null;
-    } while (cursor);
-    const result = await codexBridge.request('config/read', { cwd, includeLayers: false }) as { config: PermissionSettings };
-    const defaultProfile = permissionProfileId(result.config);
-    res.setHeader('Cache-Control', 'no-store');
-    res.json({ data: profiles, defaultProfile: profiles.some((profile) => profile.id === defaultProfile) ? defaultProfile : null });
-  })
-);
+app.use(threadRouter({ requireAuth, codexBridge, workspaceSnapshots, pushNotifications,
+  localImages, recordQuestions, reportImageFailure, config }));
 
 app.use('/api/file-preview', filePreviewRouter(requireAuth));
 
@@ -493,142 +372,6 @@ wss.on('connection', (socket, req) => {
   });
   socket.on('close', () => disconnectClient(socket));
 });
-
-function connectClient(socket: RemotePeer, authorized?: () => boolean): void {
-  if (authorized) sessionConnections.add(socket, authorized);
-  clients.add(socket);
-  watchedThreads.set(socket, new Set());
-  send(socket, {
-    type: 'hello',
-    connectedAt: new Date().toISOString(),
-    codexAvailable: true,
-    binary: codexBridge.getBinary()
-  });
-  send(socket, {
-    type: 'bridge.status',
-    status: codexBridge.getStatus()
-  });
-  send(socket, { type: 'questions.snapshot', counts: questionTracker.snapshot() });
-  send(socket, {
-    type: 'server.request.snapshot',
-    requests: codexBridge.getPendingServerRequests()
-  });
-
-}
-
-function disconnectClient(socket: RemotePeer): void {
-  sessionConnections.delete(socket);
-  clients.delete(socket);
-  synchronizedClients.delete(socket);
-  watchedThreads.delete(socket);
-  ephemeralChats.disconnect(socket);
-}
-
-async function handleClientMessage(socket: RemotePeer, raw: string): Promise<void> {
-  if (!sessionConnections.allowed(socket)) return;
-  let message: ClientMessage;
-  try {
-    message = JSON.parse(raw) as ClientMessage;
-  } catch {
-    send(socket, { type: 'error', error: { message: 'Invalid JSON message.' } });
-    return;
-  }
-
-  if (message.type === 'ping') {
-    send(socket, { type: 'pong', at: new Date().toISOString() });
-    return;
-  }
-  if (message.type === 'thread.watch') {
-    const ids = [message.threadId, ...(message.additionalThreadIds ?? [])].filter((id): id is string => typeof id === 'string');
-    watchedThreads.set(socket, new Set(ids));
-    ephemeralChats.claim(message.additionalThreadIds ?? [], socket);
-    synchronizedClients.add(socket);
-    return;
-  }
-  if (message.type === 'sync.resume') {
-    const ids = new Set([message.threadId, ...(message.additionalThreadIds ?? [])]
-      .filter((id): id is string => typeof id === 'string'));
-    watchedThreads.set(socket, ids);
-    ephemeralChats.claim(message.additionalThreadIds ?? [], socket);
-    const replay = eventJournal.resume(message.epoch, message.after, ids);
-    for (const entry of replay.entries) {
-      if (!sessionConnections.allowed(socket)) break;
-      socket.send(entry.payload);
-    }
-    send(socket, { type: 'questions.snapshot', counts: questionTracker.snapshot() });
-    send(socket, { type: 'server.request.snapshot', requests: codexBridge.getPendingServerRequests() });
-    send(socket, { type: 'sync.ready', epoch: replay.epoch, sequence: replay.sequence, resumed: replay.resumed });
-    synchronizedClients.add(socket);
-    return;
-  }
-
-  if (message.type === 'rpc') {
-    try {
-      const result = await metadataReader.read(message.method, message.params ?? {});
-      workspaceSnapshots.action(message.method, message.params as Record<string, unknown> ?? {});
-      if (message.method === 'project/create') metadataReader.clear('project/list');
-      const params = message.params as { ephemeral?: boolean; threadId?: string;
-        clientUserMessageId?: string; input?: unknown[]; expectedTurnId?: string } | undefined;
-      if ((message.method === 'thread/start' || message.method === 'thread/fork') && params?.ephemeral) {
-        const id = (result as { thread: { id: string } }).thread.id;
-        ephemeralChats.add(id, socket);
-        if (socket.readyState !== WebSocket.OPEN) ephemeralChats.disconnect(socket);
-      }
-      if (/^thread\/(?:start|fork|resume|read)$/.test(message.method) && !params?.ephemeral) {
-        const thread = (result as { thread?: { id: string; source?: unknown; ephemeral?: boolean } }).thread;
-        if (thread && isTaskThread(thread)) pushNotifications.watch(thread.id);
-      }
-      if (message.method === 'thread/unsubscribe' && params?.threadId) ephemeralChats.remove(params.threadId);
-      if ((message.method === 'turn/start' || message.method === 'turn/steer') &&
-          params?.threadId && params.clientUserMessageId && params.input) {
-        const turnId = message.method === 'turn/start' ? (result as { turn: { id: string } }).turn.id : params.expectedTurnId!;
-        ephemeralChats.recordInput(params.threadId, turnId, params.clientUserMessageId, params.input);
-      }
-      if (message.method === 'thread/queue/add' && params?.threadId) void queueDispatcher.track(params.threadId);
-      send(socket, { type: 'rpc.result', id: message.id, result });
-    } catch (error) {
-      send(socket, {
-        type: 'rpc.error',
-        id: message.id,
-        error: nativeRpcFailure(error)
-      });
-    }
-    return;
-  }
-
-  if (message.type === 'server.request.respond') {
-    try {
-      await codexBridge.respondToServerRequest(message.requestId, message.result, message.error);
-      broadcast({ type: 'server.request.resolved', requestId: message.requestId });
-    } catch (error) {
-      send(socket, {
-        type: 'server.request.failed',
-        requestId: message.requestId,
-        error: { message: error instanceof Error ? error.message : String(error) }
-      });
-    }
-  }
-}
-
-function broadcast(message: ServerMessage): void {
-  const entry = eventJournal.append(message);
-  const threadId = entry.threadId;
-  const recipients = [...clients].filter((client) =>
-    client.readyState === WebSocket.OPEN && synchronizedClients.has(client) &&
-      (!threadId || watchedThreads.get(client)?.has(threadId))
-  );
-  if (recipients.length === 0) return;
-  for (const client of recipients) {
-    if (!sessionConnections.allowed(client)) continue;
-    if (client.bufferedAmount > 2 * 1024 * 1024) client.close(1013, 'Connection congested; resume.');
-    else client.send(entry.payload);
-  }
-}
-
-function send(socket: RemotePeer, message: ServerMessage): void {
-  if (!sessionConnections.allowed(socket)) return;
-  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
-}
 
 function recordQuestions(threadId: string, items: unknown[]): void {
   if (questionTracker.ingest(threadId, items)) {

@@ -1,0 +1,104 @@
+.native-turn-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 12px 0 16px;
+  padding: 12px;
+  color: #8d2828;
+  background: #fff4f3;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.native-turn-error > svg { flex: 0 0 16px; margin-top: 3px; }
+.native-turn-error > div { min-width: 0; flex: 1; }
+.native-turn-error strong { font-weight: 600; }
+.native-turn-error p { margin: 4px 0 0; white-space: pre-wrap; }
+.native-turn-error details { margin-top: 6px; }
+.native-turn-error summary { cursor: pointer; }
+.native-turn-error code, .native-turn-error pre { font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.native-turn-error pre { margin: 4px 0 0; max-height: 240px; overflow: auto; }
+.native-turn-error--retrying { color: #725015; background: #fff9e9; }
+.native-error-retry { display: block; }
+
+.error-banner {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 9px;
+  border-bottom: 1px solid color-mix(in oklch, var(--danger) 24%, var(--line));
+  background: var(--danger-soft);
+  padding: 9px 16px;
+  color: color-mix(in oklch, var(--danger) 78%, var(--ink));
+  font-size: 0.82rem;
+}
+
+.error-banner span {
+  min-width: 0;
+  flex: 1;
+}
+
+.error-banner button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+}
+
+.error-banner button:hover {
+  background: color-mix(in oklch, var(--danger) 10%, transparent);
+}
+
+.home-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.home-hero {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 36px 20px 72px;
+}
+
+.home-symbol {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  color: var(--line-strong);
+}
+
+.home-hero h1 {
+  text-wrap: balance;
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.18;
+  text-align: center;
+}
+
+.home-composer-dock {
+  width: min(var(--content-max), calc(100% - 48px));
+  flex: 0 0 auto;
+  margin-inline: auto;
+  padding-bottom: 16px;
+}
+
+.home-composer-dock .composer-wrap--home {
+  margin: 0;
+}
+

@@ -29,6 +29,7 @@ the authority for what is actually installed.
 ## Maintain / 维护
 
 - [Contributing / 贡献指南](../CONTRIBUTING.md)
+- [Code organization / 代码分层与维护边界](code-organization.md)
 - [Maintainer handoff and release procedure / 开发交接与发布流程](maintainer-handoff.md)
 - [Agent rules / 开发约束](../AGENTS.md)
 - [Product principles / 产品原则](../PRODUCT.md)
@@ -55,6 +56,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
+| [代码整理](refactor-acceptance.md) | v0.1.16 基线、独立差分与桌面/手机界面对照 |
 | [Startup](startup-acceptance.md) | Shell, authentication, tasks, chat and connection phases / 启动各阶段 |
 | [History](history-loading-acceptance.md) | Paging, anchors and side chats / 历史分页、阅读锚点与侧聊 |
 | [Previews](session-preview-acceptance.md) | Isolation, attachments and rendering limits / 预览隔离、附件与渲染限制 |

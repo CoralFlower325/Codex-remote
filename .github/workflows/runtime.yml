@@ -29,6 +29,12 @@ jobs:
       - run: npm run build
       - run: npm run runtime:prune
       - run: node scripts/check-runtime.mjs
+      - run: node scripts/archive-runtime-symbols.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-symbols-${{ runner.os }}
+          path: output/runtime-symbols/*
+          if-no-files-found: ignore
       - run: npm run runtime:pack
       - name: Validate packaged runtime
         run: node scripts/verify-runtime-package.mjs
