@@ -15,7 +15,16 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The 0.1.16 batch maps native runtime error events and failed-turn metadata across
+The 0.2.0 batch organizes chat rendering, directory reads, host routes/peers,
+manager operations and update preparation without changing the UI or native
+behavior. Browser libraries are build dependencies; runtime staging removes
+caches, symbols and foreign prebuilds while retaining the target PTY/helper.
+See [code ownership](code-organization.md) and
+[baseline acceptance](refactor-acceptance.md). Version changes follow acceptance,
+not the initial extraction. Keep final platform package/CI evidence distinct
+from synthetic UI comparison and physical-device acceptance.
+
+The preceding 0.1.16 batch maps native runtime error events and failed-turn metadata across
 main, side and subagent chats, outside process folds. Preserve actual native HTTP
 codes and retry flags without inferring 429 or resubmitting model work. Bounded
 history/outline projections retain final errors; late in-progress snapshots retain
