@@ -94,7 +94,9 @@ Install the new manager and update the host to enable these controls.
 
 Check the release in **Version updates**, read its summary and confirm installation
 in the native dialog. Already current checks leave the service and window intact.
-Node.js 22.19+, npm and Git must be on PATH, including standard Homebrew locations.
+Node.js 22.19+ must be on PATH, including standard Homebrew locations.
+The customized source workflow also requires npm and Git; prebuilt runtime
+updates do not require them.
 
 The progress display uses Chinese stage labels, a percentage based on completed
 steps, total/stage elapsed time and bounded recent command output. Percentages
