@@ -85,6 +85,8 @@ Chinese explanation rather than replacing the whole screen with npm output.
 Downloads use bounded npm request retries and at most one command retry for
 transient network failures, preserving configured registries and proxies.
 Each npm command has a ten-minute deadline; source fetches have three minutes.
+Release checks and runtime downloads use the manager's native system network stack
+and system proxy configuration; they do not modify system or npm proxy settings.
 
 0. Manager 0.1.14+ checks the platform runtime manifest and its GitHub SHA-256.
    Standard installations use its source baseline; custom inputs or absent baselines

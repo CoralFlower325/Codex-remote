@@ -167,9 +167,15 @@ try {
   await page.getByText(warning.messages[0], { exact: true }).waitFor({ state: 'detached' });
   results.desktopDiagnosticRecovers = true;
   results.startWithDesktopPending = true;
-  await application.evaluate(() => {
-    const original = globalThis.fetch;
-    globalThis.fetch = (url, options) => String(url).startsWith('https://api.github.com/repos/CoralFlower325/')
+  const nativeNetwork = await application.evaluate(async ({ net }, url) => {
+    const response = await net.fetch(url, { credentials: 'omit' });
+    return (await response.json()).ok;
+  }, `http://127.0.0.1:${server.address().port}/health`);
+  if (!nativeNetwork) throw new Error('Native manager network probe failed.');
+  results.nativeNetwork = true;
+  await application.evaluate(({ net }) => {
+    const original = net.fetch.bind(net);
+    net.fetch = (url, options) => String(url).startsWith('https://api.github.com/repos/CoralFlower325/')
       ? Promise.reject(new Error('Synthetic release network failure')) : original(url, options);
   });
   const failed = await page.evaluate(() => window.manager.check());
@@ -187,9 +193,23 @@ try {
     throw new Error('Operation error could not be dismissed');
   }
   results.operationErrorPreservedAndDismissible = true;
-  await application.evaluate((_, currentVersion) => {
-    const original = globalThis.fetch;
-    globalThis.fetch = (url, options) => String(url).startsWith('https://api.github.com/repos/CoralFlower325/')
+  const journal = path.join(fixture, 'output/manager-update/active.json');
+  await fs.mkdir(path.dirname(journal), { recursive: true });
+  await fs.writeFile(journal, '{damaged synthetic journal');
+  const blocked = await page.evaluate(() => window.manager.action('Restart'));
+  if (blocked.ok || !blocked.value.recoveryRequired) throw new Error('Damaged journal did not block service mutation.');
+  await page.getByRole('button', { name: '重试恢复' }).waitFor();
+  if (!await page.locator('.actions button').first().isDisabled()) throw new Error('Recovery guard did not disable controls.');
+  await fs.rm(journal);
+  await page.getByRole('button', { name: '重试恢复' }).click();
+  await page.getByRole('button', { name: '重试恢复' }).waitFor({ state: 'detached' });
+  if ((await page.evaluate(async () => (await window.manager.get()).value)).recoveryRequired) {
+    throw new Error('Recovery guard did not clear after a completed retry.');
+  }
+  results.recoveryGuardAndRetry = true;
+  await application.evaluate(({ net }, currentVersion) => {
+    const original = net.fetch.bind(net);
+    net.fetch = (url, options) => String(url).startsWith('https://api.github.com/repos/CoralFlower325/')
       ? Promise.resolve(new Response(JSON.stringify({ tag_name: `v${currentVersion}`, body: 'Synthetic release notes' })))
       : original(url, options);
   }, version);

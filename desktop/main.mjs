@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, dialog, shell, net } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,7 @@ import { updateError, createUpdateProgress } from './update-progress.mjs';
 import { pendingUpdate, recoverPendingUpdate } from './update-transaction.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const fetchRelease = (url, options) => net.fetch(url, { ...options, credentials: 'omit' });
 const labels = {
   healthy: '运行正常', degraded: '需要检查', stopped: '已关闭',
   conflict: '安装目录冲突', unowned: '端口被其他服务使用'
@@ -137,12 +138,19 @@ async function verify({ requireDesktop = true } = {}) {
   if (startupReady(status, requireDesktop)) return status;
   throw new Error(status.diagnostics.join('\n') || 'Remote 本地健康检测尚未通过。');
 }
+async function requireCompletedUpdate() {
+  if (state.recoveryRequired) throw new Error('请先恢复中断的更新。');
+  state.recoveryRequired = true;
+  // Leave the guard set if the journal is unreadable or damaged.
+  state.recoveryRequired = Boolean(await pendingUpdate(settings.root));
+  if (state.recoveryRequired) throw new Error('请先恢复中断的更新。');
+}
 async function action(kind) {
   if (!settings.root) throw new Error('请先选择安装目录。');
-  if (state.recoveryRequired) throw new Error('请先恢复中断的更新。');
   if (!['Start', 'Stop', 'Restart'].includes(kind)) throw new Error('Invalid action.');
   return exclusive(kind === 'Start' ? '正在开启 Remote' : kind === 'Stop' ? '正在关闭 Remote' : '正在重启 Remote',
     async () => {
+      await requireCompletedUpdate();
       if (kind !== 'Start') await stop();
       if (kind === 'Stop') event('Remote 已关闭');
       else {
@@ -159,7 +167,7 @@ async function openRemote() {
 async function checkUpdate() {
   return exclusive('正在检查更新', async () => {
     const info = await installation(settings.root);
-    try { state.release = await latestRelease(info.version); }
+    try { state.release = await latestRelease(info.version, fetchRelease); }
     catch (error) { throw new Error(`检查版本未完成。${updateError(error)}`, { cause: error }); }
     state.result = state.release.available ? '' : `本机 ${info.version} 已是最新版本。`;
     event(state.release.available ? `发现新版本 ${state.release.version}` : '本机已是最新版本');
@@ -177,6 +185,7 @@ async function update() {
   });
   if (response !== 1) return;
   return exclusive('正在准备更新', async () => {
+    await requireCompletedUpdate();
     const current = await health(settings.root);
     if (['conflict', 'unowned'].includes(current.state)) throw new Error('请先解决服务归属或端口冲突。');
     const progress = (message, detail) => {
@@ -184,7 +193,7 @@ async function update() {
       if (detail?.kind !== 'output') event(message);
       publish();
     };
-    const prepared = await prepareUpdate(settings.root, release, progress);
+    const prepared = await prepareUpdate(settings.root, release, progress, undefined, { fetcher: fetchRelease });
     let requireDesktop = current.desktop;
     let result;
     try { result = await installUpdate(prepared, {
@@ -194,7 +203,10 @@ async function update() {
         requireDesktop = status.desktop;
         return status.service.running;
       }, progress, requireDesktop
-    }); } finally { state.recoveryRequired = Boolean(await pendingUpdate(settings.root)); }
+    }); } finally {
+      state.recoveryRequired = true;
+      state.recoveryRequired = Boolean(await pendingUpdate(settings.root));
+    }
     state.release = null;
     state.result = `已通过${result.mode === 'runtime' ? '预构建运行包' : '源码构建'}安装 ${result.version}。备份：${result.backup}` +
       (result.preservedFiles.length ? `\n已保留本机文档：${result.preservedFiles.join('、')}。新版副本位于备份的 incoming 目录。` : '') +
@@ -208,12 +220,12 @@ async function recoverInstallation() {
   if (!settings.root) return;
   return exclusive('正在检查未完成更新', async () => {
     state.recoveryRequired = true;
-    const pending = await pendingUpdate(settings.root);
-    if (!pending) { state.recoveryRequired = false; return; }
     const report = createUpdateProgress((message, detail) => {
       state.busy = message; state.updateProgress = detail; publish();
     });
     try {
+      const pending = await pendingUpdate(settings.root);
+      if (!pending) { state.recoveryRequired = false; return; }
       const result = await recoverPendingUpdate(settings.root, {
         stop, start: () => control(settings.root, 'Start'),
         verify: () => verify({ requireDesktop: Boolean(pending.requireDesktop) }), report
@@ -227,7 +239,8 @@ async function recoverInstallation() {
     } catch (error) {
       report.terminal('recovery-failed', '中断更新恢复未完成',
         '已保留事务记录和备份，请检查错误后重试恢复。', error);
-      throw error;
+      throw Object.assign(new Error(`中断更新恢复未完成，事务记录和备份已保留。\n${updateError(error)}`,
+        { cause: error }), { code: error.code });
     }
   });
 }
@@ -248,6 +261,7 @@ async function selectDirectory(directory, discoveredOnly = false) {
     healthError = '';
     if (!discoveredOnly) state.installations = [];
     await saveSettings();
+    state.recoveryRequired = true;
     state.recoveryRequired = Boolean(await pendingUpdate(settings.root));
     event('已选择本机安装目录');
   });
@@ -263,7 +277,8 @@ async function detectDirectory() {
       state.release = null; state.status = null; healthError = '';
     }
     settings.root = selected?.root || '';
-    state.recoveryRequired = settings.root ? Boolean(await pendingUpdate(settings.root)) : false;
+    state.recoveryRequired = Boolean(settings.root);
+    if (settings.root) state.recoveryRequired = Boolean(await pendingUpdate(settings.root));
     await saveSettings();
     if (selected) {
       event('已识别本机安装目录');

@@ -27,7 +27,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npm prune --omit=dev --ignore-scripts --no-audit --no-fund
+      - run: npm run runtime:prune
       - run: node scripts/check-runtime.mjs
       - run: npm run runtime:pack
       - name: Validate packaged runtime

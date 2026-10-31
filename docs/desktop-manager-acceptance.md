@@ -1,6 +1,6 @@
 # Desktop Manager Acceptance
 
-Latest functional batch: 0.1.14, 2026-10-30.
+Latest functional batch: 0.1.14, 2026-10-31.
 
 ## Prebuilt Runtimes And Interrupted Updates
 
@@ -12,6 +12,11 @@ runtimes from production dependencies, unpacks them and exercises a real
 old-source upgrade, stopped-state preservation and an injected verification
 failure with old-dependency restoration. Local Windows production-package
 acceptance passed; use the final tagged CI jobs for cross-platform results.
+
+Local validation passes 524 tests across 73 files. Source Electron acceptance
+also checks native network requests, mutation blocking for a damaged journal and
+the recovery retry control. Runtime pruning retains the reviewed lockfile while
+removing development dependencies, including under CI's npm 10.
 
 Child-process tests forcibly terminate installation before dependency moves,
 after a move, before/after atomic source replacement and during verification.

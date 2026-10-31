@@ -33,6 +33,9 @@ describe('update reporting', () => {
   });
   it('classifies the reported npm reset as transient without retrying validation or permissions', () => {
     expect(networkFailure(new Error('npm error code ECONNRESET socket hang up'))).toBe(true);
+    expect(networkFailure(new Error('net::ERR_CONNECTION_RESET'))).toBe(true);
+    expect(networkFailure(new Error('terminated', { cause: { code: 'UND_ERR_SOCKET' } }))).toBe(true);
+    expect(networkFailure(new Error('net::ERR_CERT_AUTHORITY_INVALID'))).toBe(false);
     for (const message of ['EACCES', 'validation failure', 'test failure', 'ENOSPC']) {
       expect(networkFailure(new Error(message))).toBe(false);
     }

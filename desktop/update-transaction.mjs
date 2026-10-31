@@ -95,7 +95,9 @@ export async function pendingUpdate(directory) {
   let stat;
   try { stat = await fs.lstat(target); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 8 * 1024 * 1024) throw new Error('更新事务记录无效。');
-  const data = JSON.parse(await fs.readFile(target, 'utf8'));
+  let data;
+  try { data = JSON.parse(await fs.readFile(target, 'utf8')); }
+  catch (error) { throw new Error('更新事务记录无法读取，已保留现场，请先检查或恢复备份。', { cause: error }); }
   const backupRoot = path.join(root, 'output', `manager-backup-${data.id}`);
   if (data.format !== 1 || data.root !== root || !/^[a-f0-9-]{36}$/.test(data.id) ||
     !['prepared', 'stopping', 'installing', 'verifying', 'recovering', 'committed', 'recovered'].includes(data.phase) ||

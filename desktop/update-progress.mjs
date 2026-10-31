@@ -24,7 +24,7 @@ export function cleanOutput(text) {
 
 export function updateError(error) {
   const detail = cleanOutput(error?.message || error);
-  if (/ECONNRESET|ECONNREFUSED|ETIMEDOUT|ESOCKETTIMEDOUT|EAI_AGAIN|ENOTFOUND|socket hang up|fetch failed|network.*(?:failed|error)|could not resolve|unable to access/i.test(detail)) {
+  if (/ECONNRESET|ECONNREFUSED|ETIMEDOUT|ESOCKETTIMEDOUT|EAI_AGAIN|ENOTFOUND|net::ERR_|socket hang up|fetch failed|network.*(?:failed|error)|could not resolve|unable to access/i.test(detail)) {
     return '下载连接中断或超时，有限次数的重试未能完成。请确认当前网络、依赖源或代理可用后重试。';
   }
   if (/ENOTCACHED/i.test(detail)) return '本次离线依赖缓存不完整，请重新准备更新。';
@@ -36,7 +36,7 @@ export function updateError(error) {
 }
 
 export function networkFailure(error) {
-  return /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ESOCKETTIMEDOUT|EAI_AGAIN|ENOTFOUND|UND_ERR|socket hang up|fetch failed|could not resolve|unable to access/i.test(
+  return /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ESOCKETTIMEDOUT|EAI_AGAIN|ENOTFOUND|UND_ERR|net::ERR_(?:CONNECTION|TIMED_OUT|NAME_NOT_RESOLVED|NETWORK_CHANGED|PROXY_CONNECTION_FAILED|TUNNEL_CONNECTION_FAILED)|socket hang up|fetch failed|could not resolve|unable to access/i.test(
     `${error?.message || ''} ${error?.cause?.code || ''}`);
 }
 
