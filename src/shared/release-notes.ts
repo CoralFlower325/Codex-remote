@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.2', changes: [
+    '优化消息编辑弹窗，统一输入区、按钮和间距，适配桌面、手机及横屏。',
+    '保留编辑草稿、附件和技能，以及取消、失败提示和防止重复发送的保护。',
+    '管理器版本独立设为 0.2.0；以后分别记录两者版本及修改，Remote 更新不再带动管理器升版。',
+    '本机一键更新针对 Remote，管理器仍通过安装包单独升级。'
+  ] },
   { version: '0.2.1', changes: [
     'Windows 通知区和 macOS 菜单栏图标随 Remote 启停切换：关闭时灰色半透明，运行时显示实色，并适应系统主题。',
     '最新被停止轮次的原始消息新增编辑入口，确认后替换原生对话记录并重新发送，保留附件和技能。',

@@ -177,6 +177,14 @@ changes; future comparisons use the installed version tag rather than assuming a
 clean HEAD. Backups and older frontend chunks for open tabs remain available.
 
 This updates **the selected host installation**, not the manager executable.
+The manager and Remote display their own versions and may differ. Update checks
+compare the selected Remote installation with the release. Install a newer manager
+separately when its controls or updater need a fix; manager self-update is not
+currently implemented.
+The manager uses an independent version starting at 0.2.0. Remote-only updates
+leave the manager and its version unchanged. Every Release lists both component
+versions and their changes; unchanged manager installers remain in their original
+Release rather than being rebuilt.
 Install a newer manager from its Release. Independent static-edge/CDN assets and
 external tunnels are not deployed here. Public-origin installations receive a
 reminder to synchronize externally hosted frontend assets through the hosting guide.

@@ -362,6 +362,10 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Neat closeout, handoff and documentation-only updates do not increment it.
   Keep package.json, the lockfile, deployed assets and the visible version aligned.
   An explicit user version takes precedence.
+  Remote and the desktop manager have independent versions. Remote's version lives
+  in the root package/lockfile; the manager's lives in desktop/package/lockfile.
+  The manager baseline is 0.2.0. Remote-only changes must not increment, rebuild
+  or install the manager. Increment the manager patch only for its own changes.
 - After completing and validating project changes, push the public repository
   by default unless the user explicitly asks not to. Never push the separate
   private deployment checkout or its runtime data.
@@ -371,6 +375,10 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 - Write release titles, headings, change summaries and update-dialog notes in
   Chinese only. Keep necessary product names, commands and version identifiers;
   do not add an English duplicate or English headings such as "Changes".
+  Every Release must list both Remote and manager versions with separate change
+  summaries. Explicitly mark an unchanged component as having no changes.
+  Manager packaging runs only when desktop/package.json's version changes;
+  unchanged manager installers remain available in their original Release.
 - The conversation summary panel reads native PR attachments and projected
   artifacts/sources on demand. Keep its history cursor independent of chat
   history; routine native events refresh the head until known items, never

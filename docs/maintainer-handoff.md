@@ -15,6 +15,14 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
+The 0.2.2 batch polishes the edit dialog without changing its native mutation
+flow. Remote and manager now have independent package versions. The manager's
+new baseline is 0.2.0; a Remote-only release must not bump, rebuild or install it.
+The manager packaging workflow compares its version with the preceding Remote
+tag and rejects manager source edits without a version change. Release notes
+must list both versions and separate changes, explicitly stating no changes
+where applicable. Existing published tags remain historical records.
+
 The 0.2.1 batch adds service-state tray/menu-bar images and editing of the latest
 interrupted turn's original input in the main chat. `message-edit.ts` owns fresh
 native preflight and the once-only `thread/revert` then `turn/start` sequence;

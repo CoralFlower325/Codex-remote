@@ -1307,10 +1307,97 @@
 
 .user-message-actions { display: flex; justify-content: flex-end; }
 .user-message-actions .icon-button { width: 44px; height: 44px; color: var(--muted); }
-.message-edit-dialog { max-height: calc(100dvh - 32px); overflow-y: auto; }
-.message-edit-dialog textarea { width: 100%; min-height: 120px; max-height: 45dvh; resize: vertical; }
-.message-edit-note { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
-.message-edit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.message-edit-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; }
+dialog.message-edit-dialog {
+  width: min(560px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: var(--shadow-popover);
+}
+
+.message-edit-dialog .command-dialog-head {
+  gap: 12px;
+  border: 0;
+  padding: 12px 12px 4px 24px;
+}
+
+.message-edit-dialog .command-dialog-head h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.message-edit-dialog .command-dialog-head .icon-button {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+}
+
+.message-edit-dialog .command-dialog-body {
+  gap: 16px;
+  padding: 8px 24px 24px;
+}
+
+.message-edit-dialog .command-review-form textarea {
+  display: block;
+  width: 100%;
+  min-height: min(160px, 28dvh);
+  max-height: 45dvh;
+  resize: vertical;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--sidebar-bg);
+  padding: 12px 14px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.625;
+}
+
+.message-edit-dialog textarea:focus-visible {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+  outline-offset: 0;
+}
+
+.message-edit-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.667;
+}
+
+.message-edit-dialog .command-dialog-error {
+  margin: 0;
+  overflow-wrap: anywhere;
+  border-radius: 6px;
+  background: var(--danger-soft);
+  padding: 10px 12px;
+  line-height: 1.6;
+}
+
+.message-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.message-edit-actions button {
+  min-height: 44px;
+  padding-inline: 16px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.message-edit-actions .primary-button:hover:not(:disabled) {
+  transform: none;
+}
+
 .app-shell[data-layout="mobile"] .message-edit-dialog textarea { font-size: 16px; }
+
+@media (max-width: 420px) {
+  .message-edit-dialog .command-dialog-head { padding-left: 16px; }
+  .message-edit-dialog .command-dialog-body { padding: 8px 16px 16px; }
+}
 

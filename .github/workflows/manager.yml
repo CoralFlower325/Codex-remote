@@ -9,7 +9,23 @@ permissions:
   contents: write
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      package: ${{ steps.plan.outputs.package }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+      - id: plan
+        run: node scripts/manager-release-plan.mjs
+
   package:
+    needs: plan
+    if: needs.plan.outputs.package == 'true' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
