@@ -68,6 +68,37 @@ describe('remote thread state', () => {
     ).toEqual([{ type: 'agentMessage', id: 'agent-1', text: 'hello world' }]);
   });
 
+  it('keeps delayed items and deltas inside their earlier turn before newer messages', () => {
+    const old: ThreadItem = { type: 'agentMessage', id: 'old-answer', turnId: 'old', text: 'Earlier answer' };
+    const user: ThreadItem = { type: 'userMessage', id: 'new-user', turnId: 'new', content: [] };
+    const answer: ThreadItem = { type: 'agentMessage', id: 'new-answer', turnId: 'new', text: 'Latest answer' };
+    const late: ThreadItem = { type: 'agentMessage', id: 'late', turnId: 'old', text: 'Delayed' };
+    const before = [old, user, answer];
+    const inserted = upsertItem(before, late, true);
+    expect(inserted).toEqual([old, late, user, answer]);
+    const streamed = upsertItem(inserted, { ...late, text: ' output' }, true);
+    expect(streamed.map(item => item.id)).toEqual(['old-answer', 'late', 'new-user', 'new-answer']);
+    expect(streamed[1]).toMatchObject({ text: 'Delayed output' });
+    expect(before).toEqual([old, user, answer]);
+  });
+
+  it('does not append unseen older-turn events outside the loaded native history window', () => {
+    const user: ThreadItem = { type: 'userMessage', id: 'user', turnId: 'new', content: [] };
+    const late: ThreadItem = { type: 'agentMessage', id: 'late', turnId: 'old', text: 'Old output' };
+    const timings: Record<string, TurnTiming> = {
+      old: { id: 'old', status: 'completed', startedAt: 100, completedAt: 7293, durationMs: 7_193_000 },
+      new: { id: 'new', status: 'inProgress', startedAt: 8000, completedAt: null, durationMs: null }
+    };
+    const current = [user];
+    expect(upsertItem(current, late, false, timings)).toBe(current);
+    expect(upsertItem(current, late, true, timings)).toBe(current);
+    expect(mergeEmbeddedTurnItems(current, 'old', [late], false, timings)).toBe(current);
+    const final: ThreadItem = { ...late, id: 'final', turnId: 'new' };
+    expect(upsertItem(current, final, false, timings)).toEqual([user, final]);
+    expect(upsertItem(current, { ...late, turnId: 'unknown' }, false, timings))
+      .toEqual([user, { ...late, turnId: 'unknown' }]);
+  });
+
   it('preserves native start anchors across deltas and completion notifications', () => {
     const started: ThreadItem = { type: 'agentMessage', id: 'answer', text: '', phase: 'final_answer', startedAtMs: 147_250 };
     const streamed = upsertItem([started], { type: 'agentMessage', id: 'answer', text: 'Answer' }, true);

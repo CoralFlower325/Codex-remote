@@ -1,6 +1,6 @@
 import type { ChatInput } from './queued-messages';
 import type { ContextUsage, ThreadItem } from './types';
-import { upsertItem } from './remote-state';
+import { mergeEmbeddedTurnItems, upsertItem } from './remote-state';
 import { projectTurnTiming, runtimeTurnError, type TurnTiming } from '../shared/turn-timing';
 
 export interface ChatViewState {
@@ -31,19 +31,21 @@ export function conversationEvent<T extends ChatViewState>(chat: T, method: stri
   const turnId = String(params.turnId ?? '');
   if (method === 'turn/started' || method === 'turn/completed') {
     const { items: turnItems = [], ...turn } = params.turn as TurnTiming & { items?: ThreadItem[] };
-    return { ...chat, activeTurnId: method === 'turn/started' ? turn.id : null,
-      items: turnItems.reduce((items, item) => upsertItem(items, { ...item, turnId: turn.id }), chat.items),
-      timings: { ...chat.timings, [turn.id]: projectTurnTiming(turn) } };
+    const timings = { ...chat.timings, [turn.id]: projectTurnTiming(turn) };
+    return { ...chat, activeTurnId: method === 'turn/started' ? turn.id
+      : chat.activeTurnId === turn.id ? null : chat.activeTurnId,
+      items: mergeEmbeddedTurnItems(chat.items, turn.id, turnItems, false, timings),
+      timings };
   }
   if (method === 'item/started' || method === 'item/completed') {
     return { ...chat, items: upsertItem(chat.items, { ...params.item as ThreadItem, turnId,
       ...(method === 'item/started' ? { startedAtMs: params.startedAtMs as number | null ?? null }
-        : { completedAtMs: params.completedAtMs as number | null ?? null }) }) };
+        : { completedAtMs: params.completedAtMs as number | null ?? null }) }, false, chat.timings) };
   }
   if (method === 'item/agentMessage/delta') {
     return { ...chat, items: upsertItem(chat.items, {
       type: 'agentMessage', id: String(params.itemId), turnId, text: String(params.delta)
-    }, true) };
+    }, true, chat.timings) };
   }
   if (method === 'item/commandExecution/outputDelta') {
     return { ...chat, items: chat.items.map(item => item.type === 'commandExecution' &&

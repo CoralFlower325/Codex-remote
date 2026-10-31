@@ -15,35 +15,23 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The 0.2.2 batch polishes the edit dialog without changing its native mutation
+The 0.2.3 batch fixes late native items/deltas being appended after a newer
+conversation, which displayed the earlier turn's duration under the latest reply.
+Keep native turn/item identity, timestamp anchors and bounded history; stale
+completion events cannot clear a newer active turn. See [native order](native-history-order.md).
+Stable manager code/installers remain at 0.2.0, matching Remote v0.2.2's companion
+manager. Self-update is paused under the user-requested name 0.2.0AU on
+archive/manager-0.2.0AU; preserve its commits, artifacts and acceptance records.
+Manager signing/notarization remains a checkpoint, not current work.
+See [the archive and resume conditions](manager-self-update-checkpoints.md).
+
+The preceding 0.2.2 batch polishes the edit dialog without changing its native mutation
 flow. Remote and manager now have independent package versions. The manager's
 new baseline is 0.2.0; a Remote-only release must not bump, rebuild or install it.
-The manager packaging workflow compares its version with the preceding reachable
-Remote or manager tag and rejects manager source edits without a version change. Release notes
+The manager packaging workflow compares its version with the preceding Remote
+tag and rejects manager source edits without a version change. Release notes
 must list both versions and separate changes, explicitly stating no changes
 where applicable. Existing published tags remain historical records.
-
-Manager 0.2.3 provides a separate self-update coordinator and renderer section.
-`manager-release.mjs` validates the independent manager-v channel;
-`manager-self-update.mjs` owns download, digests, backup and durable handoff.
-`desktop/installer.nsh` makes NSIS launch the installed executable directly,
-through its standard unelevated launcher, instead of opening a Start Menu link.
-Trusted IPC and the existing session serializer isolate this from host updates.
-Publish manager tags with `--latest=false`, attach installers plus latest*.yml,
-and preserve Remote 0.2.2. Unsigned Mac builds intentionally offer manual download.
-Program rollback, Mac signing/notarization and real signed Mac update acceptance
-remain explicit checkpoints in [the recovery record](manager-self-update-checkpoints.md).
-The first 0.2.1 install attempt exposed Electron ASAR interception during backup;
-that Release remains a prerelease. Backups must use original-fs physical files,
-and packaged smoke must execute that exact backup on Windows and Mac.
-Windows official 0.2.2-to-0.2.3 self-update now has independent standard-desktop
-post-install acceptance: completed receipt, installed version, automatic restart,
-all 80 program-backup entries, settings/private-file hashes and unchanged
-Remote/Desktop listener PIDs passed; local health remains ready/desktop.
-Keep Store-host AppData virtualization separate from ordinary Explorer launches.
-The recovery record contains evidence locations and the still-pending Mac
-Developer ID signing/notarization setup. Mac automatic install and automatic
-program rollback remain unverified/unimplemented respectively.
 
 The 0.2.1 batch adds service-state tray/menu-bar images and editing of the latest
 interrupted turn's original input in the main chat. `message-edit.ts` owns fresh

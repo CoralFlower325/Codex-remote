@@ -31,7 +31,7 @@ the authority for what is actually installed.
 - [Contributing / 贡献指南](../CONTRIBUTING.md)
 - [Code organization / 代码分层与维护边界](code-organization.md)
 - [Maintainer handoff and release procedure / 开发交接与发布流程](maintainer-handoff.md)
-- [Manager self-update checkpoints / 管理器自更新断点与恢复](manager-self-update-checkpoints.md)
+- [0.2.0AU 暂停开发与签名断点](manager-self-update-checkpoints.md)
 - [Agent rules / 开发约束](../AGENTS.md)
 - [Product principles / 产品原则](../PRODUCT.md)
 - [Security / 安全](../SECURITY.md)
@@ -41,6 +41,7 @@ the authority for what is actually installed.
 
 - [Native summary panel / 原生会话摘要](native-summary-panel.md)
 - [Native runtime errors / 原生运行错误](native-runtime-errors.md)
+- [原生聊天顺序与晚到事件](native-history-order.md)
 - [Manual updates and recovery / 手动更新与恢复](manual-version-update.md)
 - [Native questions and history payloads / 原生提问与历史传输](history-questions-investigation.md)
 - [Question visibility / 提问显示](question-visibility-investigation.md)

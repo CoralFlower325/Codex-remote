@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ThreadTimeline } from './ThreadTimeline';
 import type { ThreadItem } from '../types';
-import { mergeTurnTimings } from '../remote-state';
+import { mergeTurnTimings, upsertItem } from '../remote-state';
 import type { TurnTiming } from '../../shared/turn-timing';
 
 const complete: TurnTiming = { id: 't', status: 'completed', startedAt: 100, completedAt: 1113, durationMs: 1_013_000 };
@@ -46,6 +46,22 @@ describe('conversation presentation', () => {
     const html = render([{ type: 'agentMessage', id: 'a', turnId: 't', phase: 'final_answer', text: 'ANSWER' }], { t: complete });
     expect(html).toContain('用时 16分钟 53秒');
     expect(html).toContain('ANSWER');
+  });
+  it('does not place an earlier turn duration below the latest answer when an old command arrives late', () => {
+    const items: ThreadItem[] = [
+      { type: 'agentMessage', id: 'old', turnId: 'old', phase: 'final_answer', text: 'EARLIER_ANSWER' },
+      { type: 'userMessage', id: 'new-user', turnId: 't', content: [{ type: 'text', text: 'LATEST_REQUEST' }] },
+      { type: 'agentMessage', id: 'new-final', turnId: 't', phase: 'final_answer', text: 'LATEST_ANSWER',
+        startedAtMs: 147_250 }
+    ];
+    const html = render(upsertItem(items, { ...command, turnId: 'old' }), {
+      old: { id: 'old', status: 'completed', startedAt: 1, completedAt: 7194, durationMs: 7_193_000 },
+      t: complete
+    });
+    expect(html.match(/class="turn-duration"/g)).toHaveLength(2);
+    expect(html.indexOf('1小时 59分钟 53秒')).toBeLessThan(html.indexOf('LATEST_REQUEST'));
+    expect(html.slice(html.indexOf('LATEST_ANSWER'))).not.toContain('turn-duration');
+    expect(html).toContain('用时 47秒');
   });
   it('keeps the final reply and its timing anchor visible before an empty asynchronous question', () => {
     const html = render([

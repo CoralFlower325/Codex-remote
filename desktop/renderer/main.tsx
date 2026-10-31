@@ -5,11 +5,10 @@ import { ArrowUpToLine, ChevronDown, ExternalLink, FolderOpen, KeyRound, LogOut,
 import './style.css';
 
 import type { State, Result, AuthRequest } from './contract';
-import { ManagerUpdate } from './ManagerUpdate';
 
 const initial: State = { root: '', version: '', platform: '', packaged: false, launchAtLogin: false,
   status: null, busy: '', error: '', healthError: '', result: '', release: null, events: [], installations: [],
-  updateProgress: null, recoveryRequired: false, security: null, connectionReport: null, logs: null, managerUpdate: null };
+  updateProgress: null, recoveryRequired: false, security: null, connectionReport: null, logs: null };
 const labels = { healthy: '运行正常', degraded: '需要检查', stopped: '已关闭',
   conflict: '安装目录冲突', unowned: '端口被占用' };
 function App() {
@@ -49,7 +48,7 @@ function App() {
   }
   function diagnose() { setDiagnosing(true); void perform(window.manager.diagnose); }
   const status = state.status;
-  const disabled = pending || Boolean(state.busy) || state.managerUpdate?.status === 'installing';
+  const disabled = pending || Boolean(state.busy);
   const conflict = status && ['conflict', 'unowned'].includes(status.state);
   const stale = !status || now - status.checkedAt > 20_000;
   const canControl = Boolean(status) && !conflict && !state.healthError && !stale && !state.recoveryRequired;
@@ -92,8 +91,7 @@ function App() {
     <nav aria-label="管理视图">
       <button aria-current={tab === 'status' ? 'page' : undefined} onClick={() => setTab('status')}>概览</button>
       <button aria-current={tab === 'security' ? 'page' : undefined} onClick={() => devices()}>设备与密码</button>
-      <button aria-current={tab === 'update' ? 'page' : undefined} onClick={() => setTab('update')}>版本更新{(state.release?.available ||
-        ['available', 'downloaded'].includes(state.managerUpdate?.status || '')) && <span className="new-dot" />}</button>
+      <button aria-current={tab === 'update' ? 'page' : undefined} onClick={() => setTab('update')}>版本更新{state.release?.available && <span className="new-dot" />}</button>
     </nav>
     <div className="content">
       {state.recoveryRequired && <div className="message" role="alert"><span>存在未完成更新，请先恢复旧版。</span>
@@ -203,7 +201,6 @@ function App() {
         {state.release?.available && <><h3 className="release-title">新版本 {state.release.version}</h3><div className="notes">
           <ReactMarkdown components={{ a: ({ children }) => <span>{children}</span>, img: () => null }}>{state.release.notes || '此版本没有更新摘要。'}</ReactMarkdown></div>
           <button className="primary" disabled={disabled || !canControl} onClick={() => void perform(window.manager.update)}><ArrowUpToLine size={15} />更新到 {state.release.version}</button></>}
-        <ManagerUpdate state={state} disabled={disabled} perform={perform} />
       </section>}
     </div>
     <footer>

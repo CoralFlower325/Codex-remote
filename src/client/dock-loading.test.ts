@@ -363,6 +363,30 @@ describe('on-demand execution bodies', () => {
 
 
 describe('new native question arrivals', () => {
+  it('keeps late native items in their owning turn without clearing the newer active turn', async () => {
+    const f = fixture(() => new Promise(() => {}));
+    void f.remote.openThread(thread.id).catch(() => {}); await settle();
+    const emit = async (method: string, params: Record<string, unknown>) => {
+      connection.options.onMessage({ type: 'event', method, params: { threadId: thread.id, ...params } });
+      await settle();
+    };
+    await emit('turn/started', { turn: { id: 'old', status: 'inProgress', startedAt: 100 } });
+    await emit('item/completed', { turnId: 'old',
+      item: { type: 'agentMessage', id: 'old-answer', text: 'Earlier' } });
+    await emit('turn/started', { turn: { id: 'new', status: 'inProgress', startedAt: 8000 } });
+    await emit('item/completed', { turnId: 'new',
+      item: { type: 'userMessage', id: 'new-user', content: [] } });
+    await emit('item/completed', { turnId: 'old',
+      item: { type: 'agentMessage', id: 'late', text: 'Delayed' } });
+    await emit('turn/completed', { turn: { id: 'old', status: 'completed', startedAt: 100,
+      completedAt: 7293, durationMs: 7_193_000, items: [] } });
+    expect(f.remote.activeTurnId).toBe('new');
+    expect(f.remote.items.map(item => item.id)).toEqual(['old-answer', 'late', 'new-user']);
+    await emit('item/agentMessage/delta', { turnId: 'old', itemId: 'delta', delta: 'Delayed delta' });
+    await vi.advanceTimersByTimeAsync(80); await settle();
+    expect(f.remote.items.map(item => item.id)).toEqual(['old-answer', 'late', 'delta', 'new-user']);
+    expect(f.remote.turnTimings.old).toMatchObject({ startedAt: 100, durationMs: 7_193_000 });
+  });
   it('maps native runtime errors to the selected turn, clears recovered retries and retains final failures', async () => {
     const f = fixture(() => new Promise(() => {}));
     void f.remote.openThread(thread.id).catch(() => {}); await settle();

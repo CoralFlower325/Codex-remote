@@ -268,7 +268,8 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
             turnId,
             text: delta
           } as ThreadItem,
-          true
+          true,
+          turnTimingsRef.current
         );
       }
       if (commandDeltas.size > 0) {
@@ -1545,8 +1546,9 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     }
   }
 
-  function ingestTurnItems(turnId: string, incoming: ThreadItem[] | undefined): void {
-    setItems(current => mergeEmbeddedTurnItems(current, turnId, incoming, viewingHistoryRef.current));
+  function ingestTurnItems(turnId: string, incoming: ThreadItem[] | undefined, timing: TurnTiming): void {
+    setItems(current => mergeEmbeddedTurnItems(current, turnId, incoming, viewingHistoryRef.current,
+      { ...turnTimingsRef.current, [turnId]: timing }));
   }
 
   function handleCodexEvent(method: string, params: Record<string, unknown>): void {
@@ -1692,7 +1694,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         setItems((current) => viewingHistoryRef.current && !current.some(entry =>
           itemKey(entry) === itemKey({ id: item.id, turnId: String(params.turnId ?? '') })) ? current
           : upsertItem(current, { ...item, turnId: String(params.turnId ?? ''),
-            startedAtMs: params.startedAtMs as number | null ?? null }));
+            startedAtMs: params.startedAtMs as number | null ?? null }, false, turnTimingsRef.current));
       }
     }
 
@@ -1704,7 +1706,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         setActiveTurnId(turn.id);
         const { items: turnItems, ...timing } = turn;
         setTurnTimings((current) => ({ ...current, [turn.id]: projectTurnTiming(timing) }));
-        ingestTurnItems(turn.id, turnItems);
+        ingestTurnItems(turn.id, turnItems, projectTurnTiming(timing));
       }
     }
     if (method === 'turn/started') scheduleThreadRefresh(String(params.threadId ?? ''));
@@ -1716,7 +1718,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         setItems((current) => viewingHistoryRef.current && !current.some(entry =>
           itemKey(entry) === itemKey({ id: item.id, turnId: String(params.turnId ?? '') })) ? current
           : upsertItem(current, { ...item, turnId: String(params.turnId ?? ''),
-            completedAtMs: params.completedAtMs as number | null ?? null }));
+            completedAtMs: params.completedAtMs as number | null ?? null }, false, turnTimingsRef.current));
       }
     }
 
@@ -1740,11 +1742,13 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         if (turn?.id) {
           const { items: turnItems, ...timing } = turn;
           setTurnTimings((current) => ({ ...current, [turn.id]: projectTurnTiming(timing) }));
-          ingestTurnItems(turn.id, turnItems);
+          ingestTurnItems(turn.id, turnItems, projectTurnTiming(timing));
         }
         turnRevisionRef.current += 1;
-        activeTurnIdRef.current = null;
-        setActiveTurnId(null);
+        if (turn?.id === activeTurnIdRef.current) {
+          activeTurnIdRef.current = null;
+          setActiveTurnId(null);
+        }
         refreshActiveHistory();
       }
       scheduleThreadRefresh(threadId);

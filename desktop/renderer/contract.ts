@@ -11,12 +11,6 @@ export type State = {
   recoveryRequired: boolean;
   status: Status | null; busy: string; error: string; healthError: string; result: string;
   release: { available: boolean; version: string; notes: string } | null;
-  managerUpdate: {
-    status: 'idle' | 'checking' | 'current' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'completed' | 'error';
-    version: string; notes: string; detail: string; error: string; blocked: string;
-    percent: number | null; transferred: number; total: number; bytesPerSecond: number;
-    backup: string; startedAt: number | null;
-  } | null;
   events: { time: number; message: string }[];
   installations: { root: string; version: string; source: string }[];
   security: { supported: boolean; passwordConfigured?: boolean; legacyDevicesPossible?: boolean; deviceCount?: number;
@@ -37,8 +31,6 @@ export interface Bridge {
   detect(): Promise<Result>; select(directory: string): Promise<Result>;
   action(action: string): Promise<Result>; open(): Promise<Result>; folder(): Promise<Result>;
   check(): Promise<Result>; update(): Promise<Result>; recover(): Promise<Result>; login(value: boolean): Promise<Result>;
-  managerCheck(): Promise<Result>; managerDownload(): Promise<Result>; managerInstall(): Promise<Result>;
-  managerCancel(): Promise<Result>; managerInstaller(): Promise<Result>; managerBackups(): Promise<Result>;
   diagnose(): Promise<Result>; repair(target: string): Promise<Result>; logs(kind: string): Promise<Result>;
   security(request: AuthRequest): Promise<Result>;
   quit(): Promise<Result>; subscribe(listener: (state: State) => void): () => void;

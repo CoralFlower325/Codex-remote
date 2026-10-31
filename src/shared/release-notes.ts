@@ -2,6 +2,11 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.3', changes: [
+    '修复旧轮次晚到的命令、消息和流式增量出现在最新回复之后，导致显示无关用时的问题。',
+    '保留原生轮次归属、时间锚点和有界历史；旧轮次完成通知不再清除当前轮次的运行状态。',
+    '正式管理器保持 0.2.0，不含管理器自更新；自更新开发版以 0.2.0AU 独立存档并暂停发布。'
+  ] },
   { version: '0.2.2', changes: [
     '优化消息编辑弹窗，统一输入区、按钮和间距，适配桌面、手机及横屏。',
     '保留编辑草稿、附件和技能，以及取消、失败提示和防止重复发送的保护。',

@@ -44,9 +44,27 @@ export function titlesMatch(left: string, right: string): boolean {
   return a === b || a.startsWith(b.slice(0, 24)) || b.startsWith(a.slice(0, 24));
 }
 
-export function upsertItem(items: ThreadItem[], next: ThreadItem, append = false): ThreadItem[] {
+function unseenTurnPosition(items: ThreadItem[], turnId: string | undefined, timings: Record<string, TurnTiming>): number {
+  const start = turnId ? timings[turnId]?.startedAt : null;
+  const later = start == null ? -1 : items.findIndex(item =>
+    item.turnId && timings[item.turnId]?.startedAt != null && timings[item.turnId]!.startedAt! > start);
+  // Do not extend the bounded history window for an unseen older turn.
+  return later === 0 ? -1 : later < 0 ? items.length : later;
+}
+
+export function upsertItem(items: ThreadItem[], next: ThreadItem, append = false,
+  timings: Record<string, TurnTiming> = {}): ThreadItem[] {
   const index = items.findIndex((item) => itemKey(item) === itemKey(next));
-  if (index === -1) return [...items, next];
+  if (index === -1) {
+    // Late native items stay with their turn, never after a later conversation.
+    let turnEnd = -1;
+    if (next.turnId) for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i]!.turnId === next.turnId) { turnEnd = i; break; }
+    }
+    if (turnEnd >= 0) return [...items.slice(0, turnEnd + 1), next, ...items.slice(turnEnd + 1)];
+    const position = unseenTurnPosition(items, next.turnId, timings);
+    return position < 0 ? items : [...items.slice(0, position), next, ...items.slice(position)];
+  }
   const copy = [...items];
   const current = copy[index]!;
   if (append && current.type === 'agentMessage' && next.type === 'agentMessage') {
@@ -60,7 +78,8 @@ export function upsertItem(items: ThreadItem[], next: ThreadItem, append = false
 }
 
 /** Apply a native turn payload in one pass, preserving bounded historical windows. */
-export function mergeEmbeddedTurnItems(items: ThreadItem[], turnId: string, incoming: unknown, viewingHistory: boolean): ThreadItem[] {
+export function mergeEmbeddedTurnItems(items: ThreadItem[], turnId: string, incoming: unknown, viewingHistory: boolean,
+  timings: Record<string, TurnTiming> = {}): ThreadItem[] {
   if (!Array.isArray(incoming) || !incoming.length) return items;
   const currentTurn = items.filter(item => item.turnId === turnId);
   const existing = new Map(currentTurn.map(item => [itemKey(item), item]));
@@ -95,7 +114,10 @@ export function mergeEmbeddedTurnItems(items: ThreadItem[], turnId: string, inco
   const merged = [...prefix, ...[...updates].flatMap(([key, item]) => [...(before.get(key) ?? []), item])];
   merged.push(...remaining);
   const start = items.findIndex(item => item.turnId === turnId);
-  if (start === -1) return [...items, ...merged];
+  if (start === -1) {
+    const position = unseenTurnPosition(items, turnId, timings);
+    return position < 0 ? items : [...items.slice(0, position), ...merged, ...items.slice(position)];
+  }
   return [...items.slice(0, start), ...merged,
     ...items.slice(start).filter(item => item.turnId !== turnId)];
 }

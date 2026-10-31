@@ -105,12 +105,14 @@ The optional [Desktop Manager](docs/desktop-manager.md) detects installed hosts 
 actionable health checks, password/device administration and confirmed version updates, with a Windows notification-area icon
 or macOS top menu-bar icon. Updates show Chinese stages, percentage progress and elapsed
 time. Standard installations prefer verified prebuilt runtimes; customized source
-installations retain isolated builds. Interrupted host installs recover when the manager restarts.
-Manager 0.2.3 provides a separate Windows self-update flow with verified downloads and
-program/settings backups; unsigned Mac builds offer installer downloads instead.
+installations retain isolated builds. Interrupted installs recover when the manager restarts.
 Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
 remains pending.
+
+The stable manager is **0.2.0**, installed separately and without manager
+self-update. The paused **0.2.0AU** development line is preserved outside the
+formal release channel; see [the resume checkpoint](docs/manager-self-update-checkpoints.md).
 
 ## Built For Ongoing Sessions
 

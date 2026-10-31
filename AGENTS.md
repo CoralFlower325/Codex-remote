@@ -124,7 +124,10 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 - Conversation marks use native summary cursors independently of history pages.
   Jump through native item cursors into a bounded window, with paging in both
   directions and return to latest. Preserve known turn ordering when a loaded
-  item has no timing yet. Ignore window-external live items while reading older
+  item has no timing yet. Late native item events/deltas stay in their owning
+  loaded turn; native turn timing must not pull unseen older turns into the
+  latest window. A stale completion cannot clear a newer active turn.
+  Ignore window-external live items while reading older
   history. Follow-up user marks missing from native summaries are added as their
   history is loaded; do not claim a complete unread steering-message index.
 - Start authentication status and authenticated bootstrap reads concurrently.
@@ -269,13 +272,6 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Updates require confirmation, conflict checks, isolated build,
   backup, old-process exit and recovery. Preserve explicit stopped state and
   private runtime data. External edge assets and the manager update separately.
-  Manager self-update uses electron-updater with explicit download/install,
-  verified GitHub metadata/package digests, program/settings backups and a durable
-  handoff receipt. Actual app version confirms completion after restart.
-  Never auto-install on ordinary quit or claim automatic program rollback.
-  Unsigned Mac builds offer installer download and block automatic installation.
-  Program backups and hashes must use Electron original-fs for physical ASAR files.
-  Packaged smoke on both platforms must execute and verify the real backup.
   Keep locally modified Markdown documentation/rules during updates and retain
   incoming copies for reconciliation; source/configuration conflicts still block.
   Windows tasks use the windowless host with logs and owned-process shutdown.
@@ -373,6 +369,9 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   in the root package/lockfile; the manager's lives in desktop/package/lockfile.
   The manager baseline is 0.2.0. Remote-only changes must not increment, rebuild
   or install the manager. Increment the manager patch only for its own changes.
+  Manager self-update is paused as 0.2.0AU on archive/manager-0.2.0AU;
+  keep stable manager 0.2.0 on main and in formal releases. Preserve AU history,
+  artifacts and receipts; Mac signing/notarization remains a resume checkpoint.
 - After completing and validating project changes, push the public repository
   by default unless the user explicitly asks not to. Never push the separate
   private deployment checkout or its runtime data.
@@ -386,11 +385,6 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   summaries. Explicitly mark an unchanged component as having no changes.
   Manager packaging runs only when desktop/package.json's version changes;
   unchanged manager installers remain available in their original Release.
-  Manager releases use manager-vX.Y.Z and must be published with --latest=false;
-  Remote uses vX.Y.Z and retains GitHub's latest channel. Upload latest.yml and
-  latest-mac.yml with their installers. Keep the packaged generic feed URL aligned
-  with the manager tag; runtime checks select the verified exact-release feed.
-  Manager-only changes preserve Remote's package version and release metadata.
 - The conversation summary panel reads native PR attachments and projected
   artifacts/sources on demand. Keep its history cursor independent of chat
   history; routine native events refresh the head until known items, never

@@ -44,7 +44,6 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
     state.error = error.message; event(`操作未完成：${error.message.slice(0, 500)}`); publish();
   }
   async function exclusive(label, fn) {
-    if (state.managerUpdate?.status === 'installing') throw new Error('正在交接管理器安装，请等待管理器重新打开。');
     if (state.busy) throw new Error('已有操作正在进行。');
     // A read already in progress must finish before a mutation uses its snapshot.
     if (polling) await polling;
