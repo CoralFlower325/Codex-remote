@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { appUpdateSettings, changesSince, checkAppVersion, refreshAppVersion, type AppBuild, type UpdateStage } from './app-update';
+import { appUpdateSettings, changesSince, checkAppVersion, refreshAppVersion, originUpdateSource, type AppBuild, type UpdateStage } from './app-update';
 
 const latest: AppBuild = { version: '0.1.8', buildId: 'assets/index-latest.js' };
 class Port {
@@ -56,6 +56,19 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(
 const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 
 describe('explicit version refresh', () => {
+  it('updates from the installed backend after remote installation instead of stale edge assets', async () => {
+    const f = fixture();
+    await refreshAppVersion({ source: originUpdateSource, expectedVersion: latest.version, receipt: false, onStage: () => {} });
+    expect(f.fetcher).toHaveBeenCalledWith(expect.stringMatching(/^\/remote-client\/version.json/), expect.anything());
+    expect(f.container.register).toHaveBeenCalledWith('/remote-client/sw.js', { scope: '/', updateViaCache: 'none' });
+    expect(f.reload).toHaveBeenCalledOnce();
+  });
+  it('does not reload from a mismatched backend client manifest', async () => {
+    const f = fixture();
+    await expect(refreshAppVersion({ source: originUpdateSource, expectedVersion: '0.9.9', onStage: () => {} }))
+      .rejects.toThrow('尚未一致');
+    expect(f.reload).not.toHaveBeenCalled();
+  });
   it('checks network metadata, activates a matching cached build and reloads after control changes', async () => {
     const f = fixture();
     const stages: UpdateStage[] = [];

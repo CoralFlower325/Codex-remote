@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import type { Duplex } from 'node:stream';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import express, { type NextFunction, type Request, type Response } from 'express';
 import compression from 'compression';
@@ -41,6 +41,8 @@ import { metadataRouter } from './metadata-router.js';
 import { threadDockRouter } from './thread-dock-router.js';
 import { historyItemRouter } from './history-item-router.js';
 import { SessionConnections } from './session-connections.js';
+import { backendUpdateRouter } from './backend-update-router.js';
+import { updateClientRouter } from './update-client-router.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -271,6 +273,15 @@ app.get('/api/threads', requireAuth, asyncRoute(async (req, res) => {
 }));
 
 app.use('/api/metadata', metadataRouter(requireAuth, metadataReader.read));
+let backendUpdater: ReturnType<Parameters<typeof backendUpdateRouter>[2]> | undefined;
+app.use('/api/remote-update', backendUpdateRouter(requireAuth, (req, res, next) => {
+  // Update mutations require a browser's explicit same-origin JSON request.
+  if (!req.is('application/json') || !req.get('origin') || !allowedOrigins().includes(req.get('origin')!)) {
+    res.status(403).json({ error: '请从可信的 Remote 网页发起更新。' }); return;
+  }
+  next();
+}, () => backendUpdater ??= import(pathToFileURL(path.resolve(__dirname, '../../scripts/web-update.mjs')).href)
+  .then(module => module.createWebUpdater(path.resolve(__dirname, '../..')))));
 app.use('/api/thread/dock', threadDockRouter(requireAuth, (method, params) => codexBridge.request(method, params)));
 app.use('/api/thread/item', historyItemRouter(requireAuth, (method, params) => codexBridge.request(method, params)));
 
@@ -425,6 +436,7 @@ codexBridge.on('stderr', (message: string) => {
 
 const productionClientDir = path.resolve(__dirname, '../../dist/client');
 if (fs.existsSync(productionClientDir)) {
+  app.use('/remote-client', updateClientRouter(productionClientDir));
   app.use(
     express.static(productionClientDir, {
       setHeaders: (res, filePath) => {

@@ -43,6 +43,7 @@ the authority for what is actually installed.
 - [Native runtime errors / 原生运行错误](native-runtime-errors.md)
 - [原生聊天顺序与晚到事件](native-history-order.md)
 - [Manual updates and recovery / 手动更新与恢复](manual-version-update.md)
+- [网页检查后端版本、远程更新与进度](web-backend-update.md)
 - [Native questions and history payloads / 原生提问与历史传输](history-questions-investigation.md)
 - [Question visibility / 提问显示](question-visibility-investigation.md)
 - [Conversation dock navigation / 回合导航](dock-navigation-investigation.md)

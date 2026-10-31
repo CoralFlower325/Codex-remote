@@ -38,6 +38,9 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   `updater.mjs` installs, and `update-transaction.mjs` persists recovery.
 - `scripts/runtime-files.mjs`: staging-only package exclusions. Preserve the
   target PTY binaries/helper and executable mode; archive debug symbols separately.
+- `scripts/web-update*.mjs`: independent backend update task, projected durable
+  progress and backend-only service controls. The authenticated server router
+  accepts only a checked official version, token and idempotency ID.
 
 ## Product Constraints
 
@@ -275,8 +278,10 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 - Do not start a second backend that replaces an active Desktop relay.
 - Starting or stopping Remote must not terminate Codex Desktop.
 - The desktop manager reuses owned platform controls. Close/minimize hides to the
-  tray/menu bar; quitting preserves service state. Never expose manager operations
-  through HTTP. Resident images reflect owned service run state: dim while stopped
+  tray/menu bar; quitting preserves service state. Manager operations stay local;
+  the explicit web backend-update exception reuses installation transactions
+  through an independently owned worker, never generic manager IPC or commands.
+  Resident images reflect owned service run state: dim while stopped
   or unknown, solid while running; independent Desktop/public failures do not
   imply a stopped service. Adapt native images to the system surface theme.
   Updates require confirmation, conflict checks, isolated build,
@@ -403,7 +408,13 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Wide desktop may pin a 300px panel; narrow desktop and mobile use a modal.
 - Version checks compare the loaded shell's version and build ID. If current,
   leave the page, drafts and service worker untouched. Show release summaries
-  before a confirmed update and acknowledge completion after reload.
+  before a confirmed frontend-only update and acknowledge completion after reload.
+  Web backend checks show versions without summaries. Require an authenticated
+  trusted-origin confirmation, fresh service ownership, official latest version
+  and idempotency ID. Persist real progress outside replaceable runtime files.
+  Restart only the backend, never Desktop or the tunnel; preserve rollback.
+  After verified installation, activate its matching public frontend through
+  /remote-client and refresh. Keep every private API out of public worker caches.
 - Restart the local Remote service after every application update, including
   frontend-only updates. Verify its old listener and owned process exited before
   starting once; then verify ready Desktop transport without stopping Desktop.

@@ -68,3 +68,6 @@ asset. Both renderers load on demand.
 
 Prebuilt runtime archives and the desktop updater use the BlueOak-1.0.0-licensed `tar`
 package. Runtime bundles retain dependency packages' copyright and license files.
+
+Web backend updates use the MIT-licensed Node.js `undici` HTTP client to respect
+explicit host proxy environment settings. Its runtime package retains its license.

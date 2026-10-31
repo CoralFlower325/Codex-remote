@@ -11,6 +11,7 @@ import { WorkspaceFolderDialog } from './WorkspaceFolderDialog';
 import { api } from '../api';
 import { NotificationSettings } from './NotificationSettings';
 import { AppUpdateDialog } from './AppUpdateDialog';
+import { BackendUpdateDialog } from './BackendUpdateDialog';
 import { clearUpdateReceipt, takeUpdateReceipt } from '../app-update';
 
 interface SidebarProps {
@@ -38,6 +39,7 @@ export function Sidebar({
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [backendUpdateOpen, setBackendUpdateOpen] = useState(false);
   const [completedUpdate, setCompletedUpdate] = useState(takeUpdateReceipt);
   const [updateOpen, setUpdateOpen] = useState(() => Boolean(completedUpdate));
   const [expansion, setExpansion] = useState<Record<string, boolean>>(() => {
@@ -183,6 +185,9 @@ export function Sidebar({
               <a className="connection-link" href={origin} key={origin}>局域网 · {new URL(origin).host}</a>)}
             <div className="account-menu-separator" />
             <button type="button" role="menuitem" onClick={() => {
+              setAccountOpen(false); setBackendUpdateOpen(true);
+            }}><RefreshCw size={15} /><span>检查 Remote 更新</span></button>
+            <button type="button" role="menuitem" onClick={() => {
               setAccountOpen(false); setUpdateOpen(true);
             }}><RefreshCw size={15} /><span>刷新版本</span></button>
             <button type="button" role="menuitem" onClick={() => {
@@ -214,6 +219,7 @@ export function Sidebar({
       )}
       {folderDialogOpen && <WorkspaceFolderDialog remote={remote} onSelect={onNewTask} onClose={() => setFolderDialogOpen(false)} />}
       {notificationsOpen && <NotificationSettings onClose={() => setNotificationsOpen(false)} />}
+      <BackendUpdateDialog open={backendUpdateOpen} onClose={() => setBackendUpdateOpen(false)} />
       {updateOpen && <AppUpdateDialog completed={completedUpdate} onClose={() => {
         setUpdateOpen(false); setCompletedUpdate(null); clearUpdateReceipt();
       }} />}

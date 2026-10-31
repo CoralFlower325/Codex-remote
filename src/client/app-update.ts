@@ -6,6 +6,14 @@ export const appUpdateSettings = {
 import type { ReleaseNote } from '../shared/release-notes';
 
 export interface AppBuild { version: string; buildId: string; releases?: ReleaseNote[] }
+export interface AppUpdateSource { manifest: string; script: string }
+export const originUpdateSource: AppUpdateSource = {
+  manifest: '/remote-client/version.json', script: '/remote-client/sw.js'
+};
+export function pageUpdateSource(): AppUpdateSource {
+  return typeof document !== 'undefined' && document.querySelector('script[src*="/remote-client/assets/"]')
+    ? originUpdateSource : appUpdateSettings;
+}
 export type UpdateStage = 'checking' | 'current' | 'downloading' | 'activating' | 'reloading';
 export const updateStageLabels: Record<UpdateStage, string> = {
   checking: '正在检查最新版本…', current: '已是最新版本，无需刷新。',
@@ -34,7 +42,7 @@ export function currentPageBuild(): AppBuild | null {
   const script = [...document.querySelectorAll<HTMLScriptElement>('script[src]')].find(element =>
     /\/assets\/index-[\w-]+\.js(?:\?|$)/.test(element.src));
   return script ? { version: import.meta.env.VITE_APP_VERSION,
-    buildId: new URL(script.src).pathname.slice(1) } : null;
+    buildId: new URL(script.src).pathname.replace(/^\/(?:remote-client\/)?/, '') } : null;
 }
 
 export function changesSince(build: AppBuild, currentVersion?: string): ReleaseNote[] {
@@ -43,8 +51,8 @@ export function changesSince(build: AppBuild, currentVersion?: string): ReleaseN
   return (current <= 0 ? notes.filter(note => note.version === build.version) : notes.slice(0, current));
 }
 
-export async function checkAppVersion(signal?: AbortSignal, current = currentPageBuild()) {
-  const response = await fetch(`${appUpdateSettings.manifest}?check=${Date.now()}`, {
+export async function checkAppVersion(signal?: AbortSignal, current = currentPageBuild(), source = pageUpdateSource()) {
+  const response = await fetch(`${source.manifest}?check=${Date.now()}`, {
     cache: 'no-store', credentials: 'omit',
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000)
   });
@@ -132,10 +140,14 @@ interface UpdateOptions {
   returnToApp?: boolean;
   currentBuild?: AppBuild | null;
   expectedBuild?: AppBuild;
+  expectedVersion?: string;
+  source?: AppUpdateSource;
+  receipt?: boolean;
 }
 
 /** Explicit user action: preserve private state and subscriptions, activate a fully cached build. */
-export async function refreshAppVersion({ signal, onStage, returnToApp = false, currentBuild, expectedBuild }: UpdateOptions): Promise<'current' | 'updated'> {
+export async function refreshAppVersion({ signal, onStage, returnToApp = false, currentBuild, expectedBuild,
+  expectedVersion, source = pageUpdateSource(), receipt = true }: UpdateOptions): Promise<'current' | 'updated'> {
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   signal?.addEventListener('abort', abort, { once: true });
@@ -147,15 +159,16 @@ export async function refreshAppVersion({ signal, onStage, returnToApp = false, 
   };
   try {
     stage('checking');
-    const check = await checkAppVersion(controller.signal, currentBuild === undefined ? currentPageBuild() : currentBuild);
+    const check = await checkAppVersion(controller.signal, currentBuild === undefined ? currentPageBuild() : currentBuild, source);
     const build = check.latest;
+    if (expectedVersion && build.version !== expectedVersion) throw new Error('后端与网页版本尚未一致，请稍后重试刷新。');
     if (!check.updateAvailable) { stage('current', build); return 'current'; }
     if (expectedBuild && (expectedBuild.version !== build.version || expectedBuild.buildId !== build.buildId)) {
       throw new Error('服务器版本正在变化，请重新检查更新摘要。');
     }
     if ('serviceWorker' in navigator) {
       stage('downloading', build);
-      const registration = await abortable(navigator.serviceWorker.register(appUpdateSettings.script, {
+      const registration = await abortable(navigator.serviceWorker.register(source.script, {
         scope: appUpdateSettings.scope, updateViaCache: 'none'
       }), controller.signal);
       await abortable(registration.update(), controller.signal);
@@ -173,11 +186,13 @@ export async function refreshAppVersion({ signal, onStage, returnToApp = false, 
       await controlled;
     }
     if (controller.signal.aborted) throw abortError(controller.signal);
-    try { sessionStorage.setItem(receiptKey, JSON.stringify({
+    try { if (receipt) sessionStorage.setItem(receiptKey, JSON.stringify({
       ...build, releases: changesSince(build, check.current?.version)
     })); } catch { /* Updating remains available without session storage. */ }
     stage('reloading', build);
-    if (returnToApp) location.replace('/'); else location.reload();
+    if (source.script === originUpdateSource.script && !('serviceWorker' in navigator)) {
+      location.replace(`/remote-client/${location.search ?? ''}${location.hash ?? ''}`);
+    } else if (returnToApp) location.replace('/'); else location.reload();
     return 'updated';
   } catch (error) {
     const failure = controller.signal.aborted ? abortError(controller.signal) : error;

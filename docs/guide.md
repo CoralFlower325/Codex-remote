@@ -362,6 +362,18 @@ On phones, swipe right from the leftmost 28 CSS pixels to open the conversation 
 
 Use **Settings → Refresh version → Check and update** to check uncached server metadata against the loaded page's version and build. An already current page stays open without refreshing. When an update exists, review its release summary and confirm **Update to ...**. Remote downloads the full public shell, verifies the new controller, then reloads and displays the completed update summary. Failures allow retry without removing login state, main-chat text drafts or push subscriptions. A successful update clears temporary side chats, unsent images and skill selections. Existing tabs keep their old public assets during manual activation; a later natural activation cleans obsolete app caches. Older installed shells can open **`/update.html` in the same browser or installed web app**. This independent recovery page and `/version.json` bypass the installed shell cache; a current recovery check offers a return link without navigating automatically. Updates require network access; physical iOS Safari/PWA acceptance remains separate.
 
+**Settings → Check Remote updates** checks the backend on the connected host against
+the latest stable GitHub Release. Windows x64 and Apple Silicon installations must
+already run through their owned system service. The dialog shows the installed
+and available versions without a release summary; confirm **Update to ...** to
+install. It mirrors real stage/download percentages and elapsed time. The
+independent updater continues across backend restarts and closed dialogs.
+Disconnections retain the last confirmed progress until authenticated polling
+resumes. Success installs the matching public web client and refreshes the page;
+current-version checks never refresh. Main-chat text survives, while unsent
+images, skills and temporary chats clear on refresh. It updates Remote, leaving
+the manager at its own version. See [recovery and hosting details](web-backend-update.md).
+
 The header's **Toggle summary panel pin** opens the conversation summary: attached pull requests, outputs, temporary side chats, native subagents and sources. A wide desktop can pin the 300px panel; narrower desktop and mobile use a dismissible overlay. PRs come from native thread attachments; completed answer links, generated images and supported structured MCP resource activities supply outputs. Missing local output files are filtered out. Sources include provided files/links, web searches and successful MCP connectors. Resource links use the existing preview/download inspector. Create-output actions and source-file selection append to the existing draft for review; they never send automatically. The MCP entry opens connected-server status, not a connector installer. Summary reads page independently of chat history, with **Load earlier summaries** after each bounded automatic batch. Provider-specific outputs without supported links or resource metadata may be absent.
 
 Each validated functional batch also publishes a GitHub Release with its version, source commit and changes.

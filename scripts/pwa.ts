@@ -1,17 +1,18 @@
 import type { Plugin } from 'vite';
 import { releaseNotes } from '../src/shared/release-notes';
 
-export function serviceWorkerSource(files: string[], version: string, appVersion = '0.0.0'): string {
+export function serviceWorkerSource(files: string[], version: string, appVersion = '0.0.0', originPrefix = ''): string {
   return `
 const CACHE = ${JSON.stringify(`codex-static-${version}`)};
-const FILES = ${JSON.stringify(files)};
+const ORIGIN_PREFIX = ${JSON.stringify(originPrefix)};
+const FILES = ${JSON.stringify(files.map(file => file === '/' ? file : originPrefix + file))};
 const BUILD = ${JSON.stringify({ version: appVersion, buildId: version })};
 let userActivated = false;
 const isStatic = url => url.origin === self.location.origin &&
-  (url.pathname.startsWith('/assets/') || FILES.includes(url.pathname));
+  (url.pathname.startsWith('/assets/') || url.pathname === ORIGIN_PREFIX + '/' || FILES.includes(url.pathname));
 self.addEventListener('install', event => event.waitUntil(
   caches.open(CACHE).then(cache => Promise.all(FILES.map(async path => {
-    const response = await fetch(path, { cache: 'reload', credentials: 'omit', priority: 'low' });
+    const response = await fetch(path === '/' ? ORIGIN_PREFIX + '/' : path, { cache: 'reload', credentials: 'omit', priority: 'low' });
     if (!response.ok) throw new Error('Application cache is incomplete.');
     await cache.put(path, response);
   })))
@@ -105,6 +106,8 @@ export function pwaPlugin(appVersion: string): Plugin {
         version: appVersion, buildId: entry.fileName, releases: releaseNotes
       }) });
       this.emitFile({ type: 'asset', fileName: 'sw.js', source: serviceWorkerSource(files, entry.fileName, appVersion) });
+      this.emitFile({ type: 'asset', fileName: 'sw-origin.js',
+        source: serviceWorkerSource(files, entry.fileName, appVersion, '/remote-client') });
     }
   };
 }

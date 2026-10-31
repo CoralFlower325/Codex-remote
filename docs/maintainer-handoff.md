@@ -15,6 +15,15 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
+Remote 0.2.6 adds authenticated web backend updates in Settings. The independent
+worker snapshots updater code and dependencies under output before replacing
+the live installation; Windows WMI / a separate macOS launchd job isolates it
+from service shutdown. Only the selected backend restarts. Keep the existing
+transaction/rollback protocol, do not replay uncertain install POSTs, and expose
+only projected progress over HTTP. Success refreshes the matching public client
+through `/remote-client/`, bypassing independently deployed static edge assets.
+Manager stays 0.2.0. See [web updates](web-backend-update.md).
+
 Remote 0.2.5 keeps image/skill drafts with their main chat across Composer
 unmounts and asynchronous file/send completions. DraftsContext belongs to the
 workspace, not a module global; temporary side drafts stay local. Only text is

@@ -2,6 +2,13 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.6', changes: [
+    '网页设置新增检查 Remote 更新，识别当前连接的 Windows 或 Apple Silicon 后端，发现新版时只显示版本号和更新按钮。',
+    '支持从网页确认远程更新，复用运行包校验、文件冲突检查、备份与失败恢复，独立任务在后端重启期间继续运行。',
+    '远程显示中文阶段、真实百分比和耗时，断线保留进度，重新连接后自动续读，不重复提交更新。',
+    '后端更新完成后自动安装配套公共网页并刷新，支持绕过独立边缘静态资源的旧版本；已是最新版时保持当前页面。',
+    '稳定管理器仍为 0.2.0，无功能变更；0.2.0AU 自更新开发与签名断点继续暂停。'
+  ] },
   { version: '0.2.5', changes: [
     '切换会话保留各自待发图片与技能草稿；读图或发送稍后完成时仍归属原会话，发送失败保留输入。',
     '输入框上方显示图片缩略图，支持点击预览原图和单独移除，兼顾桌面与手机操作。',

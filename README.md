@@ -124,6 +124,7 @@ HTTP status codes and Codex retry state. See [runtime errors](docs/native-runtim
 - **Handle native questions.** Explicit answers work in main and temporary chats. Pending badges reflect observed questions; they are not a complete search of unread history.
 - **Keep context close.** Preview unsent images above the input; images and skills stay with their draft when switching chats. Inspect files, PR attachments, outputs and sources beside the conversation. Summary coverage depends on the native resource metadata provided.
 - **Choose when to update.** An already current check leaves the page intact. A real update shows release notes before confirmation; main-chat text drafts survive, while temporary chats, unsent images and skill selections clear.
+- **Update the connected host.** Settings can check and update the Windows x64 or Apple Silicon Remote backend, show its version and live progress, then refresh the matching web client. See [remote updates](docs/web-backend-update.md).
 - **Receive device notifications.** Opt into completed-task, question and approval Web Push. Payloads include titles and bounded reply/question previews; they may appear on a lock screen.
 - **Open a host terminal.** Remote-owned interactive shells run as the host user, separately from Desktop terminals and outside model permission profiles.
 
