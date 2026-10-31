@@ -99,6 +99,8 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   abandoned pages. Preserve response/activity identities and expanded state
   across partial-turn boundaries. Do not estimate chat-block heights with
   content-visibility; reserve thumbnail geometry and reuse unchanged responses.
+  Release temporary reading-tail space after downward reading settles or when
+  following latest; composer resizing must retain bottom-following readers.
   Underfilled viewports prefetch but consume history only on upward intent.
   Older timing metadata fills missing turns; current live timings always win.
 - Reply links open lazy inspector preview tabs. Resolve relative files against
@@ -244,6 +246,9 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 - Composer slash commands use native RPC actions, not text prompts. Skills come
   from `skills/list` for the current directory and submit as native skill input.
   Keep collaboration mode synchronized through resume/settings notifications.
+  Keep main-chat image/skill drafts in workspace memory per chat, including
+  pending file reads/sends across navigation. Persist text only; reload discards
+  unsent images/skills. Show removable image previews above the input.
 - Native async question messages preserve their questions and native index IDs. Submit
   explicit answers using the persisted Desktop reply envelope, directly steering an
   active turn with expectedTurnId or starting an idle turn; never queue these replies.
@@ -263,6 +268,9 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   or native completion, preserve them through late in-progress snapshots, and
   retain final errors in bounded native history reads. RPC bridges preserve
   numeric codes and projected public error data, never arbitrary result payloads.
+  Use Desktop-style compact error rows without generated titles/HTTP labels;
+  project native retry progress and JSON messages for display only. Top transport
+  recovery uses explicit connection state and monochrome Reconnecting/Retry.
 - Permissions apply per chat. Do not rewrite global Codex config to change them.
 - Do not start a second backend that replaces an active Desktop relay.
 - Starting or stopping Remote must not terminate Codex Desktop.

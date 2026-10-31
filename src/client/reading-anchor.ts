@@ -5,6 +5,12 @@ export interface ReadingAnchor {
   scrollTop: number;
 }
 
+export function releaseReadingTail(inner: HTMLElement): boolean {
+  if (!inner.style.getPropertyValue('--reading-tail')) return false;
+  inner.style.removeProperty('--reading-tail');
+  return true;
+}
+
 export function captureReadingAnchor(stream: HTMLElement, inner: HTMLElement): ReadingAnchor | null {
   const viewport = stream.getBoundingClientRect();
   const visible = (node: HTMLElement) => {

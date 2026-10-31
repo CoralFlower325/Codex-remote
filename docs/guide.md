@@ -1,5 +1,12 @@
 # Codex Remote Guide
 
+Remote 0.2.5 preserves unsent image/skill drafts when switching chats, adds image
+previews above the input, and releases obsolete history spacing on return toward
+latest. Draft images/skills remain in memory and clear on page reload.
+The top connection banner uses quiet monochrome `Reconnecting` / `Retry`.
+Per-turn runtime errors use Desktop-style compact rows and native retry/message
+formatting, without extra Remote headings or duplicated status labels.
+See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote 0.2.4 keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
@@ -603,7 +610,7 @@ Commands call the owning App Server or open the corresponding UI. A failed comma
 - Model and project metadata load in the authenticated bootstrap and refresh on reconnection. They are not continuously refreshed while the connection stays open. Currently, these two lists read their first requested page; task history, task lists, and permission profiles have separate pagination.
 - New chats currently initialize reasoning from the model catalog default. This can differ from a global Codex configuration override; select the desired level explicitly.
 - Permission profiles come from `permissionProfile/list` and update the current chat. Builtins include `:read-only`, `:workspace`, and `:danger-full-access`.
-- Main-chat drafts live in browser `sessionStorage`. They survive switching chats and reconnecting, but do not synchronize with the Desktop composer or other devices. Temporary side-chat drafts remain in memory only.
+- Main-chat text drafts live in browser `sessionStorage`. Unsent images and skill selections stay in workspace memory per chat, including when file reads or sends finish after navigation. Switching chats and reconnecting preserve them; reloading, updating the page or logging out clears unsent images/skills. Images appear in a horizontally scrollable thumbnail row above the input, with separate preview and remove controls. Sending successfully clears only the submitted input; failures keep it. Drafts do not synchronize with Desktop or other devices. Temporary side-chat drafts remain in memory only.
 - Uploads are sent to the local Codex workflow. The remote UI does not implement a separate hosted model service.
 
 ## Device Notifications

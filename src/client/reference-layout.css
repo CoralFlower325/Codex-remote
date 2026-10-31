@@ -102,6 +102,7 @@ svg { stroke-width: 1.8; }
 .message--user { margin-block: 48px 40px; }
 .message-stream-inner > .message--user:first-child { margin-top: 0; }
 .turn-response { margin-bottom: 28px; }
+.message-stream-inner > :last-child { margin-bottom: 0; }
 .turn-response .message:last-child { margin-bottom: 0; }
 .file-preview-tab { display: flex; min-height: 0; flex: 1; overflow: hidden; }
 .file-preview-tab[hidden] { display: none; }
@@ -273,7 +274,17 @@ svg { stroke-width: 1.8; }
 .context-usage svg { fill: none; stroke: currentColor; stroke-width: 2; }
 .context-usage-track { opacity: .16; }
 .context-usage-progress { stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: calc(100 - var(--context-percent)); transform: rotate(-90deg); transform-origin: 50% 50%; }
-.composer-context-tray { display: flex; flex-wrap: wrap; gap: 6px; padding: 9px 11px 0; }
+.composer-context-tray { display: flex; align-items: center; gap: 12px; overflow-x: auto; max-height: 112px; padding: 12px 12px 10px; }
+.composer-context-tray > * { flex-shrink: 0; }
+.composer-image { position: relative; width: 80px; height: 80px; }
+.composer-image > .image-thumbnail { display: block; width: 100%; height: 100%; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.composer-image .image-thumbnail img { object-fit: cover; object-position: center; }
+.composer-image-remove { position: absolute; top: 0; right: 0; display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 0 8px 0 8px; padding: 0; background: var(--surface); color: var(--ink); }
+.composer-image-remove:hover { background: var(--surface-hover); }
+@media (pointer: coarse) {
+  .composer-image-remove { top: -12px; right: -12px; width: 44px; height: 44px; background: transparent; }
+  .composer-image-remove > svg { box-sizing: content-box; border-radius: 50%; padding: 4px; background: var(--surface); }
+}
 .composer-context-chip { display: flex; max-width: 260px; min-height: 28px; align-items: center; gap: 6px; border: 1px solid var(--line-strong); border-radius: 8px; padding: 0 8px; color: var(--muted); font-size: 12px; }
 .composer-context-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer-context-chip > button { display: grid; width: 18px; height: 18px; flex: 0 0 auto; place-items: center; border: 0; background: transparent; padding: 0; color: var(--muted); }

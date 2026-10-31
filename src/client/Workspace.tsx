@@ -10,7 +10,6 @@ import {
   Pencil,
   Archive,
   ArchiveRestore,
-  RefreshCw,
   Check,
   X
 } from 'lucide-react';
@@ -21,6 +20,7 @@ import { api } from './api';
 import { QuestionDock } from './components/QuestionDock';
 import { ApprovalDock } from './components/ApprovalDock';
 import { Composer } from './components/Composer';
+import { ComposerDrafts } from './components/ComposerDrafts';
 import { Inspector } from './components/Inspector';
 import { WorkspacePanels } from './components/WorkspacePanels';
 import { Sidebar } from './components/Sidebar';
@@ -356,6 +356,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const title = activeThread ? displayThreadTitle(activeThread) : '新任务';
 
   return (
+    <ComposerDrafts>
     <SubagentsContext.Provider value={subagentsContext}>
     <PreviewLinks cwd={permissionCwd ?? ''} onOpen={openPreview}>
     <WorkspacePanels layout={layout} sidebarCollapsed={sidebarCollapsed} sidebarOpen={sidebarOpen}
@@ -480,22 +481,17 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           </div>
         </header>
 
-        {startupError && (
-          <div className="error-banner" role="alert">
-            <CircleAlert size={16} aria-hidden="true" />
-            <span>{startupError}</span>
-            <button type="button" onClick={onStartupRetry} aria-label="重新连接">
-              <RefreshCw size={15} aria-hidden="true" />
-            </button>
+        {(startupError || remote.connectionError) && (
+          <div className="connection-banner" role="status">
+            <span>Reconnecting</span>
+            {(startupError ? onStartupRetry : remote.reconnect) && <button type="button"
+              onClick={startupError ? onStartupRetry : remote.reconnect}>Retry</button>}
           </div>
         )}
-        {remote.lastError && (
+        {remote.lastError && !startupError && !remote.connectionError && (
           <div className="error-banner" role="alert">
             <CircleAlert size={16} aria-hidden="true" />
             <span>{remote.lastError}</span>
-            <button type="button" onClick={remote.reconnect} aria-label="重新连接">
-              <RefreshCw size={15} aria-hidden="true" />
-            </button>
             <button type="button" onClick={() => remote.setLastError(null)} aria-label="关闭错误提示">
               <X size={15} aria-hidden="true" />
             </button>
@@ -595,6 +591,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     </WorkspacePanels>
     </PreviewLinks>
     </SubagentsContext.Provider>
+    </ComposerDrafts>
   );
 }
 

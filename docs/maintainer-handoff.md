@@ -15,6 +15,21 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
+Remote 0.2.5 keeps image/skill drafts with their main chat across Composer
+unmounts and asynchronous file/send completions. DraftsContext belongs to the
+workspace, not a module global; temporary side drafts stay local. Only text is
+stored in sessionStorage. Image previews reuse ImagePreview. Historical
+reading-tail space releases after downward reading settles or when following
+latest; observe viewport changes as well as content size. Keep this separate
+from native history data/order. Run `node scripts/check-composer-layout.mjs`
+after building, with the optional desktop Playwright dependencies installed.
+See [draft and layout acceptance](composer-layout-acceptance.md).
+Transport recovery is explicit `connectionError` state, separate from action
+errors; never classify a model 429 as a lost browser connection by matching text.
+`native-error-content.ts` projects native retry progress and terminal JSON messages
+for display only, preserving the original public error model. The error row uses
+compact monochrome styling; do not reintroduce generated titles/status labels.
+
 The 0.2.4 completion of the native-order batch reconciles late events with
 subsequent native reads without duplicating items or rewinding newer live text.
 Native arrays determine shared-item order; retain live-only neighbours and

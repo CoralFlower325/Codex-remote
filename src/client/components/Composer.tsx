@@ -1,6 +1,6 @@
 import {
   ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, Eye, Folder,
-  LoaderCircle, ShieldAlert, ShieldCheck, Square, X, Plus, Mic, FileImage, MessageSquare, Sparkles, ListTodo
+  LoaderCircle, ShieldAlert, ShieldCheck, Square, X, Plus, Mic, MessageSquare, Sparkles, ListTodo
 } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
@@ -11,6 +11,9 @@ import { modelDisplayName, reasoningLabel, reasoningOptionsForModel } from '../w
 import { findSlashCommand, parseSlashQuery, slashOptions, type SlashCommandId, type SlashOption } from '../slash-commands';
 import { composerKeyboardAction, insertComposerNewline } from '../composer-keyboard';
 import { SlashMenu } from './SlashMenu';
+import { ImagePreview } from './ImagePreview';
+import { useComposerDraft } from './ComposerDrafts';
+import { submittedComposerDraft } from '../composer-drafts';
 
 interface ComposerProps {
   variant: 'home' | 'thread';
@@ -54,12 +57,15 @@ export function Composer({
   onCommand, loadSkills, skillScope, hasSavedThread, mode, temporary = false, initialInput, queueMessages = false
 }: ComposerProps) {
   const controlId = useId();
-  const [draft, setDraft] = useState(() => initialInput?.text ?? (temporary ? '' : sessionStorage.getItem(`draft:${draftKey}`) ?? ''));
-  const [sending, setSending] = useState(false);
+  const { text: draft, attachments, skills: selectedSkills, sending, owner } = useComposerDraft(draftKey, temporary, initialInput);
+  const setDraft = (text: string) => owner.update(current => ({ ...current, text }));
+  const setSending = (sending: boolean) => owner.update(current => ({ ...current, sending }));
+  const setAttachments = (change: ComposerAttachment[] | ((current: ComposerAttachment[]) => ComposerAttachment[])) =>
+    owner.update(current => ({ ...current, attachments: typeof change === 'function' ? change(current.attachments) : change }));
+  const setSelectedSkills = (change: SkillInfo[] | ((current: SkillInfo[]) => SkillInfo[])) =>
+    owner.update(current => ({ ...current, skills: typeof change === 'function' ? change(current.skills) : change }));
   const [changing, setChanging] = useState(false);
   const [stopping, setStopping] = useState(false);
-  const [attachments, setAttachments] = useState<ComposerAttachment[]>(initialInput?.attachments ?? []);
-  const [selectedSkills, setSelectedSkills] = useState<SkillInfo[]>(initialInput?.skills ?? []);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
@@ -103,10 +109,6 @@ export function Composer({
   const updateDraft = (text: string) => {
     draftRef.current = text;
     setDraft(text);
-    if (!temporary) {
-      if (text) sessionStorage.setItem(`draft:${draftKey}`, text);
-      else sessionStorage.removeItem(`draft:${draftKey}`);
-    }
     setSlashDismissed(false);
   };
 
@@ -190,6 +192,7 @@ export function Composer({
   };
 
   const addFiles = async (files: FileList | null) => {
+    const input = fileRef.current;
     try {
       const images = await Promise.all(Array.from(files ?? []).map(async (file) => {
         if (!file.type.startsWith('image/')) throw new Error('请选择图片文件。');
@@ -204,7 +207,7 @@ export function Composer({
       }));
       setAttachments((current) => [...current, ...images]);
     } catch (error) { onError(error); }
-    finally { if (fileRef.current) fileRef.current.value = ''; }
+    finally { if (input) input.value = ''; }
   };
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -337,7 +340,7 @@ export function Composer({
         await onCommand(command, query.argument.trim());
       }
       if (command === 'new') { setAttachments([]); setSelectedSkills([]); }
-      if (draftRef.current === source) updateDraft(
+      if (owner.get().text === source) updateDraft(
         command === 'plan' && !['on', 'off', ''].includes(query.argument.trim()) ? query.argument : ''
       );
     } catch (error) { onError(error); }
@@ -348,9 +351,10 @@ export function Composer({
   };
 
   const submit = async () => {
-    const text = draft.trim();
-    if (sending || disabled) return;
-    const query = parseSlashQuery(draft);
+    const submitted = owner.get();
+    const text = submitted.text.trim();
+    if (submitted.sending || disabled) return;
+    const query = parseSlashQuery(submitted.text);
     if (query) {
       const exact = findSlashCommand(query.name);
       const option = options.find((entry) => entry.command === exact?.id && Boolean(exact)) ??
@@ -363,16 +367,11 @@ export function Composer({
       } else onError(new Error('未知命令，请输入 / 选择可用命令。'));
       return;
     }
-    if (!text && attachments.length === 0 && selectedSkills.length === 0) return;
+    if (!text && submitted.attachments.length === 0 && submitted.skills.length === 0) return;
     setSending(true);
     try {
-      await onSubmit(text, attachments, selectedSkills);
-      setAttachments([]);
-      setSelectedSkills([]);
-      if (draftRef.current.trim() === text) {
-        setDraft('');
-        if (!temporary) sessionStorage.removeItem(`draft:${draftKey}`);
-      }
+      await onSubmit(text, submitted.attachments, submitted.skills);
+      owner.update(current => submittedComposerDraft(current, submitted));
     } catch (error) {
       onError(error);
     } finally {
@@ -484,9 +483,10 @@ export function Composer({
             <button type="button" aria-label={`移除技能 ${skill.name}`}
               onClick={() => setSelectedSkills((current) => current.filter((entry) => entry.path !== skill.path))}><X size={12} /></button>
           </div>)}
-          {attachments.map((attachment) => <div className="composer-context-chip" key={attachment.id}>
-            <FileImage size={14} /><span>{attachment.name}</span>
-            <button type="button" aria-label={`移除 ${attachment.name}`} onClick={() => setAttachments((current) => current.filter((image) => image.id !== attachment.id))}><X size={12} /></button>
+          {attachments.map((attachment) => <div className="composer-image" key={attachment.id}>
+            <ImagePreview src={attachment.url} alt={attachment.name} />
+            <button type="button" className="composer-image-remove" aria-label={`移除 ${attachment.name}`} title={`移除 ${attachment.name}`}
+              onClick={() => setAttachments((current) => current.filter((image) => image.id !== attachment.id))}><X size={14} /></button>
           </div>)}
         </div>}
         <input type="file" ref={fileRef} hidden multiple accept="image/*"

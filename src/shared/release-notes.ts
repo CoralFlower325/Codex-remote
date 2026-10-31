@@ -2,6 +2,14 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.5', changes: [
+    '切换会话保留各自待发图片与技能草稿；读图或发送稍后完成时仍归属原会话，发送失败保留输入。',
+    '输入框上方显示图片缩略图，支持点击预览原图和单独移除，兼顾桌面与手机操作。',
+    '释放历史阅读残留占位，收紧末条回复下方间距，输入框高度变化时保持最新消息可见。',
+    '顶端重连横幅改为黑白提示，仅显示 Reconnecting 与按需出现的 Retry；恢复连接后自动隐藏。',
+    '运行错误对齐原生紧凑行格式，保留错误原文和详情，按原生规则展示重试进度及错误消息，不再额外拼接标题和状态码。',
+    '稳定管理器仍为 0.2.0，无功能变更；0.2.0AU 自更新开发与签名继续暂停。'
+  ] },
   { version: '0.2.4', changes: [
     '补齐晚到事件与原生历史列表的顺序校准，避免同一条目在界面重复出现。',
     '保留读取期间新到达的流式文本、消息身份和历史阅读状态；重复校准保持一致。',

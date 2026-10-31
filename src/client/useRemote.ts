@@ -73,6 +73,7 @@ export interface CreateThreadOptions {
 
 export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRequest }: UseRemoteOptions) {
   const [connected, setConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState(false);
   const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>({ status: 'offline' });
   const [permissionProfiles, setPermissionProfiles] = useState<PermissionProfile[]>([]);
   const [defaultPermissionProfile, setDefaultPermissionProfile] = useState<string | null>(null);
@@ -1323,6 +1324,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         replayCursorRef.current = { epoch: message.epoch, sequence: message.sequence };
         lastRecoveryRef.current = Date.now();
         setConnected(true);
+        setConnectionError(false);
         markStartup('connected');
         setLastError(null);
         watchThread(activeThreadRef.current);
@@ -1358,7 +1360,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       onDisconnect: (error) => {
         if ('status' in error && error.status === 401) { authExpiredRef.current?.(); return; }
         setConnected(false);
-        setLastError(error.message);
+        setConnectionError(true);
         flushStreamingDeltas();
         for (const pending of pendingRef.current.values()) {
           window.clearTimeout(pending.timer);
@@ -1766,6 +1768,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   return {
     authenticated,
     connected,
+    connectionError,
     chatTransport,
     status,
     bridgeStatus,

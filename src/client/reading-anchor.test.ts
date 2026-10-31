@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { restoreReadingAnchor, type ReadingAnchor } from './reading-anchor';
+import { releaseReadingTail, restoreReadingAnchor, type ReadingAnchor } from './reading-anchor';
 
 function reader() {
   const stream = { scrollTop: 100, getBoundingClientRect: () => ({ top: 0 }) };
@@ -12,6 +12,13 @@ function reader() {
 }
 
 describe('reading position', () => {
+  it('releases historical compensation when returning toward the latest content', () => {
+    let tail = '500px';
+    const inner = { style: { getPropertyValue: () => tail, removeProperty: () => { tail = ''; } } };
+    expect(releaseReadingTail(inner as unknown as HTMLElement)).toBe(true);
+    expect(tail).toBe('');
+    expect(releaseReadingTail(inner as unknown as HTMLElement)).toBe(false);
+  });
   it('compensates inserted content once, before the next frame', () => {
     const r = reader();
     r.insert(500);

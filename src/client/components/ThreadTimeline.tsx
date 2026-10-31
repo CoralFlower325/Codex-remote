@@ -7,7 +7,7 @@ import { buildTimelineEntries, buildTimelineSections, type TimelineEntry, type T
 import type { TurnTiming } from '../../shared/turn-timing';
 import type { OutlineTurn } from '../../shared/thread-outline';
 import { ThreadNavigation, type NavigationTarget } from './ThreadNavigation';
-import { captureReadingAnchor, restoreReadingAnchor, type ReadingAnchor } from '../reading-anchor';
+import { captureReadingAnchor, releaseReadingTail, restoreReadingAnchor, type ReadingAnchor } from '../reading-anchor';
 import { HistoryScroll, historyScrollDelta, type BeforeHistoryCommit } from '../history-scroll';
 import { isReadableHistoryItem } from '../history-prefetch';
 import { NativeTurnError } from './NativeTurnError';
@@ -186,6 +186,24 @@ export function ThreadTimeline({
     readingAnchorRef.current = stream && inner && !stickToBottomRef.current
       ? captureReadingAnchor(stream, inner) : null;
   }, []);
+  const followLatest = useCallback(() => {
+    const stream = streamRef.current;
+    const inner = innerRef.current;
+    if (!stream || !inner) return;
+    releaseReadingTail(inner);
+    readingAnchorRef.current = null;
+    stream.scrollTop = stream.scrollHeight;
+    previousScrollTopRef.current = stream.scrollTop;
+  }, []);
+  const releaseTailAfterReading = useCallback(() => {
+    const stream = streamRef.current;
+    const inner = innerRef.current;
+    if (!stream || !inner || !releaseReadingTail(inner)) return;
+    // Removing obsolete space may clamp scrollTop. It is not an upward gesture.
+    previousScrollTopRef.current = stream.scrollTop;
+    restoredScrollTopRef.current = stream.scrollTop;
+    rememberReadingPosition();
+  }, [rememberReadingPosition]);
   const restoreReadingPosition = useCallback(() => {
     const stream = streamRef.current;
     const inner = innerRef.current;
@@ -204,13 +222,14 @@ export function ThreadTimeline({
     window.requestAnimationFrame(() => {
       const stream = streamRef.current;
       if (!stream) return;
+      releaseTailAfterReading();
       const nearBottom = !loadingEarlierRef.current && !viewingHistory &&
         stream.scrollHeight - stream.scrollTop - stream.clientHeight < 140;
       stickToBottomRef.current = nearBottom;
       setAwayFromBottom(!nearBottom);
       rememberReadingPosition();
     });
-  }, [rememberReadingPosition, viewingHistory]);
+  }, [rememberReadingPosition, releaseTailAfterReading, viewingHistory]);
   const atEarlierBoundary = () => {
     const top = streamRef.current?.scrollTop ?? Infinity;
     return top <= 64 || continuationTopRef.current !== null && top <= continuationTopRef.current + 1;
@@ -245,8 +264,13 @@ export function ThreadTimeline({
   }, [hasMoreHistory, onPrefetchEarlier, revealingHistory, threadId, items]);
   loadWhenIdleRef.current = () => {
     const stream = streamRef.current;
+    if (!wantsEarlierRef.current && !loadingEarlierRef.current && !navigationAnchorRef.current) releaseTailAfterReading();
     if (stream && !wantsEarlierRef.current && !viewingHistory && !loadingEarlierRef.current &&
-      stream.scrollHeight - stream.scrollTop - stream.clientHeight <= 4) stickToBottomRef.current = true;
+      stream.scrollHeight - stream.scrollTop - stream.clientHeight <= 4) {
+      stickToBottomRef.current = true;
+      readingAnchorRef.current = null;
+      setAwayFromBottom(false);
+    }
     if (stream && wantsEarlierRef.current && atEarlierBoundary()) loadEarlier();
   };
 
@@ -266,13 +290,9 @@ export function ThreadTimeline({
     if (loading && items.length === 0) return;
     stickToBottomRef.current = true;
     readingAnchorRef.current = null;
-    const stream = streamRef.current;
-    if (stream) {
-      stream.scrollTop = stream.scrollHeight;
-      previousScrollTopRef.current = stream.scrollTop;
-    }
+    followLatest();
     initialScrollReadyRef.current = true;
-  }, [loading, threadId, viewingHistory]);
+  }, [loading, threadId, viewingHistory, followLatest]);
 
   useEffect(() => () => {
     navigationVersionRef.current += 1;
@@ -285,22 +305,23 @@ export function ThreadTimeline({
     const observer = new ResizeObserver(() => {
       if (navigationAnchorRef.current) { alignNavigationTarget(); return; }
       const stream = streamRef.current;
-      if (stream && stickToBottomRef.current && !viewingHistory) stream.scrollTop = stream.scrollHeight;
+      if (stream && stickToBottomRef.current && !viewingHistory) followLatest();
       else restoreReadingPosition();
     });
     observer.observe(inner);
+    if (streamRef.current) observer.observe(streamRef.current);
     return () => observer.disconnect();
-  }, [loading, threadId, viewingHistory, alignNavigationTarget, restoreReadingPosition]);
+  }, [loading, threadId, viewingHistory, alignNavigationTarget, restoreReadingPosition, followLatest]);
 
   useLayoutEffect(() => {
     if (loading) return;
     const stream = streamRef.current;
     if (!stream) return;
     if (stickToBottomRef.current && !viewingHistory) {
-      stream.scrollTop = stream.scrollHeight;
+      followLatest();
       stickToBottomRef.current = true;
     }
-  }, [items, loading, viewingHistory]);
+  }, [items, loading, viewingHistory, followLatest]);
 
   useLayoutEffect(alignNavigationTarget, [items, turnTimings, alignNavigationTarget]);
 
@@ -415,7 +436,7 @@ export function ThreadTimeline({
       onLoadCapture={() => {
         if (navigationAnchorRef.current) { alignNavigationTarget(); return; }
         const stream = streamRef.current;
-        if (stream && stickToBottomRef.current && !viewingHistory) stream.scrollTop = stream.scrollHeight;
+        if (stream && stickToBottomRef.current && !viewingHistory) followLatest();
         else restoreReadingPosition();
       }}
       onScroll={(event) => {
@@ -491,8 +512,7 @@ export function ThreadTimeline({
           navigationAnchorRef.current = null;
           readingAnchorRef.current = null;
           if (viewingHistory && onReturnToLatest) { void onReturnToLatest(); return; }
-          const stream = streamRef.current;
-          if (stream) stream.scrollTop = stream.scrollHeight;
+          followLatest();
           stickToBottomRef.current = true;
           setAwayFromBottom(false);
         }}

@@ -122,7 +122,7 @@ HTTP status codes and Codex retry state. See [runtime errors](docs/native-runtim
 - **Read long conversations.** Bounded history pages preserve reading position; execution bodies load when expanded.
 - **Edit after stopping.** Edit the original message of the latest stopped turn, then confirm resending with its attachments and skills. Conversation history is replaced; existing file changes remain.
 - **Handle native questions.** Explicit answers work in main and temporary chats. Pending badges reflect observed questions; they are not a complete search of unread history.
-- **Keep context close.** Inspect files, previews, PR attachments, outputs and sources beside the conversation. Summary coverage depends on the native resource metadata provided.
+- **Keep context close.** Preview unsent images above the input; images and skills stay with their draft when switching chats. Inspect files, PR attachments, outputs and sources beside the conversation. Summary coverage depends on the native resource metadata provided.
 - **Choose when to update.** An already current check leaves the page intact. A real update shows release notes before confirmation; main-chat text drafts survive, while temporary chats, unsent images and skill selections clear.
 - **Receive device notifications.** Opt into completed-task, question and approval Web Push. Payloads include titles and bounded reply/question previews; they may appear on a lock screen.
 - **Open a host terminal.** Remote-owned interactive shells run as the host user, separately from Desktop terminals and outside model permission profiles.
