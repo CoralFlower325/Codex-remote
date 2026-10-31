@@ -19,8 +19,8 @@ export async function service(root, action, execute = run, platform = process.pl
   return action === 'Status' ? JSON.parse(result) : null;
 }
 
-export async function requireService(root, expectedPid, execute = run) {
-  const status = await service(root, 'Status', execute);
+export async function requireService(root, expectedPid, execute = run, platform = process.platform) {
+  const status = await service(root, 'Status', execute, platform);
   if (!status.installed || status.conflict || !status.enabled || !status.running ||
     !status.pids.includes(expectedPid)) throw new Error('当前后端未由此安装的系统服务管理，请先在本机管理器开启 Remote。');
   return status;

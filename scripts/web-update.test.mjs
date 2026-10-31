@@ -14,7 +14,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
 });
 async function fixture() {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'remote-web-update-test-')); roots.push(root);
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'remote-web-update-test-'))); roots.push(root);
   for (const name of ['scripts', 'dist-server/server']) await fs.mkdir(path.join(root, name), { recursive: true });
   await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'codex-remote', version: '0.2.5' }));
   await fs.writeFile(path.join(root, 'dist-server/server/index.js'), 'old');
@@ -143,6 +143,6 @@ describe('backend-only platform controls', () => {
   });
   it('rejects an unmanaged listener before a worker can mutate files', async () => {
     await expect(requireService('/installation', 123, async () =>
-      JSON.stringify({ installed: true, enabled: true, running: true, conflict: false, pids: [456] }))).rejects.toThrow('系统服务');
+      JSON.stringify({ installed: true, enabled: true, running: true, conflict: false, pids: [456] }), 'win32')).rejects.toThrow('系统服务');
   });
 });
