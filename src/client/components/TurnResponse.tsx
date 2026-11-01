@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Copy, GitFork, MoreHorizontal, Pencil } from 'lucide-react';
+import { Check, ChevronRight, Copy, FileText, GitFork, MoreHorizontal, Pencil } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { memo, useEffect, useId, useMemo, useState } from 'react';
 import type { TimelineEntry, TimelineSection } from '../timeline-model';
@@ -17,6 +17,8 @@ import { NativeTurnError } from './NativeTurnError';
 import { MarkdownText } from './MarkdownText';
 import { ActivityGroup, ActivityItem } from './TimelineActivity';
 import type { UserMessage } from '../message-edit';
+import { documentReferences } from '../../shared/document-input';
+import { PreviewLink } from './PreviewLinks';
 
 export const ResponseSection = memo(function ResponseSection({
   section, timing, finalStartedAtMs, hasTrace, showError, open, onToggleTurn, active, onInteract, onFork, onError
@@ -148,6 +150,7 @@ export const MessageItem = memo(function MessageItem({ item, showFull = false, o
   if (item.type === 'userMessage') {
     const text = userMessageDisplayText(item.content ?? []);
     const images = (item.content ?? []).filter((entry) => entry.type === 'image' || entry.type === 'localImage');
+    const documents = documentReferences(item.content ?? []);
     const long = text.length > 900 && !showFull;
     return (
       <article className="message message--user" data-user-key={itemKey(item)} data-turn-id={item.turnId}
@@ -157,6 +160,10 @@ export const MessageItem = memo(function MessageItem({ item, showFull = false, o
             {images.map((entry, index) => (
               <ImagePreview key={index} src={localImageSource(entry.path ?? entry.url)} alt={`图片附件 ${index + 1}`} />
             ))}
+          </div>}
+          {documents.length > 0 && <div className="user-document-attachments" aria-label={`${documents.length} 个 PDF 附件`}>
+            {documents.map(document => <PreviewLink className="user-document-attachment" href={document.path}
+              key={document.path} title={document.path}><FileText size={18} aria-hidden="true" /><span>{document.name}</span></PreviewLink>)}
           </div>}
           {text && <div className="user-message-text">{long && !expanded ? `${text.slice(0, 800)}...` : text}</div>}
           {long && (

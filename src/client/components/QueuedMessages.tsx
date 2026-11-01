@@ -110,7 +110,8 @@ export function QueuedMessages({ transport, threadId, activeTurnId, connected, r
         <button className="icon-button" type="button" aria-label="取消编辑" onClick={() => setEditing(null)}><X size={15} /></button>
       </form> : <>
         <ListEnd size={15} aria-hidden="true" />
-        <span className="queued-message-text" title={queuedDraft(message.input).text}>{queuedDraft(message.input).text || '图片或技能'}</span>
+        <span className="queued-message-text" title={queuedDraft(message.input).text}>{queuedDraft(message.input).text ||
+          queuedDraft(message.input).attachments.find(attachment => attachment.kind === 'document')?.name || '附件或技能'}</span>
         <button type="button" className="queued-steer" disabled={!connected || Boolean(busy)}
           onClick={() => void act(message, 'send')}><CornerDownRight size={14} />{activeTurnId ? '引导' : '发送'}</button>
         <button type="button" className="icon-button" aria-label="删除待发消息" title="删除待发消息"

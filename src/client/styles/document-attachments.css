@@ -1,0 +1,61 @@
+.composer-document {
+  display: flex;
+  flex: 0 1 280px;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.composer-document > svg,
+.composer-document > button { flex-shrink: 0; }
+
+.composer-document-label { flex: 1; min-width: 0; }
+
+.composer-document-label > a,
+.composer-document-label > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  color: var(--ink);
+}
+
+.composer-document-label small {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.user-document-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.user-document-attachment {
+  display: flex;
+  min-width: 0;
+  max-width: min(320px, 100%);
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--surface);
+  text-decoration: none;
+}
+
+.user-document-attachment > svg { flex-shrink: 0; }
+.user-document-attachment > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-document-attachment:hover { background: var(--bg-subtle); }

@@ -40,11 +40,16 @@ interface InspectorProps {
 
 export function Inspector({ open, thread, items, onClose, layout, view, remote, sideChatRequest, previewRequest, cwd,
   subagentChats, subagentRequest, sideChats }: InspectorProps) {
-  const [tab, setTab] = useState<string>('changes');
+  const [tab, setTab] = useState<string>(view);
+  const [openedTools, setOpenedTools] = useState<string[]>(view === 'launcher' ? [] : [view]);
   const [expanded, setExpanded] = useState(false);
   const [previews, setPreviews] = useState<Array<{ id: string; target: PreviewTarget }>>([]);
   const inspectorRef = useRef<HTMLElement>(null);
   useEffect(() => { setTab(view); }, [view]);
+  useEffect(() => {
+    if (!['changes', 'activity', 'files', 'agents'].includes(tab)) return;
+    setOpenedTools(current => current.includes(tab) ? current : [...current, tab]);
+  }, [tab]);
   useEffect(() => {
     if (!sideChatRequest) return;
     if (sideChatRequest.chatId) setTab(sideChatRequest.chatId);
@@ -85,10 +90,10 @@ export function Inspector({ open, thread, items, onClose, layout, view, remote, 
   const changedPaths = [...new Set(items.flatMap((item) => item.type === 'fileChange' ? item.changes.map((change) => change.path) : []))];
   const tabs: Array<{ id: string; label: string }> = [
     ...(tab === 'launcher' ? [{ id: 'launcher', label: '新标签页' }] : []),
-    ...(tab === 'changes' || changedPaths.length ? [{ id: 'changes', label: `审阅 ${changedPaths.length}` }] : []),
-    ...(tab === 'activity' ? [{ id: 'activity' as const, label: '命令记录' }] : []),
-    ...(tab === 'files' ? [{ id: 'files' as const, label: '文件' }] : []),
-    ...(tab === 'agents' || subagentChats.directory.length || items.some(item =>
+    ...(tab === 'changes' || openedTools.includes('changes') || changedPaths.length ? [{ id: 'changes', label: `审阅 ${changedPaths.length}` }] : []),
+    ...(tab === 'activity' || openedTools.includes('activity') ? [{ id: 'activity' as const, label: '命令记录' }] : []),
+    ...(tab === 'files' || openedTools.includes('files') ? [{ id: 'files' as const, label: '文件' }] : []),
+    ...(tab === 'agents' || openedTools.includes('agents') || subagentChats.directory.length || items.some(item =>
       item.type === 'subAgentActivity' || item.type === 'collabAgentToolCall' && item.receiverThreadIds.length > 0)
       ? [{ id: 'agents', label: '子智能体' }] : []),
     ...sideChats.chats.map(chat => ({ id: chat.id, label: chat.title })),
@@ -182,7 +187,9 @@ export function Inspector({ open, thread, items, onClose, layout, view, remote, 
               <div className="inspector-path-row"><Folder size={15} /><code title={thread.cwd}>{thread.cwd}</code></div>
               {thread.gitInfo?.branch && <div className="inspector-path-row"><GitBranch size={15} /><span>{thread.gitInfo.branch}</span></div>}
               {changedPaths.map((path) => (
-                <div className="inspector-path-row" key={path}><FileCode2 size={15} /><PreviewLink href={path}><code title={path}>{displayPath(path, thread.cwd)}</code></PreviewLink></div>
+                <div className="inspector-path-row" key={path}><FileCode2 size={15} /><PreviewLink href={path} title={path}>
+                  <FilePath value={path} cwd={thread.cwd} />
+                </PreviewLink></div>
               ))}
             </div>
           )}
@@ -325,6 +332,15 @@ function CommandDetail({ command: summary, active }: { command: Extract<ThreadIt
 
 function EmptyInspector({ text }: { text: string }) {
   return <div className="inspector-empty"><FileCode2 size={22} /><span>{text}</span></div>;
+}
+
+function FilePath({ value, cwd }: { value: string; cwd: string }) {
+  const label = displayPath(value, cwd);
+  const separator = label.lastIndexOf('/');
+  return <code className="inspector-file-path" title={value}>
+    {separator >= 0 && <span className="inspector-path-directory">{label.slice(0, separator + 1)}</span>}
+    <span className="inspector-path-filename">{label.slice(separator + 1)}</span>
+  </code>;
 }
 
 function displayPath(value: string, cwd: string): string {

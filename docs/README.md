@@ -69,6 +69,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 | [输入草稿与布局](composer-layout-acceptance.md) | 0.2.5 会话草稿、图片预览、末条间距与历史锚点回归 |
 | [技能消息与同轮计时](skill-timing-acceptance.md) | 0.2.7 纯技能输入、队列编辑、同轮引导与原生计时锚点 |
 | [执行记录分组与展开](activity-groups-acceptance.md) | 0.2.11 重复 key 残留行复现、八视口展开与延迟详情验证 |
+| [PDF 附件与工作区修复](review-fixes-acceptance.md) | 0.2.12 上传与预览、任务 URL、历史校准、检查器及终端门禁 |
 | [Subagents](subagent-acceptance.md) | Discovery, history and safe viewer close / 发现、历史与关闭行为 |
 | [PR #3 · 0.1.5](pr-3-review.md) | Updates, phone controls and gestures / 更新、手机控件与手势 |
 | [PR #4 · 0.1.6](pr-4-review.md) | Sidebar and desktop/mobile sizing / 侧栏与双端尺寸 |

@@ -110,7 +110,7 @@ Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
 remains pending.
 
-Remote **0.2.11** pairs with stable manager **0.2.1**. Install the new manager
+Remote **0.2.12** pairs with stable manager **0.2.1**. Install the new manager
 manually over 0.2.0, select the same host directory and retry; updating Remote
 cannot replace the old manager's bundled updater. [Manager downloads](docs/update-downloads.md)
 use the project's public distribution, with official GitHub alternatives.
@@ -126,6 +126,7 @@ Native Codex runtime errors remain visible in their turns, including available
 HTTP status codes and Codex retry state. See [runtime errors](docs/native-runtime-errors.md).
 
 - **Read long conversations.** Bounded history pages preserve reading position; execution bodies load when expanded.
+- **Send PDFs and reopen tasks.** Upload a PDF, preview it beside the draft and reference its host file in a task. Task URLs support refresh, sharing and browser history; see [attachments and limits](docs/guide.md#pdf-attachments).
 - **Edit after stopping.** Edit the original message of the latest stopped turn, then confirm resending with its attachments and skills. Conversation history is replaced; existing file changes remain.
 - **Handle native questions.** Explicit answers work in main and temporary chats. Pending badges reflect observed questions; they are not a complete search of unread history.
 - **Keep context close.** Preview unsent images above the input; images and skills stay with their draft when switching chats. Inspect files, PR attachments, outputs and sources beside the conversation. Summary coverage depends on the native resource metadata provided.

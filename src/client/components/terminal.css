@@ -19,6 +19,7 @@
 }
 .terminal-heading { display: flex; flex: 0 0 auto; align-items: center; gap: 7px; }
 .terminal-directory { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.terminal-directory > span { color: var(--ink-soft); }
 .terminal-status { flex: 0 0 auto; color: var(--muted); font-size: 11px; }
 .terminal-tabs { display: flex; min-height: 30px; flex: 0 0 auto; overflow-x: auto; border-bottom: 1px solid var(--line); }
 .terminal-tab { display: flex; min-width: 100px; max-width: 200px; flex: 0 0 auto; align-items: center; border-bottom: 1px solid transparent; }
@@ -40,4 +41,4 @@
   .terminal-touch-keys > button:active { background: var(--surface-hover); }
 }
 .app-shell[data-layout="mobile"] .terminal-panel { height: min(44dvh, 360px); }
-.app-shell[data-layout="mobile"] .terminal-status { display: none; }
+.app-shell[data-layout="mobile"] .terminal-status[data-ready="true"] { display: none; }

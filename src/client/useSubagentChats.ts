@@ -7,6 +7,7 @@ import type { Thread, ThreadHistoryPage } from './types';
 import { conversationEvent, type ChatViewState } from './conversation-state';
 import { HistoryPrefetch, prepareHistoryPage } from './history-prefetch';
 import type { BeforeHistoryCommit } from './history-scroll';
+import type { OpenThreadPage } from './loading-snapshots';
 
 export interface SubagentChat extends ChatViewState {
   agent: Subagent;
@@ -15,6 +16,7 @@ export interface SubagentChat extends ChatViewState {
   loadingHistory: boolean;
   cursor: string | null;
   turnsCursor: string | null;
+  timingsLoaded: boolean;
 }
 
 function historyItems(page: ThreadHistoryPage) {
@@ -46,18 +48,30 @@ export function useSubagentChats(transport: ChatTransport, connected: boolean, p
     if (!chat?.cursor) return null;
     let buffer = earlierPages.current.get(id);
     if (!buffer) { buffer = new HistoryPrefetch(); earlierPages.current.set(id, buffer); }
-    return buffer.read(chat.cursor, signal => prepareHistoryPage(
-      () => api<ThreadHistoryPage>(`/api/thread/history?${new URLSearchParams({
-        threadId: id, before: chat.cursor!, limit: '100', conversation: '1'
-      })}`, { cache: 'no-store', signal, timeoutMs: 15000 }),
-      async cursor => {
-        const page = await api<Pick<ThreadHistoryPage, 'turns' | 'turnsCursor'>>(
-          `/api/thread/timings?${new URLSearchParams({ threadId: id, cursor })}`,
-          { cache: 'no-store', signal, timeoutMs: 15000 });
-        return { data: page.turns, nextCursor: page.turnsCursor };
-      },
-      chat.timings, chat.turnsCursor, signal
-    ));
+    return buffer.read(chat.cursor, async signal => {
+      const [history, initialTimings] = await Promise.all([
+        api<ThreadHistoryPage>(`/api/thread/history?${new URLSearchParams({
+          threadId: id, before: chat.cursor!, limit: '100', conversation: '1'
+        })}`, { cache: 'no-store', signal, timeoutMs: 15000 }),
+        chat.timingsLoaded ? null
+          : api<Pick<ThreadHistoryPage, 'turns' | 'turnsCursor' | 'activeTurnId'>>(
+            `/api/thread/timings?${new URLSearchParams({ threadId: id, fresh: '1' })}`,
+            { cache: 'no-store', signal, timeoutMs: 15000 })
+      ]);
+      const prepared = await prepareHistoryPage(
+        async () => history,
+        async cursor => {
+          const page = await api<Pick<ThreadHistoryPage, 'turns' | 'turnsCursor'>>(
+            `/api/thread/timings?${new URLSearchParams({ threadId: id, cursor })}`,
+            { cache: 'no-store', signal, timeoutMs: 15000 });
+          return { data: page.turns, nextCursor: page.turnsCursor };
+        },
+        { ...Object.fromEntries(initialTimings?.turns.map(turn => [turn.id, turn]) ?? []), ...chat.timings },
+        initialTimings ? initialTimings.turnsCursor : chat.turnsCursor, signal
+      );
+      return initialTimings ? { ...prepared, turns: [...initialTimings.turns, ...prepared.turns],
+        activeTurnId: initialTimings.activeTurnId } : prepared;
+    });
   }, []);
   const prefetch = useCallback(async (id: string) => {
     try { await prepareEarlier(id); } catch { /* Foreground paging can retry. */ }
@@ -72,11 +86,33 @@ export function useSubagentChats(transport: ChatTransport, connected: boolean, p
     const baseline = chat.items;
     const timingBaseline = chat.timings;
     patch(id, entry => ({ ...entry, error: null, ...(earlier ? { loadingHistory: true } : { loading: !entry.items.length }) }));
+    const timingRead = earlier ? Promise.resolve() : (async () => {
+      const path = `/api/thread/timings?${new URLSearchParams({ threadId: id })}`;
+      type TimingPage = Pick<ThreadHistoryPage, 'turns' | 'turnsCursor' | 'activeTurnId'> & {
+        snapshot?: { stale: boolean; savedAt: number }
+      };
+      let page = await api<TimingPage>(path, { cache: 'no-store', signal: controller.signal, timeoutMs: 15000 });
+      if (page.snapshot?.stale) page = await api<TimingPage>(`${path}&fresh=1`,
+        { cache: 'no-store', signal: controller.signal, timeoutMs: 15000 });
+      if (controller.signal.aborted) return;
+      patch(id, entry => ({ ...entry,
+        timings: mergeTurnTimings(entry.timings, page.turns, timingBaseline),
+        ...(!Object.entries(entry.timings).some(([key, value]) => value !== timingBaseline[key])
+          ? { activeTurnId: page.activeTurnId } : {}),
+        ...(!entry.timingsLoaded ? { turnsCursor: page.turnsCursor } : {}),
+        timingsLoaded: true }));
+    })().catch(error => {
+      if (!isAbortedRequest(error) && !controller.signal.aborted) patch(id, entry => ({ ...entry,
+        error: error instanceof Error ? error.message : String(error) }));
+    });
     try {
       const query = new URLSearchParams({ threadId: id,
         ...(earlier ? { before: chat.cursor!, limit: '100' } : { mode: 'read' }) });
-      const page: (ThreadHistoryPage & { result?: { thread: Thread } }) | null = earlier ? await prepareEarlier(id)
-        : await api(`/api/thread/open?${query}`, { cache: 'no-store', signal: controller.signal });
+      let page: (ThreadHistoryPage & { result?: { thread: Thread }; snapshot?: OpenThreadPage['snapshot'];
+        timingsPending?: boolean }) | null = earlier ? await prepareEarlier(id)
+        : await api(`/api/thread/open?${query}`, { cache: 'no-store', signal: controller.signal, timeoutMs: 15000 });
+      if (!earlier && page?.snapshot?.stale) page = await api(`/api/thread/open?${query}&fresh=1`,
+        { cache: 'no-store', signal: controller.signal, timeoutMs: 15000 });
       if (earlier && beforeCommit && !await beforeCommit()) {
         if (!controller.signal.aborted) patch(id, entry => ({ ...entry, loadingHistory: false }));
         return;
@@ -89,15 +125,22 @@ export function useSubagentChats(transport: ChatTransport, connected: boolean, p
           : mergeLatestHistoryItems(entry.items, historyItems(page), baseline),
         timings: earlier ? mergeOlderTurnTimings(entry.timings, page.turns)
           : mergeTurnTimings(entry.timings, page.turns, timingBaseline),
-        ...(!earlier && entry.timings === timingBaseline ? { activeTurnId: page.activeTurnId } : {}),
-        cursor: page.nextCursor, turnsCursor: page.turnsCursor }));
+        ...(!earlier && !page.timingsPending && entry.timings === timingBaseline ? { activeTurnId: page.activeTurnId } : {}),
+        ...(earlier && !chat.timingsLoaded && !Object.entries(entry.timings).some(([key, value]) => value !== timingBaseline[key])
+          ? { activeTurnId: page.activeTurnId } : {}),
+        cursor: page.nextCursor,
+        ...(earlier || !page.timingsPending && !entry.timingsLoaded ? { turnsCursor: page.turnsCursor } : {}),
+        ...(earlier ? { timingsLoaded: true } : {}) }));
       if (!earlier && (page.activeTurnId || page.result?.thread.status.type === 'active') && !controller.signal.aborted) {
         await transport.rpc('thread/resume', { threadId: id, excludeTurns: true });
       }
     } catch (error) {
       if (!isAbortedRequest(error)) patch(id, entry => ({ ...entry, loading: false, loadingHistory: false,
         error: error instanceof Error ? error.message : String(error) }));
-    } finally { if (requests.current.get(id) === controller) requests.current.delete(id); }
+    } finally {
+      await timingRead;
+      if (requests.current.get(id) === controller) requests.current.delete(id);
+    }
   }, [patch, transport, prepareEarlier]);
   useEffect(() => { setDirectory([]); setDirectoryError(null); }, [parentId]);
   useEffect(() => {
@@ -191,7 +234,7 @@ export function useSubagentChats(transport: ChatTransport, connected: boolean, p
         id: agent.threadId, threadId: agent.threadId, title: agent.name, agent,
         model: agent.model ?? '', effort: agent.effort ?? '', permissions: '', mode: 'default',
         items: [], timings: {}, activeTurnId: null, error: null, loading: true,
-        loadingHistory: false, cursor: null, turnsCursor: null
+        loadingHistory: false, cursor: null, turnsCursor: null, timingsLoaded: false
       }]);
       watch();
     }

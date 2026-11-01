@@ -5,22 +5,26 @@ import { createPortal } from 'react-dom';
 export function ImagePreview({ src, alt = '' }: { src: string; alt?: string }) {
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [longImage, setLongImage] = useState(false);
   const [revision, setRevision] = useState(0);
   const dialogRef = useRef<HTMLDialogElement>(null);
-  useEffect(() => { setFailed(false); setRevision(0); }, [src]);
+  useEffect(() => { setFailed(false); setLongImage(false); setRevision(0); }, [src]);
   useEffect(() => {
     if (open) dialogRef.current?.showModal();
   }, [open]);
   return (
     <>
-      <button type="button" className="image-thumbnail" aria-label={failed ? '图片不可用，点击重试' : alt ? `查看图片：${alt}` : '查看图片'}
+      <button type="button" className={`image-thumbnail${longImage ? ' image-thumbnail--long' : ''}`} aria-label={failed ? '图片不可用，点击重试' : alt ? `查看图片：${alt}` : '查看图片'}
         title={failed ? '图片不可用，点击重试' : alt || '查看图片'}
         onClick={() => { if (failed) { setFailed(false); setRevision(value => value + 1); } else setOpen(true); }}>
         {failed ? <span className="image-unavailable"><ImageOff size={20} /><RefreshCw size={12} /></span>
-          : <img key={`${src}:${revision}`} src={src} alt={alt} loading="lazy" decoding="async" onError={() => setFailed(true)} />}
+          : <img key={`${src}:${revision}`} src={src} alt={alt} loading="lazy" decoding="async"
+            onLoad={event => setLongImage(event.currentTarget.naturalHeight > event.currentTarget.naturalWidth * 2)}
+            onError={() => setFailed(true)} />}
+        {longImage && !failed && <span className="image-thumbnail-label" aria-hidden="true">长图</span>}
       </button>
       {open && createPortal(
-        <dialog ref={dialogRef} className="image-viewer" aria-label="图片预览"
+        <dialog ref={dialogRef} className={`image-viewer${longImage ? ' image-viewer--long' : ''}`} aria-label="图片预览"
           onClose={() => setOpen(false)} onClick={(event) => {
             if (event.target === event.currentTarget) dialogRef.current?.close();
           }}>

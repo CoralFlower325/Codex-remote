@@ -15,7 +15,21 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-Remote 0.2.11 pairs with stable manager 0.2.1. Activity groups consume each
+Remote 0.2.12 pairs with stable manager 0.2.1, unchanged in this batch.
+PDF uploads use authenticated private host storage and the Desktop text
+file-context envelope. Preserve per-draft ownership, retry identity and the
+retain-before-send boundary, including uncertain sends. Unsent uploads are
+cleaned after 24 hours on the next upload, not by a timer; retained originals
+do not expire automatically. Queue edits must preserve non-PDF file/application
+context. Actual model PDF reading remains separate acceptance.
+Task URLs retain selection through authenticated refresh/back/forward; cached
+history stays visibly provisional until native verification. Preserve bounded
+preloading and fresh subagent reads with independent native timing.
+Inspectors keep opened built-in tabs; hidden descendants must not capture input.
+Terminal input waits for its native snapshot. See
+[batch acceptance and limits](review-fixes-acceptance.md).
+
+The preceding 0.2.11 activity groups consume each
 previous key once when native history splits or merges them, preventing duplicate
 React keys, orphan rows and dead disclosure buttons. Empty assistant placeholders
 do not split activity or replace final-answer anchors. Device snapshots retain

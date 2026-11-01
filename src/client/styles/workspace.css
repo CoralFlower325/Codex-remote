@@ -230,6 +230,7 @@
 }
 
 .image-thumbnail {
+  position: relative;
   display: inline-block;
   width: 360px;
   max-width: 100%;
@@ -249,6 +250,23 @@
   max-height: 100%;
   object-fit: contain;
   object-position: left center;
+}
+
+.image-thumbnail--long img {
+  object-fit: cover;
+  object-position: center top;
+}
+
+.image-thumbnail-label {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  border-radius: 4px;
+  background: var(--surface);
+  padding: 2px 5px;
+  color: var(--ink);
+  font-size: 0.6875rem;
+  line-height: 1.4;
 }
 
 .image-unavailable {
@@ -275,6 +293,8 @@
 .image-viewer-toolbar > span { min-width: 0; flex: 1; overflow: hidden; font-size: 0.8125rem; text-overflow: ellipsis; white-space: nowrap; }
 .image-viewer-stage { display: grid; min-height: 0; place-items: center; overflow: auto; padding: 12px; }
 .image-viewer-stage img { max-width: 100%; max-height: calc(100dvh - 140px); object-fit: contain; }
+.image-viewer--long .image-viewer-stage { display: block; max-height: calc(100dvh - 112px); }
+.image-viewer--long .image-viewer-stage img { display: block; max-height: none; margin-inline: auto; }
 
 .review-toolbar {
   display: flex;

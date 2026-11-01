@@ -49,6 +49,7 @@ import { toggleInspectorLauncher, type InspectorView } from './inspector-state';
 import { GoalStatus } from './components/GoalStatus';
 import { SummaryPanel } from './components/SummaryPanel';
 import { useSideChats } from './useSideChats';
+import { useWorkspaceLocation } from './useWorkspaceLocation';
 
 interface WorkspaceProps {
   authenticated: boolean;
@@ -115,28 +116,11 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     setSummaryOverlayOpen(false);
   }
   const [previewRequest, setPreviewRequest] = useState<{ id: number; target: PreviewTarget } | null>(null);
-  const [notificationThreadId, setNotificationThreadId] = useState(() =>
-    new URLSearchParams(location.search).get('thread'));
-  useEffect(() => {
-    const openNotification = (event: MessageEvent) => {
-      if (event.data?.type === 'notification.open' && typeof event.data.threadId === 'string') {
-        setNotificationThreadId(event.data.threadId);
-      }
-    };
-    navigator.serviceWorker?.addEventListener('message', openNotification);
-    return () => navigator.serviceWorker?.removeEventListener('message', openNotification);
-  }, []);
-  useEffect(() => {
-    if (!authenticated || !notificationThreadId) return;
-    const threadId = notificationThreadId;
-    setNotificationThreadId(null);
-    const url = new URL(location.href);
-    url.searchParams.delete('thread');
-    history.replaceState(history.state, '', url);
-    setSidebarOpen(false);
-    void remote.openThread(threadId).catch(error => remote.setLastError(
-      error instanceof Error ? error.message : String(error)));
-  }, [authenticated, notificationThreadId, remote.openThread]);
+  const navigate = useWorkspaceLocation({
+    authenticated, activeThreadId: remote.activeThreadId, showArchived: remote.showArchived,
+    openThread: remote.openThread, closeThread: remote.closeThread, toggleArchived: remote.toggleArchived,
+    onError: error => remote.setLastError(error instanceof Error ? error.message : String(error))
+  });
   const subagentChats = useSubagentChats(remote.chatTransport, remote.connected, remote.activeThread?.id);
   const [selectedSubagent, setSelectedSubagent] = useState<{ id: number; threadId: string } | null>(null);
   const openSubagent = useCallback((agent: Subagent) => {
@@ -229,8 +213,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   };
 
   function beginNewTask(projectId?: string) {
-    remote.closeThread();
-    if (remote.showArchived) void remote.toggleArchived().catch(showError);
+    navigate({ threadId: null, archived: false });
     remote.setLastError(null);
     if (projectId !== undefined) setSelectedProjectId(projectId);
     setSidebarOpen(false);
@@ -239,12 +222,12 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     setComposerFocusRequest((value) => value + 1);
   }
 
-  async function selectThread(threadId: string) {
+  function selectThread(threadId: string) {
     setSidebarOpen(false);
     setInspectorOpen(false);
     setTaskMenuOpen(false);
     setRenameDraft(null);
-    await remote.openThread(threadId).catch(showError);
+    navigate({ threadId, archived: remote.showArchived });
   }
 
   async function changeModel(model: string) {
@@ -387,7 +370,8 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
               <button
                 type="button"
                 className="icon-button"
-                onClick={() => setSidebarOpen((value) => !value)}
+              onClick={() => setSidebarOpen((value) => !value)}
+              title="打开任务列表"
                 aria-label="打开任务列表"
               >
                 <Menu size={18} />
@@ -449,7 +433,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
               onClick={() => setSidebarCollapsed((value) => !value)}><PanelLeft size={16} /></button>}
             <button type="button" className="icon-button" aria-label="终端" title="终端"
               aria-pressed={terminalOpen} onClick={() => setTerminalOpen((value) => !value)}><PanelBottom size={16} /></button>
-            <button type="button" className="icon-button" aria-label="任务信息" title="任务信息"
+            <button type="button" className="icon-button" aria-label="任务检查器" title="任务检查器"
               aria-pressed={inspectorOpen && inspectorView === 'files'} onClick={() => {
                 setInspectorView('files'); setInspectorOpen((value) => inspectorView === 'files' ? !value : true);
               }}><Info size={16} /></button>
@@ -540,7 +524,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           />
         )}
         {terminalOpen && <Suspense fallback={<div className="terminal-loading" role="status">加载终端…</div>}>
-          <TerminalPanel cwd={permissionCwd} onClose={() => setTerminalOpen(false)} />
+          <TerminalPanel key={permissionCwd ?? 'host-home'} cwd={permissionCwd} onClose={() => setTerminalOpen(false)} />
         </Suspense>}
         <SummaryPanel key={`summary:${activeThread?.id ?? 'empty'}`} remote={remote} open={summaryOpen} pinned={summaryPinned}
           inline={summaryInline} onClose={closeSummary}
@@ -705,6 +689,8 @@ function ThreadScreen({
         threadId={thread.id}
         items={remote.items}
         loading={remote.loadingThread}
+        snapshotState={remote.historySnapshot}
+        onRetrySnapshot={() => { void remote.openThread(thread.id).catch(onError); }}
         activeTurnId={remote.activeTurnId}
         turnTimings={remote.turnTimings}
         hasMoreHistory={remote.hasMoreHistory}

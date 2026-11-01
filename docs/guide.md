@@ -10,7 +10,7 @@ See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
-Remote 0.2.11 pairs with stable manager 0.2.1, using manual installer upgrades.
+Remote 0.2.12 pairs with stable manager 0.2.1, using manual installer upgrades.
 Install 0.2.1 over the old 0.2.0 app, select the same host root and retry the update.
 Updating Remote cannot change the old manager's bundled updater.
 Manager self-update is preserved on the paused 0.2.0AU development line;
@@ -467,6 +467,12 @@ operating system, browser, scaling, and available system fonts.
 
 ## Conversation Navigation
 
+Selecting a task keeps its `?thread=...` URL, including `archived=1` for archived
+views. Copy the address to reopen it after authentication, refresh to restore the
+same task, or use browser Back/Forward to move between selections. Links require
+access to the same host; sharing a link grants no authentication or filesystem
+access. Native create/fork actions update the selected task URL too.
+
 The marks at the left of the conversation follow native turn summaries. Hover
 or focus a mark to preview the request and final reply; click or press Enter to
 jump. Up/Down and Home/End move keyboard focus, and Escape closes the preview.
@@ -545,6 +551,33 @@ separate close-and-interrupt behavior.
 
 ## File and Web Previews
 
+### PDF Attachments
+
+Use the composer's attachment button to select images or PDFs. A PDF uploads to
+the authenticated host before sending; its removable draft entry opens the
+existing page preview and original download. Failed uploads stay in the owning
+draft with Retry/Remove, including when you switch tasks. Upload retries reuse
+the same identifier and validate the content to avoid duplicate files.
+
+Each PDF is limited to 20 MiB. Private `data/document-attachments/` storage has a
+1 GiB / 2048-document cap. Unsent uploads expire after 24 hours and are cleaned
+on a later upload; files retained before a submission are not automatically
+deleted, including if the model submission result is uncertain. Preserve this
+directory through upgrades. Operators manage retained files on the host; moving
+or deleting them can break old references. At the cap, remove unneeded files
+deliberately or choose an existing host-file reference.
+
+Remote submits the real host path in native user file context, retaining PDF
+references through steering, queues, temporary chats and stopped-message edits.
+It does not invent a native PDF API input type or extract/OCR every page on
+upload. Whether Codex can inspect a file depends on its host tools and chat
+permissions. Upload success alone does not prove the model read the document.
+Browser reload clears unsent attachment/skill selections; uploaded bytes follow
+the host retention rules above. PDF contents are never put in public caches or
+sent to an external viewer.
+
+### Preview Controls
+
 Click a file or website link in a reply to open an inspector tab beside the chat.
 Relative file links resolve against that chat's host directory, including on a
 phone. Reopening a file reuses its tab. Code and JSON have syntax highlighting,
@@ -618,6 +651,10 @@ tabs. A shell's own `cd` does not change that binding. Hide closes only the
 panel, while a tab's trash button ends that terminal. Refreshing the page or
 reconnecting preserves the process and restores its latest 1,000 scrollback
 lines. Stopping/restarting Remote ends its terminal processes and clears them.
+The toolbar explicitly labels the starting directory; a shell's current prompt
+or `pwd`/`Get-Location` reflects later directory changes. Input stays disabled
+until the terminal snapshot has connected. Changing tasks to another directory
+recreates the browser terminal view, then attaches that directory's session.
 
 The terminal uses a separate authenticated WebSocket and loads its browser
 renderer only when opened. Output bypasses conversation rendering; terminal
@@ -718,6 +755,7 @@ displayed it.
 - Foreground heartbeats run every five seconds and still allow 12 seconds for slow mobile replies. After two seconds without a main-channel pong, a new authenticated HTTP peer checks the route in parallel. Only a responding replacement retires the original; a late original pong cancels the candidate. Handover uses normal synchronization and event replay, preserving the workspace, draft and loaded history. Pending model actions are never resent. Probes pause in hidden pages, and foreground/pageshow starts a fresh probe instead of treating a suspended timer as a dead link. A successful heartbeat does not hide missing synchronization. Visible reconnect delays start at 250ms and cap at five seconds. A completely unavailable origin still cannot synchronize. Interactive PTY terminals retain their separate WebSocket connection.
 - Ordinary focus/pageshow does not change a pending handshake's deadline; redundant online events do not destroy healthy connections. Hidden pages pause unfinished handshakes and resume with the current stage's full budget.
 - Opening a chat starts with native metadata and the latest 40 items without waiting for resume or timing metadata. If this tool-heavy tail lacks a visible user message and final answer, it automatically reads up to two additional 100-item native pages, preserving the latest records and remaining cursor. Initial loading is bounded to 240 items; more distant history still loads on upward scrolling. Timings load separately; sending and queued actions wait for verified data, timings and native resume. Older history and missing timing pages use authenticated HTTP independently of realtime RPC. Failed initial timings do not disable upward paging; it can obtain its own initial timing cursor.
+- Cached chat previews remain readable while a compact status indicates that native history is still being synchronized. A failed read retains the preview and offers Retry, rather than presenting it as a verified final snapshot. Subagent viewers also refresh stale host snapshots and read native turn timings independently.
 - Initial chat/timing and missing catalog reads retry transient failures up to three attempts, with 0.5/1-second waits. Every chat/timing attempt allows 15 seconds through the complete response body. Selection changes cancel reads and retry waits; expired authentication and permanent client errors do not retry. Replay reconnects fill incomplete reads while preserving already-loaded chat history.
 - Rejoining an existing main-chat subscription also allows three attempts, stopping when the chat or connection changes. This does not retry prompts or model actions.
 - Host memory retains task first pages and five recent chats for up to five minutes, with a two-second freshness window. Native events invalidate snapshots; stale display is followed by a shared fresh read. Authenticated endpoints still use `no-store`; snapshots never authorize actions.
@@ -727,7 +765,7 @@ displayed it.
 - Mobile history preserves upward intent during Safari's top-edge rebound and accumulates small finger movements. An actual downward gesture still stops continuation; insertion waits until the finger is released and scrolling settles.
 - Bootstrap and WebSocket initialization share pending model/project lookups. Completed metadata is reused for five seconds to cover transit between the two connections; project creation and bridge disconnection invalidate the relevant entries. Conversations and model actions do not use this metadata cache.
 - Ordinary HTTP responses and supported WebSocket messages use compression. HTTP event streams flush uncompressed with `no-store, no-transform` to avoid buffered delivery. Fingerprinted assets have immutable caching; authenticated bootstrap and history responses use `no-store`.
-- Native events update individual task rows; completion refreshes only the latest outline page. Full list/history calibration runs at most once every five minutes. Background pagination pauses in hidden tabs and yields on constrained connections. Streaming updates batch at 60ms, 100ms on constrained networks, and 250ms in hidden tabs. Markdown reuses completed blocks and unchanged responses retain their components. Conversation blocks use their actual layout heights; image thumbnails reserve a stable contain-fit area while originals remain available in the viewer.
+- Native events update individual task rows; completion refreshes only the latest outline page. Full list/history calibration runs at most once every five minutes. Background pagination pauses in hidden tabs and yields on constrained connections. Streaming updates batch at 60ms, 100ms on constrained networks, and 250ms in hidden tabs. Markdown reuses completed blocks and unchanged responses retain their components. Conversation blocks use their actual layout heights; image thumbnails reserve a stable area. Tall images show a marked top crop and open as vertically scrollable originals.
 - Short WebSocket outages replay subscribed events from a host-memory journal bounded to 90 seconds and 2 MiB. Healthy chat history stays mounted even while background task pagination is unfinished. Expired cursors or a host restart restore native snapshots. Replayed events are deduplicated, approvals use a fresh pending snapshot, and interrupted model requests are never automatically resubmitted.
 - The production service worker caches only the public application shell and static assets. Repeat navigation returns the installed shell immediately; its document and modules stay on the same version while new versions install in the background. Close all open Remote windows and reopen to activate a waiting update. The Workspace module is preloaded on cold entry. API responses, chats, approvals, images, and terminal data are not stored in its cache. Offline shell availability does not make chats available offline. Install the site from a supporting HTTPS browser, or use Safari's Add to Home Screen.
 - After a successful login, a boolean device hint allows repeat entry to display the empty workspace immediately while authentication runs in the background. The hint contains no credentials or chat data and never grants access. Tasks and the socket still wait for server verification; expiry and logout clear the hint. This shortens the full-screen wait, not the network authentication round trip.

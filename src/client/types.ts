@@ -89,11 +89,27 @@ export interface FileChange {
   kind?: string | { type: string; move_path?: string | null };
 }
 
-export interface ComposerAttachment {
+export interface ComposerImageAttachment {
   id: string;
   name: string;
   url: string;
+  kind?: 'image';
 }
+
+export interface ComposerDocumentAttachment {
+  id: string;
+  name: string;
+  url: string;
+  kind: 'document';
+  path: string;
+  size?: number;
+  uploadId?: string;
+  status?: 'uploading' | 'failed';
+  file?: File;
+  error?: string;
+}
+
+export type ComposerAttachment = ComposerImageAttachment | ComposerDocumentAttachment;
 
 export interface CollaborationMode {
   mode: 'default' | 'plan';

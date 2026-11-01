@@ -1,12 +1,13 @@
 import {
   ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, Eye, Folder,
-  LoaderCircle, ShieldAlert, ShieldCheck, Square, X, Plus, Mic, MessageSquare, Sparkles, ListTodo
+  LoaderCircle, ShieldAlert, ShieldCheck, Square, X, Plus, Mic, MessageSquare, Sparkles, ListTodo,
+  FileText, RotateCw
 } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { v4 as randomUUID } from 'uuid';
 import { permissionLabel, type PermissionProfile } from '../../shared/permissions';
-import type { ComposerAttachment, ContextUsage, ModelInfo, ProjectInfo, SkillInfo, SkillsResult } from '../types';
+import type { ComposerAttachment, ComposerDocumentAttachment, ContextUsage, ModelInfo, ProjectInfo, SkillInfo, SkillsResult } from '../types';
 import { modelDisplayName, reasoningLabel, reasoningOptionsForModel } from '../workspace-model';
 import { findSlashCommand, parseSlashQuery, slashOptions, type SlashCommandId, type SlashOption } from '../slash-commands';
 import { composerKeyboardAction, insertComposerNewline } from '../composer-keyboard';
@@ -14,6 +15,8 @@ import { SlashMenu } from './SlashMenu';
 import { ImagePreview } from './ImagePreview';
 import { useComposerDraft } from './ComposerDrafts';
 import { submittedComposerDraft } from '../composer-drafts';
+import { retainDocuments, uploadDocument } from '../document-attachments';
+import { PreviewLink } from './PreviewLinks';
 
 interface ComposerProps {
   variant: 'home' | 'thread';
@@ -191,11 +194,32 @@ export function Composer({
     recognition.start();
   };
 
+  const upload = async (attachment: ComposerDocumentAttachment) => {
+    if (!attachment.file) return;
+    setAttachments(current => current.map(entry => entry.id === attachment.id
+      ? { ...attachment, status: 'uploading' as const, error: '' } : entry));
+    try {
+      const document = await uploadDocument(attachment.file, attachment.id);
+      setAttachments(current => current.map(entry => entry.id === attachment.id ? document : entry));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '上传失败，请重试。';
+      setAttachments(current => current.map(entry => entry.id === attachment.id
+        ? { ...attachment, status: 'failed' as const, error: message } : entry));
+    }
+  };
   const addFiles = async (files: FileList | null) => {
     const input = fileRef.current;
     try {
-      const images = await Promise.all(Array.from(files ?? []).map(async (file) => {
-        if (!file.type.startsWith('image/')) throw new Error('请选择图片文件。');
+      const results = await Promise.allSettled(Array.from(files ?? []).map(async (file) => {
+        if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+          if (file.size > 20 * 1024 * 1024 || file.size === 0) throw new Error('单个 PDF 不能超过 20 MB，且不能为空。');
+          const attachment: ComposerDocumentAttachment = { id: randomUUID(), name: file.name, kind: 'document',
+            path: '', url: '', size: file.size, status: 'uploading', file };
+          setAttachments(current => [...current, attachment]);
+          await upload(attachment);
+          return;
+        }
+        if (!file.type.startsWith('image/')) throw new Error('请选择图片或 PDF 文件。');
         if (file.size > 10 * 1024 * 1024) throw new Error('单张图片不能超过 10 MB。');
         const url = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -203,9 +227,10 @@ export function Composer({
           reader.onerror = () => reject(new Error(`无法读取 ${file.name}`));
           reader.readAsDataURL(file);
         });
-        return { id: randomUUID(), name: file.name, url };
+        setAttachments(current => [...current, { id: randomUUID(), name: file.name, url }]);
       }));
-      setAttachments((current) => [...current, ...images]);
+      const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+      if (failed) onError(failed.reason);
     } catch (error) { onError(error); }
     finally { if (input) input.value = ''; }
   };
@@ -368,8 +393,12 @@ export function Composer({
       return;
     }
     if (!text && submitted.attachments.length === 0 && submitted.skills.length === 0) return;
+    if (submitted.attachments.some(attachment => attachment.kind === 'document' && attachment.status)) {
+      onError(new Error('请等待附件上传完成，或重试、移除上传失败的附件。')); return;
+    }
     setSending(true);
     try {
+      await retainDocuments(submitted.attachments);
       await onSubmit(text, submitted.attachments, submitted.skills);
       owner.update(current => submittedComposerDraft(current, submitted));
     } catch (error) {
@@ -483,13 +512,30 @@ export function Composer({
             <button type="button" aria-label={`移除技能 ${skill.name}`}
               onClick={() => setSelectedSkills((current) => current.filter((entry) => entry.path !== skill.path))}><X size={12} /></button>
           </div>)}
-          {attachments.map((attachment) => <div className="composer-image" key={attachment.id}>
+          {attachments.map((attachment) => attachment.kind === 'document' ? (
+            <div className="composer-document" key={attachment.id}>
+              <FileText size={18} aria-hidden="true" />
+              <div className="composer-document-label">
+                {attachment.path ? <PreviewLink href={attachment.path} title={attachment.name}>{attachment.name}</PreviewLink>
+                  : <span title={attachment.name}>{attachment.name}</span>}
+                <small role={attachment.status ? 'status' : undefined}>
+                  {attachment.status === 'uploading' ? '正在上传' : attachment.status === 'failed'
+                    ? attachment.error : attachment.size != null ? `${(attachment.size / 1024 / 1024).toFixed(1)} MB` : 'PDF'}
+                </small>
+              </div>
+              {attachment.status === 'uploading' && <LoaderCircle size={15} className="spin" aria-hidden="true" />}
+              {attachment.status === 'failed' && <button type="button" className="icon-button" title="重试上传"
+                aria-label={`重试上传 ${attachment.name}`} onClick={() => void upload(attachment)}><RotateCw size={15} /></button>}
+              <button type="button" className="icon-button" title="移除附件" aria-label={`移除 ${attachment.name}`}
+                onClick={() => setAttachments(current => current.filter(entry => entry.id !== attachment.id))}><X size={15} /></button>
+            </div>
+          ) : <div className="composer-image" key={attachment.id}>
             <ImagePreview src={attachment.url} alt={attachment.name} />
             <button type="button" className="composer-image-remove" aria-label={`移除 ${attachment.name}`} title={`移除 ${attachment.name}`}
               onClick={() => setAttachments((current) => current.filter((image) => image.id !== attachment.id))}><X size={14} /></button>
           </div>)}
         </div>}
-        <input type="file" ref={fileRef} hidden multiple accept="image/*"
+        <input type="file" ref={fileRef} hidden multiple accept="image/*,application/pdf,.pdf"
           onChange={(event) => void addFiles(event.target.files)} />
         <label className="sr-only" htmlFor={controlId}>{temporary ? '侧边聊天消息' : variant === 'home' ? '输入任务内容' : '继续当前任务'}</label>
         <textarea id={controlId} ref={textareaRef} value={draft}
@@ -500,7 +546,7 @@ export function Composer({
           onPaste={(event) => {
             if (sending || disabled) return;
             const files = event.clipboardData.files;
-            if ([...files].some((file) => file.type.startsWith('image/'))) {
+            if ([...files].some((file) => file.type.startsWith('image/') || file.type === 'application/pdf' || /\.pdf$/i.test(file.name))) {
               event.preventDefault(); void addFiles(files);
             }
           }}
@@ -552,7 +598,7 @@ export function Composer({
         />
         <div className="composer-toolbar">
           <div className="composer-toolbar-left">
-            <button type="button" className="composer-circle-button composer-add" aria-label="添加图片" title="添加图片"
+            <button type="button" className="composer-circle-button composer-add" aria-label="添加图片或 PDF" title="添加图片或 PDF"
               disabled={sending || disabled} onClick={() => fileRef.current?.click()}><Plus size={15} /></button>
             {mode === 'plan' && <button type="button" className="composer-plan" title="退出计划模式"
               aria-label="退出计划模式" disabled={sending || disabled || Boolean(activeTurnId)}
@@ -608,7 +654,8 @@ export function Composer({
               </button>
             )}
             {(!activeTurnId || Boolean(draft.trim()) || attachments.length > 0 || selectedSkills.length > 0) && (
-              <button type="button" className="composer-send" disabled={(!draft.trim() && attachments.length === 0 && selectedSkills.length === 0) || sending || disabled}
+              <button type="button" className="composer-send" disabled={(!draft.trim() && attachments.length === 0 && selectedSkills.length === 0) ||
+                attachments.some(attachment => attachment.kind === 'document' && Boolean(attachment.status)) || sending || disabled}
                  onClick={() => void submit()} aria-label={activeTurnId ? queueMessages ? '加入队列' : '发送补充要求' : '发送任务'}
                  title={activeTurnId ? queueMessages ? '加入队列' : '发送补充要求' : '发送任务'}>
                 {sending ? <LoaderCircle size={17} className="spin" /> : <ArrowUp size={18} />}

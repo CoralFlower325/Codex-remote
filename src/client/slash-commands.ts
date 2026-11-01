@@ -1,5 +1,6 @@
 import type { CollaborationMode, SkillInfo } from './types';
 import { withSkillMentions } from '../shared/skill-input';
+import { withDocumentReferences, type DocumentReference } from '../shared/document-input';
 
 export const slashCommands = [
   { id: 'new', label: '新聊天', description: '开始一个新任务', aliases: ['clear'], needsThread: false, idleOnly: false },
@@ -71,11 +72,15 @@ export function collaborationMode(mode: 'default' | 'plan', model: string, effor
   return { mode, settings: { model, reasoning_effort: effort || null, developer_instructions: null } };
 }
 
-export function turnInput(text: string, images: Array<{ url: string }>, skills: SkillInfo[] = []) {
-  const prompt = withSkillMentions(text, skills);
+export function turnInput(text: string, attachments: Array<{ url: string; kind?: 'image' } |
+  (DocumentReference & { kind: 'document'; status?: string })>, skills: SkillInfo[] = []) {
+  const documents = attachments.filter((entry): entry is DocumentReference & { kind: 'document'; status?: string } =>
+    entry.kind === 'document');
+  if (documents.some(document => document.status || !document.path)) throw new Error('请等待附件上传完成，或移除上传失败的附件。');
+  const prompt = withDocumentReferences(withSkillMentions(text, skills), documents);
   return [
     ...(prompt ? [{ type: 'text', text: prompt, text_elements: [] }] : []),
-    ...images.map(({ url }) => ({ type: 'image', url })),
+    ...attachments.flatMap(entry => entry.kind !== 'document' ? [{ type: 'image', url: entry.url }] : []),
     ...skills.map(({ name, path }) => ({ type: 'skill', name, path }))
   ];
 }

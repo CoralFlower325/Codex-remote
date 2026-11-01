@@ -33,6 +33,7 @@ import { QueueDispatcher } from './queue-dispatcher.js';
 import { QuestionTracker } from './question-tracker.js';
 import { EventJournal } from './event-journal.js';
 import { filePreviewRouter } from './file-preview.js';
+import { DocumentAttachments, documentAttachmentRouter } from './document-attachments.js';
 import { LocalImages, imageExtensions } from './local-images.js';
 import { PushNotifications } from './push-notifications.js';
 import { httpConnections, type RemotePeer } from './http-connections.js';
@@ -204,7 +205,7 @@ app.post(
     const budget = loginBudget.begin(key);
     if ('retryAfter' in budget) {
       res.setHeader('Retry-After', String(budget.retryAfter));
-      res.status(429).json({ error: `Too many attempts. Try again in ${budget.retryAfter} seconds.` });
+      res.status(429).json({ error: `尝试过于频繁，请在 ${budget.retryAfter} 秒后重试。` });
       return;
     }
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
@@ -212,7 +213,7 @@ app.post(
     try { valid = await verifyPassword(password); }
     finally { budget.finish(valid); }
     if (!valid) {
-      res.status(401).json({ error: 'Incorrect password.' });
+      res.status(401).json({ error: '密码不正确，请重新输入。' });
       return;
     }
 
@@ -303,6 +304,12 @@ app.use(threadRouter({ requireAuth, codexBridge, workspaceSnapshots, pushNotific
   localImages, recordQuestions, reportImageFailure, config }));
 
 app.use('/api/file-preview', filePreviewRouter(requireAuth));
+app.use('/api/attachments', documentAttachmentRouter(requireAuth, (req, res, next) => {
+  if (!req.get('origin') || !allowedOrigins().includes(req.get('origin')!)) {
+    res.status(403).json({ error: '不受信任的上传来源。' }); return;
+  }
+  next();
+}, new DocumentAttachments(path.join(config.dataDir, 'document-attachments'))));
 
 app.get(
   '/api/local-image',

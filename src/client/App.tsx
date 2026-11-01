@@ -1,4 +1,4 @@
-import { CheckCircle2, LoaderCircle, RefreshCw, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, LoaderCircle, RefreshCw, ShieldCheck } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { api } from './api';
@@ -182,6 +182,7 @@ function SetupPage({ setupAllowed, onDone }: { setupAllowed: boolean; onDone: ()
 
 function LoginPage({ onDone }: { onDone: () => void }) {
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
 
@@ -206,19 +207,29 @@ function LoginPage({ onDone }: { onDone: () => void }) {
             .finally(() => setWorking(false));
         }}
       >
-        <label className="field">
-          <span className="sr-only">访问密码</span>
-          <input
-            placeholder="密码"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            type="password"
-            autoFocus
-            autoComplete="current-password"
-            required
-          />
-        </label>
-        {error && <div className="form-error">{error}</div>}
+        <div className="field">
+          <label htmlFor="login-password">访问密码</label>
+          <span className="auth-password">
+            <input
+              id="login-password"
+              placeholder="访问密码"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              type={showPassword ? 'text' : 'password'}
+              autoFocus
+              autoComplete="current-password"
+              aria-invalid={Boolean(error)}
+              aria-describedby={error ? 'login-error' : undefined}
+              required
+            />
+            <button type="button" className="icon-button" title={showPassword ? '隐藏密码' : '显示密码'}
+              aria-label={showPassword ? '隐藏密码' : '显示密码'} aria-pressed={showPassword}
+              onClick={() => setShowPassword(value => !value)}>
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </span>
+        </div>
+        {error && <div className="form-error" id="login-error" role="alert">{error}</div>}
         <button type="submit" className="primary-button primary-button--wide" disabled={working || !password}>
           {working ? <LoaderCircle size={16} className="spin" aria-hidden="true" /> : null}
           登录

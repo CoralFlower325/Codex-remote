@@ -96,6 +96,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const [questionCounts, setQuestionCounts] = useState<Record<string, number>>({});
   const [serverRequests, setServerRequests] = useState<ServerRequest[]>([]);
   const [loadingThread, setLoadingThread] = useState(false);
+  const [historySnapshot, setHistorySnapshot] = useState<'loading' | 'failed' | null>(null);
   const [threadReady, setThreadReady] = useState(false);
   const [verifiedThreadId, setVerifiedThreadId] = useState<string | null>(null);
   const [timedThreadId, setTimedThreadId] = useState<string | null>(null);
@@ -347,6 +348,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         timedThreadRef.current = null;
         timingErrorRef.current = null;
         setItems(cachedItems);
+        setHistorySnapshot(isNew ? null : 'loading');
         const timings = { ...(sameThread ? turnTimingsRef.current : {}),
           ...Object.fromEntries((cached?.turns ?? []).map((turn) => [turn.id, turn])) };
         turnTimingsRef.current = timings;
@@ -379,6 +381,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           setTurnTimings(Object.fromEntries(display.turns.map(turn => [turn.id, turn])));
         }
         setLoadingThread(false);
+        setHistorySnapshot('loading');
         markStartup('chat-snapshot');
       };
       if (options.silent) flushStreamingDeltas();
@@ -461,6 +464,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         setActiveThread(thread);
         setVerifiedThreadId(threadId);
         verifiedThreadRef.current = threadId;
+        setHistorySnapshot(null);
         if (!page.timingsPending && turnRevisionRef.current === turnRevision) {
           activeTurnIdRef.current = page.activeTurnId;
           setActiveTurnId(page.activeTurnId);
@@ -493,7 +497,10 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           authExpiredRef.current?.();
           return;
         }
-        if (version === selectionVersionRef.current) setLastError(error instanceof Error ? error.message : String(error));
+        if (currentSelection()) {
+          if (verifiedThreadRef.current !== threadId) setHistorySnapshot('failed');
+          setLastError(error instanceof Error ? error.message : String(error));
+        }
         throw error;
       } finally {
         endForeground();
@@ -676,6 +683,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     setRevealingHistory(true);
     loadingHistoryRef.current = true;
     setLoadingThread(false);
+    setHistorySnapshot(null);
     setLoadingHistory(false);
     setLoadingLaterHistory(false);
     try {
@@ -880,6 +888,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     setHasMoreHistory(false);
     setLoadingHistory(false);
     setLoadingThread(false);
+    setHistorySnapshot(null);
     setThreadReady(false);
     setVerifiedThreadId(null);
     setTimedThreadId(null);
@@ -918,6 +927,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       watchThread(thread.id);
       setActiveThreadId(result.thread.id);
       setActiveThread(thread);
+      setHistorySnapshot(null);
       setThreadReady(true);
       setVerifiedThreadId(thread.id);
       verifiedThreadRef.current = thread.id;
@@ -1800,6 +1810,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     serverRequests,
     questionCounts,
     loadingThread,
+    historySnapshot,
     threadReady: threadReady && timedThreadId === activeThreadId && verifiedThreadId === activeThreadId,
     showArchived,
     lastError,

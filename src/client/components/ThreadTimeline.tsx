@@ -1,4 +1,4 @@
-import { ArrowDown, LoaderCircle, MessageSquareText } from 'lucide-react';
+import { ArrowDown, LoaderCircle, MessageSquareText, RotateCw } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { HistoryThreadContext } from '../history-details';
 import { itemKey } from '../remote-state';
@@ -19,6 +19,8 @@ interface ThreadTimelineProps {
   threadId: string;
   items: ThreadItem[];
   loading: boolean;
+  snapshotState?: 'loading' | 'failed' | null;
+  onRetrySnapshot?: () => void;
   activeTurnId: string | null;
   turnTimings: Record<string, TurnTiming>;
   hasMoreHistory: boolean;
@@ -46,6 +48,8 @@ export function ThreadTimeline({
   threadId,
   items,
   loading,
+  snapshotState = null,
+  onRetrySnapshot,
   activeTurnId,
   turnTimings,
   hasMoreHistory,
@@ -383,7 +387,16 @@ export function ThreadTimeline({
 
   const emptyError = items.length === 0 ? turnTimings[activeTurnId ?? ''] ??
     Object.values(turnTimings).find(turn => turn.error) : undefined;
+  const snapshotNotice = snapshotState && <div className="history-snapshot-status" role="status">
+    {snapshotState === 'loading' && <LoaderCircle size={14} className="spin" aria-hidden="true" />}
+    <span>{snapshotState === 'loading' ? '正在同步会话记录，当前内容可能不完整' : '会话记录尚未同步完成'}</span>
+    {snapshotState === 'failed' && onRetrySnapshot && <button type="button" className="icon-button"
+      aria-label="重试同步会话记录" title="重试同步会话记录" onClick={onRetrySnapshot}>
+      <RotateCw size={15} aria-hidden="true" />
+    </button>}
+  </div>;
   if (items.length === 0 && !emptyError?.error) {
+    if (snapshotNotice) return <div className="message-stream message-stream--empty">{snapshotNotice}</div>;
     return (
       <div className="message-stream message-stream--empty">
         <div className="empty-thread-icon">
@@ -397,6 +410,7 @@ export function ThreadTimeline({
   return (
     <HistoryThreadContext.Provider value={threadId}>
     <div className="timeline-shell">
+    {snapshotNotice}
     <ThreadNavigation turns={outlineTurns} streamRef={streamRef} innerRef={innerRef}
       busy={revealingHistory} error={outlineError} onNavigate={handleNavigate} />
     <div

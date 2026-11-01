@@ -2,6 +2,14 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.12', changes: [
+    '支持上传 PDF，在任务、引导、排队和侧聊中引用主机文件，可预览和下载；失败保留草稿并支持重试。',
+    '缓存历史增加同步状态和失败重试，子智能体详情重新核对过期历史并独立补齐原生轮次时间。',
+    '修复关闭检查器后仍拦截点击、标签消失及长路径溢出，改善长截图缩略图和原图滚动。',
+    '任务链接保留当前聊天与归档状态，支持刷新恢复及浏览器前进、后退；终端明确起始目录并在连接前禁用输入。',
+    '登录错误中文化，密码字段增加常驻标签和显示开关。',
+    '正式管理器保持 0.2.1，无变更；安装包仍在 Remote 0.2.10 发布页提供。'
+  ] },
   { version: '0.2.11', changes: [
     '修复命令分组在历史记录更新、拆分和合并后重复残留、点击无法展开的问题。',
     '忽略没有正文和提问的空回复占位，避免拆散连续操作或覆盖最终回复的计时锚点。',

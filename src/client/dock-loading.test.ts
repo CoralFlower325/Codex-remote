@@ -65,7 +65,7 @@ vi.mock('./remote-connection', () => ({ RemoteConnection: class {
   start() {} dispose() {} reconnect() {}
 } }));
 vi.mock('./device-snapshots', () => ({
-  readDeviceWorkspace: async () => null, readDeviceChat: async () => null,
+  readDeviceWorkspace: async () => null, readDeviceChat: vi.fn(async () => null),
   saveDeviceWorkspace: async () => {}, saveDeviceChat: async () => {}, removeDeviceChat: async () => {}
 }));
 vi.mock('./background-work', () => ({
@@ -73,6 +73,9 @@ vi.mock('./background-work', () => ({
   yieldToInteraction: () => new Promise(() => {})
 }));
 import { useRemote } from './useRemote';
+import { readDeviceChat } from './device-snapshots';
+import { useSubagentChats } from './useSubagentChats';
+import type { ChatTransport } from './chat-transport';
 import { pendingQuestionGroups } from './async-questions';
 import { useHistoryDetails } from './history-details';
 import type { ThreadItem } from './types';
@@ -83,7 +86,11 @@ import { QueuedMessages } from './components/QueuedMessages';
 import type { Thread, WorkspaceBootstrap } from './types';
 
 let scope: InstanceType<typeof hooks.Scope>;
-afterEach(() => { scope?.dispose(); hooks.threadId = 'synthetic-chat'; vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(() => {
+  scope?.dispose(); hooks.threadId = 'synthetic-chat';
+  vi.mocked(readDeviceChat).mockReset().mockResolvedValue(null);
+  vi.useRealTimers(); vi.unstubAllGlobals();
+});
 const thread = { id: 'synthetic-chat', status: { type: 'active' }, updatedAt: 1 } as Thread;
 
 async function settle() {
@@ -273,6 +280,146 @@ describe('slow history transport regression', () => {
     await opening; await settle();
     expect(f.remote.items[0]).toMatchObject({ id: 'a', text: 'Answer' });
     expect(fetcher.mock.calls.filter(([path]) => String(path).includes('/thread/open?'))).toHaveLength(1);
+  });
+});
+
+describe('cached history verification', () => {
+  const timing = { id: 't', status: 'completed' as const, startedAt: 1, completedAt: 2, durationMs: 1000 };
+  const page = {
+    result: { thread },
+    items: [
+      { turnId: 't', startedAtMs: null, completedAtMs: null,
+        item: { type: 'userMessage', id: 'u', content: [{ type: 'text', text: 'Question' }] } },
+      { turnId: 't', startedAtMs: null, completedAtMs: null,
+        item: { type: 'subAgentActivity', id: 'child', kind: 'completed', agentThreadId: 'synthetic-child',
+          agentPath: '/child', model: null, reasoningEffort: null } },
+      { turnId: 't', startedAtMs: null, completedAtMs: null,
+        item: { type: 'agentMessage', id: 'a', text: 'Answer' } }
+    ], nextCursor: 'older', turns: [timing], turnsCursor: null, activeTurnId: null
+  };
+  it('marks the stripped preview as incomplete, then restores the same final history on five reopenings', async () => {
+    const f = fixture(path => String(path).includes('/thread/open?') ? json(page)
+      : String(path).includes('/thread/timings?') ? json(page) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    const expected = f.remote.items;
+    expect(expected.map(item => item.id)).toEqual(['u', 'child', 'a']);
+    expect(f.remote.historySnapshot).toBeNull();
+    for (let attempt = 0; attempt < 5; attempt++) {
+      f.remote.closeThread(); scope.render();
+      const opening = f.remote.openThread(thread.id); scope.render();
+      expect(f.remote.loadingThread).toBe(false);
+      expect(f.remote.historySnapshot).toBe('loading');
+      expect(f.remote.items.map(item => item.id)).toEqual(['u', 'a']);
+      await opening; await settle();
+      expect(f.remote.historySnapshot).toBeNull();
+      expect(f.remote.items).toEqual(expected);
+      expect(f.remote.hasMoreHistory).toBe(true);
+    }
+  });
+  it('retains the cached content and failed-verification state until a successful retry', async () => {
+    let fail = false;
+    const f = fixture(path => String(path).includes('/thread/open?') ? fail
+      ? Promise.resolve({ ok: false, status: 404, text: async () => '{"error":"Unavailable"}' } as Response)
+      : json(page) : String(path).includes('/thread/timings?') ? json(page) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    f.remote.closeThread(); scope.render(); fail = true;
+    await expect(f.remote.openThread(thread.id)).rejects.toThrow('Unavailable'); await settle();
+    expect(f.remote.historySnapshot).toBe('failed');
+    expect(f.remote.items.map(item => item.id)).toEqual(['u', 'a']);
+    expect(f.remote.threadReady).toBe(false);
+    fail = false;
+    await f.remote.openThread(thread.id); await settle();
+    expect(f.remote.historySnapshot).toBeNull();
+    expect(f.remote.items.map(item => item.id)).toEqual(['u', 'child', 'a']);
+  });
+  it('ignores an older device preview that arrives after the native history', async () => {
+    let finish!: (value: Awaited<ReturnType<typeof readDeviceChat>>) => void;
+    vi.mocked(readDeviceChat).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const f = fixture(path => String(path).includes('/thread/open?') || String(path).includes('/thread/timings?')
+      ? json(page) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    finish({ thread, page: { ...page, items: [], nextCursor: null } }); await settle();
+    expect(f.remote.historySnapshot).toBeNull();
+    expect(f.remote.items.map(item => item.id)).toEqual(['u', 'child', 'a']);
+    expect(f.remote.hasMoreHistory).toBe(true);
+  });
+});
+
+describe('subagent native history verification', () => {
+  const child = { threadId: 'synthetic-child', name: 'Child', status: 'completed' as const };
+  const timing = { id: 't', status: 'failed' as const, startedAt: 1, completedAt: 2, durationMs: 1000,
+    error: { message: 'Native child error' } };
+  const page = (text: string) => ({ result: { thread: { ...thread, id: child.threadId, status: { type: 'idle' } } },
+    items: [{ turnId: 't', item: { type: 'agentMessage', id: 'a', text } }],
+    nextCursor: 'older', turns: [], turnsCursor: null, activeTurnId: null, timingsPending: true });
+  const timingPage = { turns: [timing], turnsCursor: 'older-timings', activeTurnId: null };
+  function childFixture(fetcher: typeof fetch) {
+    vi.useFakeTimers(); vi.stubGlobal('fetch', fetcher);
+    const listeners = new Set<(method: string, params: Record<string, unknown>) => void>();
+    const transport = {
+      rpc: vi.fn(async () => ({ data: [], nextCursor: null })),
+      subscribe: (listener: (method: string, params: Record<string, unknown>) => void) => {
+        listeners.add(listener); return () => { listeners.delete(listener); };
+      }, watch: vi.fn()
+    } as unknown as ChatTransport;
+    let chats!: ReturnType<typeof useSubagentChats>;
+    scope = new hooks.Scope(); scope.root = () => { chats = useSubagentChats(transport, true, thread.id); };
+    scope.render();
+    return { get chats() { return chats; },
+      emit(method: string, params: Record<string, unknown>) { listeners.forEach(listener => listener(method, params)); } };
+  }
+  it('revalidates stale child text and timings without replacing native timing metadata with the text-only page', async () => {
+    let finish!: (response: Response) => void;
+    const fetcher = vi.fn<typeof fetch>(path => {
+      const url = String(path);
+      if (url.includes('/timings?')) return json({ ...timingPage, snapshot: { stale: !url.includes('fresh=1'), savedAt: 1 } });
+      if (url.includes('fresh=1')) return new Promise(resolve => { finish = resolve; });
+      return json({ ...page('Old cache'), snapshot: { stale: true, savedAt: 1 } });
+    });
+    const f = childFixture(fetcher);
+    f.chats.open(child); await settle();
+    expect(f.chats.chats[0]?.loading).toBe(true);
+    expect(f.chats.chats[0]?.items).toEqual([]);
+    expect(f.chats.chats[0]?.timings.t?.error?.message).toBe('Native child error');
+    finish(await json(page('Native answer'))); await settle();
+    expect(f.chats.chats[0]).toMatchObject({ loading: false, turnsCursor: 'older-timings', timingsLoaded: true });
+    expect(f.chats.chats[0]?.items[0]).toMatchObject({ text: 'Native answer' });
+    const paths = fetcher.mock.calls.map(([path]) => String(path));
+    expect(paths.some(path => path.includes('/open?') && path.includes('fresh=1'))).toBe(true);
+    expect(paths.some(path => path.includes('/timings?') && path.includes('fresh=1'))).toBe(true);
+  });
+  it('preserves a newer native child turn while an older timing read finishes', async () => {
+    let finish!: (response: Response) => void;
+    const f = childFixture(path => String(path).includes('/timings?')
+      ? new Promise(resolve => { finish = resolve; }) : json(page('Native answer')));
+    f.chats.open(child); await settle();
+    expect(f.chats.chats[0]?.loading).toBe(false);
+    f.emit('turn/started', { threadId: child.threadId, turn: { id: 'new', status: 'inProgress', startedAt: 5 } });
+    await vi.advanceTimersByTimeAsync(60); await settle();
+    finish(await json(timingPage)); await settle();
+    expect(f.chats.chats[0]?.activeTurnId).toBe('new');
+    expect(f.chats.chats[0]?.timings.new?.status).toBe('inProgress');
+    expect(f.chats.chats[0]?.timings.t?.error?.message).toBe('Native child error');
+  });
+  it('recovers timing metadata if older paging interrupts the initial timing read', async () => {
+    const fetcher = vi.fn<typeof fetch>((path, options) => {
+      const url = String(path);
+      if (url.includes('/timings?')) {
+        if (url.includes('fresh=1')) return json({ ...timingPage, activeTurnId: 'live',
+          turns: [...timingPage.turns, { id: 'live', status: 'inProgress', startedAt: 5 }] });
+        return new Promise((_resolve, reject) => options?.signal?.addEventListener('abort', () => reject(options.signal?.reason)));
+      }
+      if (url.includes('/history?')) return json({ items: [{ turnId: 't',
+        item: { type: 'userMessage', id: 'u', content: [{ type: 'text', text: 'Question' }] } }],
+        nextCursor: null, turns: [], turnsCursor: null, activeTurnId: null });
+      return json(page('Native answer'));
+    });
+    const f = childFixture(fetcher); f.chats.open(child); await settle();
+    expect(f.chats.chats[0]?.timingsLoaded).toBe(false);
+    await f.chats.load(child.threadId, true); await settle();
+    expect(f.chats.chats[0]?.items.map(item => item.id)).toEqual(['u', 'a']);
+    expect(f.chats.chats[0]).toMatchObject({ timingsLoaded: true, turnsCursor: 'older-timings', cursor: null, activeTurnId: 'live' });
+    expect(f.chats.chats[0]?.timings.t?.error?.message).toBe('Native child error');
   });
 });
 
