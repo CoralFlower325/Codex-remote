@@ -6,11 +6,18 @@ turns and exposes no network control API.
 
 ## Install And Open
 
-Download the Windows installer or macOS DMG/ZIP from the matching
-[GitHub Release](https://github.com/CoralFlower325/Codex-remote/releases).
+Remote 0.2.10 pairs with manager 0.2.1. Download the Windows installer or macOS
+DMG/ZIP from the [project distribution or official fallback](update-downloads.md).
 Windows packages target x64; macOS packages target Apple Silicon (arm64).
 Initial packages are unsigned; normal Windows reputation/Gatekeeper approval may
 be required. Signing, notarization and live macOS GUI acceptance remain pending.
+
+To replace manager 0.2.0, quit the manager from its tray/menu-bar menu, install
+0.2.1 over the existing app, reopen it and select the same Remote installation
+directory. Quitting the manager preserves the service. Retry the host update, or
+recover a recorded interrupted install first. Host updates cannot patch the old
+manager's bundled updater; checking for a Remote release does not upgrade the app.
+Manager self-update remains paused on the separate 0.2.0AU development line.
 
 Source development:
 
@@ -114,6 +121,12 @@ transient network failures, preserving configured registries and proxies.
 Each npm command has a ten-minute deadline; source fetches have three minutes.
 Release checks and runtime downloads use the manager's native system network stack
 and system proxy configuration; they do not modify system or npm proxy settings.
+Manager 0.2.1 first uses `https://downloads.73916482.xyz`, then the official GitHub
+source on failure. Metadata reads have a 15-second deadline per source. Each asset
+attempt has a 30-second header deadline, a 60-second body idle deadline and a
+600-second overall deadline. Both sources must meet the same release size,
+SHA-256 and runtime manifest checks. A failed or partial download is not installed.
+See [download routes and network limits](update-downloads.md).
 
 0. Manager 0.1.14+ checks the platform runtime manifest and its GitHub SHA-256.
    Standard installations use its source baseline; custom inputs or absent baselines
@@ -122,6 +135,10 @@ and system proxy configuration; they do not modify system or npm proxy settings.
    smoke-check dependencies plus the native terminal. This path needs Node.js 22.19+
    but no Git, npm installation or local test/build. Incomplete runtime asset pairs
    stop preparation instead of silently falling back.
+   Manager 0.2.1 ignores `.DS_Store`, AppleDouble `._*` and `__MACOSX` metadata
+   consistently when discovering and merging inputs. Actual hidden source files
+   remain inputs. Source fallback reports a bounded list of relative paths, or a
+   missing installed-version baseline/platform runtime.
 1. For source installations, fetch official version tags into an isolated temporary directory.
 2. Compare upstream-changed files with the installed release's originals. CRLF
    differences are accepted. Unrelated edits remain. Conflicting local Markdown
@@ -129,6 +146,8 @@ and system proxy configuration; they do not modify system or npm proxy settings.
    deliberate deletions. Source/configuration conflicts, local source deletions,
    symlinks and protected runtime paths still block installation. Customized
    package/lockfiles may require maintainer assistance.
+   The public `.env.example` is not an installation input; any local copy is
+   retained. Private runtime `.env` files remain protected.
 3. Combine the incoming changes with preserved local `src/`, `public/`, `scripts/`
    and standard build configuration in the isolated directory. Install dependencies,
    typecheck, test and build while the existing service runs. Runtime `.env` and
@@ -179,7 +198,7 @@ clean HEAD. Backups and older frontend chunks for open tabs remain available.
 This updates **the selected host installation**, not the manager executable.
 The manager and Remote display their own versions and may differ. Update checks
 compare the selected Remote installation with the release. Install a newer manager
-separately when its controls or updater need a fix. Stable manager 0.2.0 does not
+separately when its controls or updater need a fix. Stable manager 0.2.1 does not
 include manager self-update. Its paused 0.2.0AU development line and signing
 prerequisites are preserved in [the resume checkpoint](manager-self-update-checkpoints.md).
 The manager uses an independent version starting at 0.2.0. Remote-only updates
@@ -193,6 +212,14 @@ If a 0.1.10 manager is blocked by Markdown conflicts, install the 0.1.11 or newe
 manager first, select the same host directory and retry. The old executable cannot
 use the fixed updater merely by checking for a new host release. Do not reset Git
 or delete the local documents.
+
+When the project distribution is reachable, standard runtime updates do not
+require direct GitHub access or a Git/npm network route. Customized source,
+missing baselines and unsupported runtime architectures still use Git/npm and
+their configured networks. The manager's native system proxy does not configure
+these subprocess tools. TUN-free downloads are a supported route, not a guarantee
+for every host, network or source update. The user's actual Mac network still
+requires separate acceptance.
 
 Cross-platform tests cover ownership, release selection, conflicts, protected paths,
 backups, recovery and stopped-state preservation. macOS packaging, shell and

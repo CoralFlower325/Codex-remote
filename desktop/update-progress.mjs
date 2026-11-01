@@ -22,20 +22,40 @@ export function cleanOutput(text) {
     .replace(/((?:_authToken|authorization|password|token)\s*[=:]\s*)[^\s]+/gi, '$1[已隐藏]');
 }
 
+function releaseHttpStatus(message) {
+  if (!/Release check failed|运行包下载失败/.test(message)) return null;
+  const match = /\bHTTP\s+(\d{3})\b/.exec(message);
+  return match ? Number(match[1]) : null;
+}
+
 export function updateError(error) {
   const detail = cleanOutput(error?.message || error);
-  if (/ECONNRESET|ECONNREFUSED|ETIMEDOUT|ESOCKETTIMEDOUT|EAI_AGAIN|ENOTFOUND|net::ERR_|socket hang up|fetch failed|network.*(?:failed|error)|could not resolve|unable to access/i.test(detail)) {
+  if (error?.name === 'TimeoutError' || error?.cause?.name === 'TimeoutError' ||
+    /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ESOCKETTIMEDOUT|EAI_AGAIN|ENOTFOUND|net::ERR_|socket hang up|fetch failed|network.*(?:failed|error)|could not resolve|unable to access/i.test(detail)) {
     return '下载连接中断或超时，有限次数的重试未能完成。请确认当前网络、依赖源或代理可用后重试。';
   }
+  const status = releaseHttpStatus(detail);
+  if (status === 429) return '分发入口或官方源暂时限流（HTTP 429）。请稍后重新检查更新。';
+  if (status >= 500) return `分发入口或官方源暂不可用（HTTP ${status}）。请检查网络后稍后重试。`;
+  if (status === 403) return '分发入口或官方源拒绝访问（HTTP 403）。请检查网络或代理后重试。';
+  if (status === 404) return '正式版本或运行包文件暂不可用（HTTP 404）。请稍后重新检查更新，若持续出现请联系维护者。';
+  if (status) return `下载请求失败（HTTP ${status}）。请稍后重新检查更新。`;
   if (/ENOTCACHED/i.test(detail)) return '本次离线依赖缓存不完整，请重新准备更新。';
   if (/Command timed out/.test(detail)) return '当前步骤已超过最长等待时间，更新已停止。请查看最近输出后重试。';
   if (/EACCES|EPERM|permission denied/i.test(detail)) return '更新遇到文件权限问题，请检查所选安装目录和临时目录的访问权限。';
   if (/ENOSPC|no space left/i.test(detail)) return '磁盘空间不足，请释放安装目录和临时目录所在磁盘的空间后重试。';
   if (/Local changes conflict/.test(detail)) return '本机代码或配置与新版本存在冲突，更新已停止。请先保留并核对这些本机改动。';
+  if (/The release contains a protected path/.test(detail)) {
+    return '更新文件列表包含受保护的配置或运行数据路径，已拒绝覆盖。请使用新版管理器，或联系维护者检查更新包。';
+  }
   return '当前更新步骤未能完成，请展开最近输出查看具体原因。';
 }
 
 export function networkFailure(error) {
+  if (error?.name === 'AbortError') return false;
+  if (error?.name === 'TimeoutError' || error?.cause?.name === 'TimeoutError') return true;
+  const status = releaseHttpStatus(error?.message || '');
+  if (status === 429 || status >= 500) return true;
   return /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ESOCKETTIMEDOUT|EAI_AGAIN|ENOTFOUND|UND_ERR|net::ERR_(?:CONNECTION|TIMED_OUT|NAME_NOT_RESOLVED|NETWORK_CHANGED|PROXY_CONNECTION_FAILED|TUNNEL_CONNECTION_FAILED)|socket hang up|fetch failed|could not resolve|unable to access/i.test(
     `${error?.message || ''} ${error?.cause?.code || ''}`);
 }

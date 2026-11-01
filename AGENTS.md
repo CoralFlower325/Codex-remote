@@ -263,6 +263,10 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Standard installations prefer checksum-verified platform runtime packages;
   preserve the isolated source path for local build customizations. Runtime
   packages must reject unsafe archives and verify every file before stopping.
+  Ignore only known macOS metadata (.DS_Store, AppleDouble ._* and __MACOSX)
+  consistently in build-input discovery and merging. Explain source fallback
+  with bounded relative paths or a missing baseline/platform; retain .env.example
+  without treating it as an installation input. Never touch runtime .env files.
   Persist installation phases before mutations; recover unfinished transactions
   before service actions on startup. Retain recovery evidence across crashes,
   preserve stopped state, and block overwriting edits made after interruption.
@@ -345,10 +349,10 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   An explicit user version takes precedence.
   Remote and the desktop manager have independent versions. Remote's version lives
   in the root package/lockfile; the manager's lives in desktop/package/lockfile.
-  The manager baseline is 0.2.0. Remote-only changes must not increment, rebuild
+  The stable manager is 0.2.1 with Remote 0.2.10. Remote-only changes must not increment, rebuild
   or install the manager. Increment the manager patch only for its own changes.
   Manager self-update is paused as 0.2.0AU on archive/manager-0.2.0AU;
-  keep stable manager 0.2.0 on main and in formal releases. Preserve AU history,
+  keep AU self-update out of the stable manager and formal releases. Preserve AU history,
   artifacts and receipts; Mac signing/notarization remains a resume checkpoint.
 - After completing and validating project changes, push the public repository
   by default unless the user explicitly asks not to. Never push the separate
@@ -356,6 +360,10 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 - Publish a GitHub Release for each validated functional batch, with a matching
   version tag, exact source commit and concise change summary. Keep the public
   release metadata in src/shared/release-notes.ts aligned with that release.
+- After formal release assets finish publishing, refresh the download Worker's
+  checked public snapshot with `node scripts/refresh-distribution-release.mjs`,
+  then prepare and deploy its separate `distribution/` cf build. Keep generated
+  metadata ignored; GitHub API rate limits may require this snapshot fallback.
 - Write release titles, headings, change summaries and update-dialog notes in
   Chinese only. Keep necessary product names, commands and version identifiers;
   do not add an English duplicate or English headings such as "Changes".
@@ -378,6 +386,20 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Restart only the backend, never Desktop or the tunnel; preserve rollback.
   After verified installation, activate its matching public frontend through
   /remote-client and refresh. Keep every private API out of public worker caches.
+- Release metadata/assets prefer the project-owned downloads.73916482.xyz
+  distribution, with official GitHub fallback and unchanged checksum requirements.
+  Metadata allows 15 seconds per source; asset attempts allow 30 seconds for
+  headers, 60 seconds without body data and 600 seconds overall.
+  Standard runtime updates need no direct GitHub/Git/npm connection when
+  distribution works. Custom source, absent baselines and unsupported runtime
+  architectures still need Git/npm networks; never promise universal TUN-free use.
+  The distribution Worker exposes only allowlisted public repository release
+  routes, never arbitrary URL proxying, private routes or client credentials.
+  Cache public metadata for 60 seconds; stream assets with no-store.
+  Prepare it with scripts/prepare-distribution.mjs and deploy cf deploy --prebuilt
+  from distribution. See docs/update-downloads.md.
+  Installed managers load their bundled updater: install manager 0.2.1 manually
+  over 0.2.0 and retry the same host root; a Remote update cannot patch the old app.
 - Restart the local Remote service after every application update, including
   frontend-only updates. Verify its old listener and owned process exited before
   starting once; then verify ready Desktop transport without stopping Desktop.

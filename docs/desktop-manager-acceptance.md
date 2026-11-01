@@ -1,8 +1,39 @@
 # Desktop Manager Acceptance
 
-Historical acceptance records, reconciled 2026-10-31. The stable manager is 0.2.0;
-later self-update work is paused as [0.2.0AU](manager-self-update-checkpoints.md).
-These records retain their original scope and counts.
+Current batch and historical acceptance records, reconciled 2026-11-01.
+Stable manager 0.2.1 pairs with Remote 0.2.10; self-update work remains paused
+as [0.2.0AU](manager-self-update-checkpoints.md). Historical records below retain
+their original scope and counts.
+
+## Manager 0.2.1 Download Repairs
+
+Local validation passes typecheck, builds and source Electron smoke acceptance
+on Windows; the final batch's CI supplies the latest test totals.
+The changes cover project-distribution
+and official-source fallback, bounded downloads with unchanged checksums,
+macOS metadata classification, retained `.env.example` files and updater
+diagnostics. These source checks are separate from final packaged CI results.
+
+Install manager 0.2.1 manually over 0.2.0 using the
+[project download or official fallback](update-downloads.md), reopen it and select
+the same Remote directory before retrying. Updating the host alone does not patch
+the older manager's bundled updater. This batch does not resume AU self-update.
+
+The 2026-11-01 public probe confirmed GitHub unauthenticated
+API HTTP 403 / RateLimitRemaining=0 at the Cloudflare egress. The token-free public
+metadata snapshot fallback is refreshed with
+`node scripts/refresh-distribution-release.mjs`, then prepared and deployed only
+after official assets and digests are complete. See
+[the maintenance sequence](update-downloads.md#维护分发服务).
+Worker deployment `aabf3799` subsequently returned HTTP 200 / `v0.2.9` with
+source `release-snapshot` and the upstream-403 diagnostic, checked with an Agent
+without an explicitly configured proxy. The verified snapshot is the previous
+0.2.9 release; 0.2.10 needs a fresh snapshot and deployment after all release
+assets are published. This establishes that public fallback observation, not
+the user's actual Mac network. Signed-in Mac integration,
+Gatekeeper behavior and signing/notarization remain unverified; packages remain
+unsigned. The earlier cross-platform records below do not extend this batch's
+Windows source smoke evidence to a new Mac release.
 
 ## Diagnostics And Device Administration
 

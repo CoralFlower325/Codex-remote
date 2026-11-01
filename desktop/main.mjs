@@ -6,9 +6,12 @@ import { installation } from './controller.mjs';
 import { readDiagnosticLogs } from './diagnostics.mjs';
 import { createManagerSession } from './manager-session.mjs';
 import { trayAppearance } from './tray-state.mjs';
+import { createReleaseFetch } from './release-network.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const fetchRelease = (url, options) => net.fetch(url, { ...options, credentials: 'omit' });
+const fetchRelease = createReleaseFetch({
+  fetcher: (url, options) => net.fetch(url, { ...options, credentials: 'omit' })
+});
 const labels = {
   healthy: '运行正常', degraded: '需要检查', stopped: '已关闭',
   conflict: '安装目录冲突', unowned: '端口被其他服务使用'

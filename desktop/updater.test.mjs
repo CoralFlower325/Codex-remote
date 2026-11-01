@@ -35,10 +35,40 @@ describe('release selection', () => {
   });
 });
 describe('update file plan', () => {
-  it.each(['../data/auth.json', '/tmp/file', '.env', '.env.local', 'data/auth.json',
-    'node_modules/a', 'output/a', '.git/config', 'src\\a', 'src/../x'])('rejects protected path %s', (file) => {
+  it.each(['../data/auth.json', '/tmp/file', '.env', '.env.local', '.env.example', '.env.example.local',
+    '.env.example/child', '.ENV.EXAMPLE', 'data/auth.json', 'node_modules/a', 'output/a',
+    '.git/config', 'src\\a', 'src/../x'])('rejects protected path %s', (file) => {
     expect(() => safeRelative(file)).toThrow();
   });
+  it.each([
+    ['local example', 'new example', 'old example'],
+    ['local example', null, 'old example'],
+    [null, 'new example', 'old example'],
+    [null, 'new example', null]
+  ])('excludes only the exact setup example from the plan (%s, %s, %s)', async (local, incoming, baseline) => {
+    const root = await directory(); const stage = await directory();
+    if (local !== null) await write(root, '.env.example', local);
+    if (incoming !== null) await write(stage, '.env.example', incoming);
+    await write(root, '.env', 'private runtime');
+    await write(root, 'src/a.ts', 'old source');
+    await write(stage, 'src/a.ts', 'new source');
+    const readBase = vi.fn(async relative => relative === 'src/a.ts' ? Buffer.from('old source') : Buffer.from(baseline ?? ''));
+    expect(await planFiles(root, stage, ['.env.example', 'src/a.ts'], readBase))
+      .toEqual([{ relative: 'src/a.ts', remove: false }]);
+    expect(readBase.mock.calls).toEqual([['src/a.ts']]);
+    expect(await fs.readFile(path.join(root, '.env.example'), 'utf8').catch(error => {
+      if (error.code === 'ENOENT') return null; throw error;
+    })).toBe(local);
+    expect(await fs.readFile(path.join(root, '.env'), 'utf8')).toBe('private runtime');
+  });
+  it.each(['.env', '.env.local', '.env.example.local', '.env.example/child', '.ENV.EXAMPLE',
+    'data/auth.json', 'output/state.json', 'node_modules/package/index.js', '.git/config',
+    '../.env.example', 'src/../.env.example', '.env.example\\child'])(
+    'still refuses protected file plans containing %s', async relative => {
+      const root = await directory(); const stage = await directory(); const readBase = vi.fn();
+      await expect(planFiles(root, stage, ['.env.example', relative], readBase)).rejects.toThrow('protected path');
+      expect(readBase).not.toHaveBeenCalled();
+    });
   it('updates changed upstream files while preserving unrelated local customizations', async () => {
     const root = await directory(); const stage = await directory();
     await write(root, 'src/a.ts', 'old\r\n');
@@ -269,6 +299,55 @@ describe('installation transaction', () => {
 });
 
 describe('isolated update preparation', () => {
+  it('prepares and installs a source release that changes the setup example without replacing private configuration', async () => {
+    const root = await directory();
+    await write(root, 'package.json', JSON.stringify({ name: 'codex-remote', version: '0.2.7' }));
+    await write(root, 'dist/client/index.html', 'old client');
+    await write(root, 'dist-server/server/index.js', 'old server');
+    for (const file of ['remote-control-windows.ps1', 'remote-control-macos.sh']) await write(root, `scripts/${file}`, 'control');
+    await write(root, 'source.txt', 'old source');
+    await write(root, '.env.example', 'local setup example');
+    await write(root, '.env', 'private runtime configuration');
+    await write(root, 'data/auth.json', 'private authentication');
+    const readBase = [];
+    const execute = vi.fn(async (file, args) => {
+      if (file === 'git') {
+        const stage = args[1];
+        if (args[2] === 'checkout') {
+          await write(stage, 'package.json', JSON.stringify({ name: 'codex-remote', version: '0.2.9' }));
+          await write(stage, 'source.txt', 'new source');
+          await write(stage, '.env.example', 'new official example');
+          await write(stage, 'dist/client/index.html', 'new client');
+          await write(stage, 'dist-server/server/index.js', 'new server');
+        }
+        if (args[2] === 'rev-parse') return 'release commit';
+        if (args[2] === 'diff') return '.env.example\npackage.json\nsource.txt';
+        if (args[2] === 'ls-tree') { readBase.push(args.at(-1)); return args.at(-1); }
+        if (args[2] === 'show') return Buffer.from(args.at(-1).endsWith(':package.json')
+          ? JSON.stringify({ name: 'codex-remote', version: '0.2.7' }) : 'old source');
+        return '';
+      }
+      if (file === 'where.exe' || file === '/usr/bin/which') return 'node';
+      if (args[0] === '--version') return 'v22.19.0';
+      if (args[0] === '--input-type=module') return 'npm-cli.js';
+      return '';
+    });
+    const prepared = await prepareUpdate(root, { tag: 'v0.2.9', version: '0.2.9' }, () => {}, execute);
+    expect(prepared.mode).toBe('source');
+    expect(prepared.plan.map(item => item.relative)).toEqual(['package.json', 'source.txt']);
+    expect(prepared.inputs.some(item => item.relative.startsWith('.env'))).toBe(false);
+    expect(readBase).toEqual(['package.json', 'source.txt']);
+    const result = await installUpdate(prepared, { stop: vi.fn(), start: vi.fn(), verify: vi.fn(),
+      isRunning: async () => false, progress: () => {} });
+    expect(result.version).toBe('0.2.9');
+    expect(JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8')).version).toBe('0.2.9');
+    expect(await fs.readFile(path.join(root, 'source.txt'), 'utf8')).toBe('new source');
+    expect(await fs.readFile(path.join(root, '.env.example'), 'utf8')).toBe('local setup example');
+    expect(await fs.readFile(path.join(root, '.env'), 'utf8')).toBe('private runtime configuration');
+    expect(await fs.readFile(path.join(root, 'data/auth.json'), 'utf8')).toBe('private authentication');
+    expect(JSON.parse(await fs.readFile(path.join(result.backup, 'receipt.json'), 'utf8')).plan)
+      .toEqual([expect.objectContaining({ relative: 'package.json' }), expect.objectContaining({ relative: 'source.txt' })]);
+  });
   it('finishes preflight and validation before live changes, removing a failed stage', async () => {
     const root = await directory();
     await write(root, 'package.json', JSON.stringify({ name: 'codex-remote', version: '0.1.9' }));

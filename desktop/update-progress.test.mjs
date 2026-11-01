@@ -45,4 +45,45 @@ describe('update reporting', () => {
     expect(cleanOutput('\u001b[31mhttps://user:secret@registry.example.com password=secret token=private'))
       .not.toMatch(/secret|private|\u001b/);
   });
+  it('explains protected-path rejections in Chinese without treating them as network failures', () => {
+    const error = new Error('The release contains a protected path.');
+    expect(updateError(error)).toContain('\u53d7\u4fdd\u62a4');
+    expect(updateError(error)).toContain('\u65b0\u7248\u7ba1\u7406\u5668');
+    expect(updateError(error)).not.toContain('protected path');
+    expect(networkFailure(error)).toBe(false);
+  });
+  it('recognizes standard fetch timeouts without retrying operator cancellations', () => {
+    const timeout = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    const wrapped = new Error('release request ended', { cause: timeout });
+    for (const error of [timeout, wrapped]) {
+      expect(networkFailure(error)).toBe(true);
+      expect(updateError(error)).toContain('\u8d85\u65f6');
+      expect(updateError(error)).not.toContain('\u5c55\u5f00\u6700\u8fd1\u8f93\u51fa');
+    }
+    const cancelled = new DOMException('The operation was aborted', 'AbortError');
+    expect(networkFailure(cancelled)).toBe(false);
+    expect(networkFailure(new DOMException('ETIMEDOUT operator cancelled', 'AbortError'))).toBe(false);
+  });
+  it.each([
+    [429, '\u9650\u6d41', true],
+    [500, '\u6682\u4e0d\u53ef\u7528', true],
+    [502, '\u6682\u4e0d\u53ef\u7528', true],
+    [503, '\u6682\u4e0d\u53ef\u7528', true],
+    [403, '\u62d2\u7edd\u8bbf\u95ee', false],
+    [404, '\u6587\u4ef6\u6682\u4e0d\u53ef\u7528', false],
+    [400, '\u4e0b\u8f7d\u8bf7\u6c42\u5931\u8d25', false]
+  ])('explains release HTTP %s with only transient failures eligible for retry', (status, text, retry) => {
+    for (const message of [`Release check failed (HTTP ${status}).`,
+      `\u8fd0\u884c\u5305\u4e0b\u8f7d\u5931\u8d25\uff08HTTP ${status}\uff09\u3002`]) {
+      const error = new Error(message);
+      expect(updateError(error)).toContain(text);
+      expect(updateError(error)).toContain(String(status));
+      expect(updateError(error)).not.toContain('TUN');
+      expect(networkFailure(error)).toBe(retry);
+    }
+  });
+  it('does not retry unrelated HTTP failures as release download failures', () => {
+    expect(networkFailure(new Error('Local service health failed HTTP 503'))).toBe(false);
+    expect(networkFailure(new Error('Native authorization HTTP 429'))).toBe(false);
+  });
 });

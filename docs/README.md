@@ -24,6 +24,7 @@ the authority for what is actually installed.
 | Models and permissions / 模型与权限 | [Native state](guide.md#models-permissions-and-state) | [原生状态](guide.zh-CN.md#模型权限与状态) |
 | Notifications / 设备通知 | [Web Push](guide.md#device-notifications) | [Web Push](guide.zh-CN.md#设备通知) |
 | Networks and recovery / 网络与恢复 | [Loading and networks](guide.md#loading-and-mobile-networks) | [加载与手机网络](guide.zh-CN.md#加载与手机网络) |
+| Downloads and update networks / 下载与更新网络 | [Distribution and manager installers](update-downloads.md) | [分发、管理器安装包与网络边界](update-downloads.md) |
 | Troubleshooting / 排障 | [Troubleshooting](guide.md#troubleshooting) | [常见问题](guide.zh-CN.md#常见问题) |
 
 ## Maintain / 维护
@@ -32,6 +33,7 @@ the authority for what is actually installed.
 - [Code organization / 代码分层与维护边界](code-organization.md)
 - [Maintainer handoff and release procedure / 开发交接与发布流程](maintainer-handoff.md)
 - [0.2.0AU 暂停开发与签名断点](manager-self-update-checkpoints.md)
+- [更新分发 Worker、公开下载与部署](update-downloads.md#维护分发服务)
 - [Agent rules / 开发约束](../AGENTS.md)
 - [Product principles / 产品原则](../PRODUCT.md)
 - [Security / 安全](../SECURITY.md)

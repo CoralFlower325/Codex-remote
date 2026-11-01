@@ -15,6 +15,33 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
+Remote 0.2.10 pairs with stable manager 0.2.1. Release metadata and assets prefer
+the project-owned download distribution with official fallback and unchanged
+checksum checks. Install manager 0.2.1 manually over 0.2.0 and retry the same host
+directory; a host update cannot change the installed app's bundled updater.
+Known macOS metadata no longer forces a source build, and local `.env.example`
+copies stay outside the installation plan. Actual custom inputs, missing baselines
+or unsupported runtime architectures still need Git/npm networks.
+See [downloads and maintenance](update-downloads.md).
+
+Typecheck, builds and source Electron smoke acceptance pass on Windows; use the
+final batch's CI for the latest test totals. The 2026-11-01 public probe confirmed
+GitHub unauthenticated API HTTP 403 / RateLimitRemaining=0 at the Cloudflare
+egress. Worker deployment `aabf3799` now returns HTTP 200 / `v0.2.9` from
+`release-snapshot` while preserving the upstream-403 diagnostic. This was checked
+with an Agent without an explicitly configured proxy, not on the user's Mac.
+The token-free public metadata snapshot lives at ignored
+`distribution/.cloudflare/release-snapshot.json`. After official assets/digests
+are complete, run `node scripts/refresh-distribution-release.mjs`, set the download
+host/zone, run `node scripts/prepare-distribution.mjs`, then `cf deploy --prebuilt`
+from `distribution`. Preparation reads that snapshot by default;
+`REMOTE_DOWNLOAD_METADATA` can select an explicitly verified public metadata file.
+See [the exact maintenance sequence](update-downloads.md#维护分发服务).
+The currently verified snapshot is the previous 0.2.9 release; refresh and redeploy
+after the full 0.2.10 asset set is published, then verify the returned version.
+Do not infer acceptance on the user's Mac network. Final CI, packaged applications,
+signed-in Mac integration and unsigned-package acceptance remain separate.
+
 Remote 0.2.9 fixes missing/mismatched web-update tasks, durable job lookup,
 bounded stalled downloads and worker takeover races. Query the saved job ID
 after an uncertain install response; never replay installation automatically.
@@ -44,7 +71,8 @@ from service shutdown. Only the selected backend restarts. Keep the existing
 transaction/rollback protocol, do not replay uncertain install POSTs, and expose
 only projected progress over HTTP. Success refreshes the matching public client
 through `/remote-client/`, bypassing independently deployed static edge assets.
-Manager stays 0.2.0. See [web updates](web-backend-update.md).
+This updates Remote separately from stable manager 0.2.1.
+See [web updates](web-backend-update.md).
 
 Remote 0.2.5 keeps image/skill drafts with their main chat across Composer
 unmounts and asynchronous file/send completions. DraftsContext belongs to the
@@ -68,8 +96,8 @@ idempotent reconciliation. The preceding 0.2.3 fixes late native items/deltas be
 conversation, which displayed the earlier turn's duration under the latest reply.
 Keep native turn/item identity, timestamp anchors and bounded history; stale
 completion events cannot clear a newer active turn. See [native order](native-history-order.md).
-Stable manager code/installers remain at 0.2.0, matching Remote v0.2.2's companion
-manager. Self-update is paused under the user-requested name 0.2.0AU on
+Stable manager 0.2.1 supersedes the 0.2.0 companion supplied with Remote v0.2.2
+through manual installation. Self-update remains paused under the name 0.2.0AU on
 archive/manager-0.2.0AU; preserve its commits, artifacts and acceptance records.
 Manager signing/notarization remains a checkpoint, not current work.
 See [the archive and resume conditions](manager-self-update-checkpoints.md).

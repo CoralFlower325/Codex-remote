@@ -2,6 +2,13 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.10', changes: [
+    '修复源码更新将 .env.example 误判为私密路径而中止的问题，保留本机模板、配置和私有数据。',
+    '排除 macOS 系统元数据造成的源码定制误判，并说明使用源码更新的具体原因。',
+    'Remote 与管理器优先通过项目维护的下载入口获取版本及运行包，失败时有限回退官方地址，继续逐项校验文件与摘要。',
+    '管理器更新至 0.2.1，修复内置更新器并补齐下载等待及无数据超时；旧管理器需通过新安装包单独升级。',
+    '管理器自更新开发及 macOS 签名仍暂停；源码定制构建仍可能需要访问 GitHub 和 npm。'
+  ] },
   { version: '0.2.9', changes: [
     '修复远程更新找不到任务后仍显示进行中、无法重新查询的问题，不再将其他任务的进度误作本次更新。',
     '更新准备前保存任务编号，按编号保留和查询进度；启动响应丢失后只查询原任务，不重复提交安装。',

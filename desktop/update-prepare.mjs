@@ -22,6 +22,11 @@ export async function prepareUpdate(directory, release, progress, execute = run,
   }
   const stage = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-remote-update-'));
   const report = createUpdateProgress(progress);
+  const sourceFallback = (reason) => {
+    const detail = `${reason}将使用隔离源码构建以保留现有行为。`;
+    report.note(detail);
+    report.output(`${detail}\n`);
+  };
   let cache;
   try {
     const names = runtimeNames(release.version);
@@ -43,7 +48,7 @@ export async function prepareUpdate(directory, release, progress, execute = run,
       if (baseline) {
         const plan = [];
         const inputs = [];
-        let custom = false;
+        const custom = new Set();
         const names = new Set([...Object.keys(baseline), ...Object.keys(manifest.sources)]);
         for (const relative of names) {
           const local = await regularFile(info.root, relative);
@@ -52,19 +57,19 @@ export async function prepareUpdate(directory, release, progress, execute = run,
           const after = manifest.sources[relative] || null;
           inputs.push({ relative, before: hash(local) });
           if (localHash !== before && /^(?:src\/|public\/|scripts\/|package(?:-lock)?\.json$|tsconfig|vite)/.test(relative)) {
-            custom = true;
+            custom.add(relative);
           }
           if (before === after || localHash === after) continue;
           const preserve = localHash !== before;
           if (preserve && !/^(?:AGENTS\.md|CLAUDE\.md|README(?:\.[\w-]+)?\.md|docs\/.+\.md)$/.test(relative)) {
-            custom = true;
+            custom.add(relative);
           }
           plan.push({ relative, remove: !after, before: hash(local), ...(preserve ? { preserve: true } : {}) });
         }
         // An untracked local build input must also retain its behavior.
         const runtimeFiles = await buildFileNames(info.root);
-        if (runtimeFiles.some((name) => !names.has(name))) custom = true;
-        if (!custom) {
+        for (const relative of runtimeFiles) if (!names.has(relative)) custom.add(relative);
+        if (!custom.size) {
           const tools = await runtimeNode(execute);
           report.finish('compare');
           report.start('runtime');
@@ -87,9 +92,11 @@ export async function prepareUpdate(directory, release, progress, execute = run,
           report.finish('unpack');
           return { info, stage, payload, plan, inputs, runtimeFiles, tools, commit: manifest.commit, release, execute, report, mode: 'runtime' };
         }
-        report.note('检测到本机源码定制，将使用隔离源码构建以保留现有行为。');
-      } else report.note('此安装版本不在运行包基线中，将使用兼容的源码更新。');
-    }
+        const paths = [...custom].sort().slice(0, 8)
+          .map((relative) => relative.replace(/[\x00-\x1f\x7f]/g, '?').slice(0, 160));
+        sourceFallback(`检测到本机源码定制：${paths.join('、')}${custom.size > 8 ? `（另有 ${custom.size - 8} 项）` : ''}。`);
+      } else sourceFallback(`安装版本 ${info.version} 不在运行包基线中。`);
+    } else sourceFallback(`此版本未提供 ${process.platform}/${process.arch} 的运行包。`);
     report.start('fetch');
     const git = (args) => execute('git', ['-C', stage, ...args], { env: commandEnvironment(), timeout: 180_000 });
     await git(['init']);

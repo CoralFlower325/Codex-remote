@@ -35,6 +35,8 @@ export async function planFiles(root, stage, files, readBase) {
   const plan = [];
   const conflicts = [];
   for (const relative of files) {
+    // The public setup example is not an installation input; retain any local copy.
+    if (relative === '.env.example') continue;
     safeRelative(relative);
     const [local, incoming, base] = await Promise.all([
       regularFile(root, relative), regularFile(stage, relative), readBase(relative)
@@ -115,11 +117,14 @@ export function installDependencies(tools, cwd, execute, report, offline = false
   return offline ? operation() : withNetworkRetry(operation, report);
 }
 
+const macMetadata = (relative) => relative.split('/').some((name) =>
+  name === '.DS_Store' || name === '__MACOSX' || name.startsWith('._'));
+
 export async function mergeBuildInputs(root, stage, plan) {
   const changed = new Set(plan.map((item) => item.relative));
   const inputs = [];
   const visit = async (relative) => {
-    if (changed.has(relative)) return;
+    if (changed.has(relative) || macMetadata(relative)) return;
     const local = path.join(root, relative); const incoming = path.join(stage, relative);
     const stats = await Promise.all([local, incoming].map(async (file) => {
       try { return await fs.lstat(file); } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
@@ -155,6 +160,7 @@ export async function mergeBuildInputs(root, stage, plan) {
 export async function buildFileNames(root) {
   const result = [];
   const visit = async (relative) => {
+    if (macMetadata(relative)) return;
     const stat = await fs.lstat(path.join(root, relative)).catch((error) => {
       if (error.code !== 'ENOENT') throw error; return null;
     });

@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { x as extract, t as list } from 'tar';
+import { assetEndpoints } from './release-source.mjs';
 
 export const runtimeRepository = 'CoralFlower325/Codex-remote';
 export const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -67,26 +68,38 @@ export function validateManifest(manifest, release, platform = process.platform,
   return manifest;
 }
 
-function assetUrl(asset) {
-  const url = new URL(asset.browser_download_url);
-  if (url.protocol !== 'https:' || url.hostname !== 'github.com' ||
-    !url.pathname.startsWith(`/${runtimeRepository}/releases/download/`) || url.username || url.password ||
-    url.search || url.hash) throw new Error('运行包下载地址无效。');
-  return url.href;
-}
-
 export async function downloadAsset(asset, target, { fetcher = fetch, progress = () => {} } = {}) {
   if (!Number.isSafeInteger(asset.size) || asset.size <= 0 || asset.size > 512 * 1024 * 1024) {
     throw new Error('运行包下载大小无效。');
   }
   const expected = /^sha256:([a-f0-9]{64})$/.exec(asset.digest || '')?.[1];
   if (!expected) throw new Error('Release 缺少官方文件校验值，请等待发布完成。');
-  const response = await fetcher(assetUrl(asset), { signal: AbortSignal.timeout(600_000) });
-  if (!response.ok || !response.body) throw new Error(`运行包下载失败（HTTP ${response.status}）。`);
+  let failure;
+  for (const endpoint of assetEndpoints(asset)) {
+    try {
+      await downloadAttempt(endpoint, target, asset, expected, fetcher, progress);
+      return;
+    } catch (error) {
+      // A caller-owned existing file is never removed or retried.
+      if (error.code === 'EEXIST') throw error;
+      failure = error;
+    }
+  }
+  throw failure;
+}
+
+async function downloadAttempt(endpoint, target, asset, expected, fetcher, progress) {
+  const response = await fetcher(endpoint, { signal: AbortSignal.timeout(600_000),
+    redirect: endpoint.startsWith('https://github.com/') ? 'follow' : 'error' });
+  if (!response.ok || !response.body) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error(`运行包下载失败（HTTP ${response.status}）。`);
+  }
   let size = 0;
   const hash = crypto.createHash('sha256');
-  const file = await fs.open(target, 'wx');
+  let file;
   try {
+    file = await fs.open(target, 'wx');
     for await (const chunk of response.body) {
       size += chunk.length;
       if (size > asset.size) throw new Error('运行包下载大小超出清单。');
@@ -95,7 +108,14 @@ export async function downloadAsset(asset, target, { fetcher = fetch, progress =
     }
     await file.sync();
     if (size !== asset.size || hash.digest('hex') !== expected) throw new Error('运行包下载校验失败。');
-  } finally { await file.close(); }
+  } catch (error) {
+    if (file) {
+      await file.close(); file = null;
+      await fs.rm(target, { force: true });
+    }
+    await response.body.cancel().catch(() => {});
+    throw error;
+  } finally { await file?.close(); }
 }
 
 export async function unpackRuntime(archive, destination, manifest) {

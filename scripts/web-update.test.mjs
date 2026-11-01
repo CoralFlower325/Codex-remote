@@ -92,7 +92,8 @@ describe('web backend update authority and durable state', () => {
   it('persists the job before release preparation, including preparation failure', async () => {
     const f = await fixture(), offer = await f.updater.check(), id = crypto.randomUUID();
     let reject;
-    f.fetcher.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
+    f.fetcher.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }))
+      .mockRejectedValueOnce(new Error('ETIMEDOUT private-fallback-host'));
     const started = f.updater.start({ id, token: offer.token, version: '0.2.6' });
     const failed = expect(started).rejects.toThrow('ETIMEDOUT');
     await vi.waitFor(async () => expect((await f.updater.status(id)).operation).toMatchObject({

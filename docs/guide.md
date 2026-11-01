@@ -10,8 +10,10 @@ See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
-The stable manager is 0.2.0, supplied with Remote v0.2.2, and uses manual installer
-upgrades. Manager self-update is preserved on the paused 0.2.0AU development line;
+Remote 0.2.10 pairs with stable manager 0.2.1, using manual installer upgrades.
+Install 0.2.1 over the old 0.2.0 app, select the same host root and retry the update.
+Updating Remote cannot change the old manager's bundled updater.
+Manager self-update is preserved on the paused 0.2.0AU development line;
 see [the checkpoint](manager-self-update-checkpoints.md).
 
 Native runtime errors appear in their owning turns across main, side
@@ -25,6 +27,12 @@ both host and manager; see [the manager guide](desktop-manager.md) for scope.
 The manager prefers Windows x64 / Apple Silicon prebuilt runtimes. Standard
 updates skip npm installation, tests and local compilation; Node.js 22.19+ is still
 required. Source customizations or unavailable baselines use isolated source builds.
+Known macOS metadata does not count as customization. Source fallback identifies
+bounded relative paths or an unavailable baseline/platform, preserving real edits
+and local `.env.example` files. Metadata/assets prefer the project-owned public
+distribution with official fallback and unchanged checksum checks. Standard
+runtime updates avoid direct GitHub/Git/npm access when distribution works; source
+updates still need Git/npm network access. See [downloads and limits](update-downloads.md).
 Reopening the manager recovers interrupted installs before other mutations. Failed
 recovery offers a retry; preserve its journal and backup. Install the new manager
 from the Release first: updating the host alone does not update the manager executable.
@@ -375,8 +383,10 @@ current-version checks never refresh. Main-chat text survives, while unsent
 images, skills and temporary chats clear on refresh. It updates Remote, leaving
 the manager at its own version. A missing task keeps its ID and offers an explicit
 status retry without resubmitting installation. A separate update check can observe
-the host's current task. Downloads stop after 30 seconds waiting for response
-headers or 60 seconds without body data, using the existing bounded network retry.
+the host's current task. Remote 0.2.10 and manager 0.2.1 prefer the project-owned
+distribution, then official GitHub. Metadata allows 15 seconds per source; each
+asset attempt allows 30 seconds for headers, 60 seconds without body data and
+600 seconds overall, retaining bounded retries and full checksum checks.
 See [recovery and hosting details](web-backend-update.md).
 
 The header's **Toggle summary panel pin** opens the conversation summary: attached pull requests, outputs, temporary side chats, native subagents and sources. A wide desktop can pin the 300px panel; narrower desktop and mobile use a dismissible overlay. PRs come from native thread attachments; completed answer links, generated images and supported structured MCP resource activities supply outputs. Missing local output files are filtered out. Sources include provided files/links, web searches and successful MCP connectors. Resource links use the existing preview/download inspector. Create-output actions and source-file selection append to the existing draft for review; they never send automatically. The MCP entry opens connected-server status, not a connector installer. Summary reads page independently of chat history, with **Load earlier summaries** after each bounded automatic batch. Provider-specific outputs without supported links or resource metadata may be absent.

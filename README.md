@@ -110,8 +110,14 @@ Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
 remains pending.
 
-The stable manager is **0.2.0**, installed separately and without manager
-self-update. The paused **0.2.0AU** development line is preserved outside the
+Remote **0.2.10** pairs with stable manager **0.2.1**. Install the new manager
+manually over 0.2.0, select the same host directory and retry; updating Remote
+cannot replace the old manager's bundled updater. [Manager downloads](docs/update-downloads.md)
+use the project's public distribution, with official GitHub alternatives.
+Standard runtime updates need no direct GitHub, Git or npm connection when that
+distribution is reachable; customized source updates still need Git/npm network
+access. Actual host and network acceptance remains separate.
+Manager self-update remains paused. The **0.2.0AU** development line stays outside the
 formal release channel; see [the resume checkpoint](docs/manager-self-update-checkpoints.md).
 
 ## Built For Ongoing Sessions
