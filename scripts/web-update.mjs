@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { latestRelease } from '../desktop/release.mjs';
 import { installation } from '../desktop/controller.mjs';
-import { pendingUpdate } from '../desktop/update-transaction.mjs';
+import { acquireUpdateLock, pendingUpdate } from '../desktop/update-transaction.mjs';
 import { updateError } from '../desktop/update-progress.mjs';
 import { requireService, launchWorker } from './web-update-service.mjs';
 import { ensureDirectory, updateDirectory, readState, writeState, publicState, alive, validId } from './web-update-state.mjs';
@@ -49,10 +49,10 @@ export function createWebUpdater(root, { pid = process.pid, platform = process.p
   let offer = null;
   let starting = false;
   const supported = () => ['win32-x64', 'darwin-arm64'].includes(`${platform}-${arch}`);
-  async function status() {
+  async function status(id) {
     const info = await installation(root);
     return { currentVersion: info.version, platform, arch, supported: supported(),
-      operation: publicState(await readState(info.root)) };
+      operation: publicState(await readState(info.root, id)) };
   }
   async function check() {
     if (checking) return checking;
@@ -77,19 +77,32 @@ export function createWebUpdater(root, { pid = process.pid, platform = process.p
   async function start({ token, version, id, recover = false }) {
     if (!validId(id)) throw new Error('更新任务无效。');
     const info = await installation(root);
-    const previous = await readState(info.root);
+    const existing = await readState(info.root, id);
     // A response lost during launch must be discoverable; never launch twice.
-    if (previous?.id === id) return publicState(previous);
-    if (starting || previous?.status === 'running' && (alive(previous.pid) || Date.now() - previous.updatedAt < 30_000)) {
-      throw new Error('已有 Remote 更新任务，请等待完成。');
-    }
-    if (!supported() || !offer || offer.token !== token || offer.release.version !== version ||
-      Date.now() - offer.checkedAt > 10 * 60_000 || (!recover && !offer.release.available) ||
-      Boolean(recover) !== offer.recover) throw new Error('版本检查已失效，请重新检查 Remote 更新。');
+    if (existing) return publicState(existing);
+    if (starting) throw new Error('已有 Remote 更新任务，请等待完成。');
     starting = true;
     let job;
+    let launching = false;
+    let unlock;
     try {
+      unlock = await acquireUpdateLock(info.root);
+      const current = await readState(info.root, id);
+      if (current) return publicState(current);
+      const previous = await readState(info.root);
+      if (previous?.status === 'running' && (alive(previous.pid) || Date.now() - previous.updatedAt < 30_000)) {
+        throw new Error('已有 Remote 更新任务，请等待完成。');
+      }
+      if (!supported() || !offer || offer.token !== token || offer.release.version !== version ||
+        Date.now() - offer.checkedAt > 10 * 60_000 || (!recover && !offer.release.available) ||
+        Boolean(recover) !== offer.recover) throw new Error('版本检查已失效，请重新检查 Remote 更新。');
       await owned(info.root, pid);
+      const beganAt = Date.now();
+      await writeState(info.root, { id, root: info.root, version, fromVersion: info.version,
+        status: 'running', pid: process.pid, updatedAt: beganAt,
+        progress: { percent: 0, step: 'launch', title: '准备更新任务',
+          startedAt: beganAt, stepStartedAt: beganAt, endedAt: null, status: 'running' } });
+      await unlock(); unlock = null;
       // Re-fetch only official stable metadata; the request cannot supply files, commands or URLs.
       const release = recover ? offer.release : await latestRelease(info.version, fetcher);
       if (!recover && (release.version !== version || !release.available)) throw new Error('最新版本已变化，请重新检查。');
@@ -106,19 +119,21 @@ export function createWebUpdater(root, { pid = process.pid, platform = process.p
       const request = { id, root: info.root, version, fromVersion: info.version, backendPid: pid,
         node: process.execPath, release, recover, env };
       await fs.writeFile(path.join(job, 'request.json'), JSON.stringify(request), { mode: 0o600 });
-      await writeState(info.root, { id, root: info.root, version, fromVersion: info.version,
-        status: 'running', pid: null, updatedAt: Date.now(), progress: null });
+      const prepared = await readState(info.root, id);
+      await writeState(info.root, { ...prepared, pid: null, updatedAt: Date.now() });
+      launching = true;
       await launch(job);
       offer = null;
-      return publicState(await readState(info.root));
+      return publicState(await readState(info.root, id));
     } catch (error) {
-      if (job) {
-        const state = await readState(info.root);
-        if (state?.id === id && !state.pid) await writeState(info.root, { ...state, status: 'failed',
-          updatedAt: Date.now(), message: '独立更新任务未能启动，原服务未更改。' });
+      const state = await readState(info.root, id);
+      // A worker can acknowledge launch before an uncertain launcher error.
+      if (!launching && state?.status === 'running' && state.pid === process.pid) {
+        await writeState(info.root, { ...state, status: 'failed', updatedAt: Date.now(),
+          message: `更新任务准备或启动未完成，原服务未更改。${updateError(error)}` });
       }
       throw error;
-    } finally { starting = false; }
+    } finally { try { await unlock?.(); } finally { starting = false; } }
   }
   return { status, check, start };
 }

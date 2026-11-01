@@ -8,9 +8,12 @@ import { createWebUpdater } from './web-update.mjs';
 import { readState, writeState, publicState } from './web-update-state.mjs';
 import { serviceCommand, requireService, serviceControls } from './web-update-service.mjs';
 import { runUpdate } from './web-update-worker.mjs';
+import { acquireUpdateLock } from '../desktop/update-transaction.mjs';
 
 const roots = [];
 afterEach(async () => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
 });
 async function fixture() {
@@ -74,13 +77,52 @@ describe('web backend update authority and durable state', () => {
     expect(await fs.readFile(path.join(f.root, 'dist-server/server/index.js'), 'utf8')).toBe('old');
     await expect(f.updater.start({ ...request, id: crypto.randomUUID() })).rejects.toThrow('已有');
   }, 30_000);
-  it('keeps the old installation on an independent-worker launch failure', async () => {
+  it('keeps an uncertain launch discoverable without launching a second worker', async () => {
     const f = await fixture(); const offer = await f.updater.check();
     f.launch.mockRejectedValue(new Error('launch failed'));
     await expect(f.updater.start({ id: crypto.randomUUID(), token: offer.token, version: '0.2.6' })).rejects.toThrow('launch failed');
-    expect((await f.updater.status()).operation.status).toBe('failed');
+    const state = await readState(f.root);
+    expect((await f.updater.status(state.id)).operation.status).toBe('running');
+    await writeState(f.root, { ...state, updatedAt: Date.now() - 31_000 });
+    expect((await f.updater.status(state.id)).operation.status).toBe('interrupted');
+    await f.updater.start({ id: state.id, token: offer.token, version: '0.2.6' });
+    expect(f.launch).toHaveBeenCalledOnce();
     expect(await fs.readFile(path.join(f.root, 'dist-server/server/index.js'), 'utf8')).toBe('old');
   }, 30_000);
+  it('persists the job before release preparation, including preparation failure', async () => {
+    const f = await fixture(), offer = await f.updater.check(), id = crypto.randomUUID();
+    let reject;
+    f.fetcher.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
+    const started = f.updater.start({ id, token: offer.token, version: '0.2.6' });
+    const failed = expect(started).rejects.toThrow('ETIMEDOUT');
+    await vi.waitFor(async () => expect((await f.updater.status(id)).operation).toMatchObject({
+      id, status: 'running', progress: { step: 'launch', percent: 0 }
+    }));
+    await vi.waitFor(() => expect(reject).toBeTypeOf('function'));
+    reject(new Error('ETIMEDOUT private-host'));
+    await failed;
+    const result = (await f.updater.status(id)).operation;
+    expect(result.status).toBe('failed');
+    expect(JSON.stringify(result)).not.toContain('private-host');
+    expect(f.launch).not.toHaveBeenCalled();
+    expect(await fs.readFile(path.join(f.root, 'dist-server/server/index.js'), 'utf8')).toBe('old');
+  });
+  it('reads exact jobs after another job becomes active and preserves old-worker compatibility', async () => {
+    const f = await fixture(), first = crypto.randomUUID(), second = crypto.randomUUID();
+    const state = { root: f.root, version: '0.2.6', fromVersion: '0.2.5', pid: null,
+      updatedAt: Date.now(), progress: null };
+    await writeState(f.root, { ...state, id: first, status: 'completed' });
+    await writeState(f.root, { ...state, id: second, status: 'running' });
+    expect((await f.updater.status()).operation.id).toBe(second);
+    expect((await f.updater.status(first)).operation).toMatchObject({ id: first, status: 'completed' });
+    expect((await f.updater.status(crypto.randomUUID())).operation).toBeNull();
+    // Repeating an older idempotency ID cannot replace the current active job.
+    expect((await f.updater.start({ id: first })).status).toBe('completed');
+    expect((await readState(f.root)).id).toBe(second);
+    await fs.rm(path.join(f.root, 'output/web-update', `${second}.json`));
+    expect((await readState(f.root, second)).id).toBe(second);
+    await expect(readState(f.root, '../outside')).rejects.toThrow('无效');
+  });
   it('retains actual progress across controller restarts and strips private diagnostics', async () => {
     const f = await fixture();
     await writeState(f.root, { id: crypto.randomUUID(), root: f.root, version: '0.2.6', fromVersion: '0.2.5',
@@ -98,6 +140,71 @@ describe('web backend update authority and durable state', () => {
 });
 
 describe('independent worker transaction', () => {
+  it('serializes first worker PID publication with a competing start', async () => {
+    const f = await fixture(), offer = await f.updater.check(), id = crypto.randomUUID();
+    const rename = fs.rename.bind(fs);
+    let releaseWrite, paused = false;
+    const writeGate = new Promise(resolve => { releaseWrite = resolve; });
+    vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
+      if (!paused && to === path.join(f.root, 'output/web-update', `${id}.json`)) {
+        paused = true; await writeGate;
+      }
+      return rename(from, to);
+    });
+    const worker = runUpdate({ id, root: f.root, version: '0.2.6', fromVersion: '0.2.5',
+      backendPid: process.pid, release: {} }, {
+      owned: async () => {}, controls: () => ({}), prepare: async () => ({}), install: async () => {}
+    });
+    await vi.waitFor(() => expect(paused).toBe(true));
+    try {
+      await expect(f.updater.start({ id: crypto.randomUUID(), token: offer.token, version: '0.2.6' }))
+        .rejects.toThrow('另一个管理器');
+      expect(f.launch).not.toHaveBeenCalled();
+    } finally { releaseWrite(); }
+    expect((await worker).status).toBe('completed');
+    expect((await readState(f.root)).id).toBe(id);
+    const release = await acquireUpdateLock(f.root);
+    await release();
+  });
+  it('releases the claim lock after a first state write failure', async () => {
+    const f = await fixture(), id = crypto.randomUUID(), rename = fs.rename.bind(fs), prepare = vi.fn();
+    vi.spyOn(fs, 'rename').mockImplementation((from, to) => to.endsWith(`${id}.json`)
+      ? Promise.reject(new Error('injected claim write failure')) : rename(from, to));
+    await expect(runUpdate({ id, root: f.root, version: '0.2.6', backendPid: process.pid }, { prepare }))
+      .rejects.toThrow('injected claim write failure');
+    expect(prepare).not.toHaveBeenCalled();
+    const release = await acquireUpdateLock(f.root);
+    await release();
+  });
+  it('refuses a late or superseded worker before ownership checks or mutations', async () => {
+    const f = await fixture(), id = crypto.randomUUID(), owned = vi.fn(), prepare = vi.fn();
+    const request = { id, root: f.root, version: '0.2.6', backendPid: process.pid };
+    const state = { ...request, fromVersion: '0.2.5', pid: null, progress: null,
+      updatedAt: Date.now() - 31_000, status: 'running' };
+    await writeState(f.root, state);
+    await expect(runUpdate(request, { owned, prepare })).rejects.toThrow('已结束');
+    await writeState(f.root, { ...state, id: crypto.randomUUID(), updatedAt: Date.now() });
+    await expect(runUpdate(request, { owned, prepare })).rejects.toThrow('已结束');
+    expect(owned).not.toHaveBeenCalled(); expect(prepare).not.toHaveBeenCalled();
+  });
+  it('persists a heartbeat during quiet preparation without inventing progress', async () => {
+    const f = await fixture(), id = crypto.randomUUID();
+    let complete;
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    const result = runUpdate({ id, root: f.root, version: '0.2.6', fromVersion: '0.2.5',
+      backendPid: process.pid, release: {} }, {
+      owned: async () => {}, controls: () => ({}),
+      prepare: () => new Promise(resolve => { complete = resolve; }), install: async () => {}
+    });
+    await vi.waitFor(() => expect(complete).toBeTypeOf('function'));
+    const before = await readState(f.root);
+    await vi.advanceTimersByTimeAsync(5000);
+    await vi.waitFor(async () => expect((await readState(f.root)).updatedAt).toBeGreaterThan(before.updatedAt));
+    expect((await readState(f.root)).progress).toBeNull();
+    complete({});
+    expect((await result).status).toBe('completed');
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it('prepares before stopping and reports completion only after verification returns', async () => {
     const f = await fixture(), calls = [];
     const request = { id: crypto.randomUUID(), root: f.root, version: '0.2.6', fromVersion: '0.2.5',
@@ -119,6 +226,20 @@ describe('independent worker transaction', () => {
     expect(result.status).toBe('completed');
     expect((await readState(f.root)).status).toBe('completed');
     expect(calls).toEqual(['owned', 'prepare', 'owned', 'stop', 'start', 'verify']);
+  });
+  it('keeps the operation running while rollback still owns the service', async () => {
+    const f = await fixture();
+    const result = await runUpdate({ id: crypto.randomUUID(), root: f.root, version: '0.2.6',
+      fromVersion: '0.2.5', backendPid: process.pid, release: {} }, {
+      owned: async () => {}, prepare: async () => ({}), controls: () => ({}),
+      install: async (_prepared, { progress }) => {
+        progress('恢复旧版', { status: 'recovered', percent: 100, step: 'restore-service' });
+        await vi.waitFor(async () => expect((await readState(f.root)).progress.status).toBe('recovered'));
+        expect((await readState(f.root)).status).toBe('running');
+        throw new Error('install failed');
+      }
+    });
+    expect(result.status).toBe('recovered');
   });
   it('does not stop the backend on a preparation or ownership failure', async () => {
     const f = await fixture(); const stop = vi.fn();

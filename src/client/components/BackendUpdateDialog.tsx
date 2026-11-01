@@ -15,6 +15,7 @@ export function BackendUpdateDialog({ open, onClose }: { open: boolean; onClose:
   const [busy, setBusy] = useState(false);
   const [starting, setStarting] = useState(false);
   const [monitor, setMonitor] = useState(() => Boolean(pendingBackendUpdate()));
+  const [unresolved, setUnresolved] = useState(false);
   const [error, setError] = useState('');
   const [offline, setOffline] = useState(false);
   const [frontend, setFrontend] = useState('');
@@ -22,9 +23,14 @@ export function BackendUpdateDialog({ open, onClose }: { open: boolean; onClose:
   const [now, setNow] = useState(Date.now);
   const request = useRef<AbortController | null>(null);
   const refreshing = useRef(false);
+  const expectedId = useRef(pendingBackendUpdate());
   const operation = snapshot?.operation;
-  const running = monitor || operation?.status === 'running';
+  const running = monitor;
   const progress = operation?.progress;
+  function remember(id: string | null) {
+    expectedId.current = id;
+    rememberBackendUpdate(id);
+  }
   useEffect(() => {
     if (open && !dialog.current?.open) dialog.current?.showModal();
     else if (!open && dialog.current?.open) dialog.current.close();
@@ -43,6 +49,7 @@ export function BackendUpdateDialog({ open, onClose }: { open: boolean; onClose:
     try {
       setFrontend('正在更新网页版本…');
       await refreshBackendClient(value.version, stage => setFrontend(updateStageLabels[stage]), signal);
+      expectedId.current = null;
       rememberBackendUpdate(null);
     } catch (failure) {
       if (!signal.aborted) {
@@ -59,13 +66,21 @@ export function BackendUpdateDialog({ open, onClose }: { open: boolean; onClose:
     if (request.current) return;
     const controller = new AbortController();
     request.current = controller;
-    setBusy(true); setError('');
+    expectedId.current = null; rememberBackendUpdate(null);
+    setBusy(true); setError(''); setUnresolved(false); setOffer(null); setOffline(false);
     try {
       const status = await backendUpdateApi.status(controller.signal);
       setSnapshot(status);
-      if (status.operation?.status === 'running') { setMonitor(true); return; }
+      if (status.operation?.status === 'running') {
+        expectedId.current = status.operation.id; rememberBackendUpdate(status.operation.id);
+        setMonitor(true); return;
+      }
       const value = await backendUpdateApi.check(controller.signal);
       setSnapshot(value); setOffer(value); setOffline(false);
+      if (value.operation?.status === 'running') {
+        expectedId.current = value.operation.id; rememberBackendUpdate(value.operation.id);
+        setOffer(null); setMonitor(true);
+      }
     } catch (failure) {
       if (!controller.signal.aborted) setError(failure instanceof HttpError && failure.status === 404
         ? '此后端尚不支持网页更新，请先在本机更新一次 Remote。'
@@ -75,7 +90,7 @@ export function BackendUpdateDialog({ open, onClose }: { open: boolean; onClose:
       request.current = null;
     }
   }, []);
-  useEffect(() => { if (open && !monitor) void check(); }, [open, check]); // Opening is an explicit check.
+  useEffect(() => { if (open && !monitor && !expectedId.current) void check(); }, [open, check]); // Opening checks only untracked updates.
 
   useEffect(() => {
     if (!monitor) return;
@@ -88,21 +103,27 @@ export function BackendUpdateDialog({ open, onClose }: { open: boolean; onClose:
       if (pending || stopped || controller.signal.aborted) return;
       clearTimeout(timer); pending = true;
       try {
-        const value = await backendUpdateApi.status(controller.signal);
-        setSnapshot(value); setOffline(false);
+        const expected = expectedId.current;
+        const value = await backendUpdateApi.status(controller.signal, expected);
+        setOffline(false);
         const item = value.operation;
-        const expected = pendingBackendUpdate();
-        if ((!item || expected && item.id !== expected) && Date.now() - beganAt > 30_000) {
-          stopped = true; rememberBackendUpdate(null); setMonitor(false);
-          setError('尚未找到本次更新任务，请重新检查。'); return;
+        if (!item || expected && item.id !== expected) {
+          // Old backends may ignore ?id. Never display a foreign job as our own.
+          setSnapshot(current => ({ ...value,
+            operation: current?.operation?.id === expected ? current.operation : null }));
+          if (Date.now() - beganAt >= 30_000) {
+            stopped = true; setMonitor(false); setOffer(null); setUnresolved(true);
+            setError('尚未找到本次更新任务。可重新查询任务，或检查当前后端的更新状态。');
+          }
+          return;
         }
-        if (item && item.status !== 'running') {
-          if (expected && item.id !== expected) return;
+        setSnapshot(value); setError('');
+        if (item.status !== 'running') {
           stopped = true; setBusy(false); setOffer(null);
           if (item.status === 'completed' && value.currentVersion === item.version) {
             await refresh(item, controller.signal);
           } else {
-            rememberBackendUpdate(null);
+            expectedId.current = null; rememberBackendUpdate(null);
             setError(item.message ?? (item.status === 'recovered' ? '已恢复旧版，请重新检查。' : '更新未完成，请重新检查。'));
           }
           setMonitor(false);
@@ -111,7 +132,8 @@ export function BackendUpdateDialog({ open, onClose }: { open: boolean; onClose:
       } catch (failure) {
         if (controller.signal.aborted) return;
         if (failure instanceof HttpError && failure.status === 401) {
-          stopped = true; setMonitor(false); setError('登录已过期，请重新登录后查看更新进度。'); return;
+          stopped = true; setMonitor(false); setUnresolved(true);
+          setError('登录已过期，请重新登录后查看更新进度。'); return;
         }
         setOffline(true);
       } finally {
@@ -135,23 +157,24 @@ export function BackendUpdateDialog({ open, onClose }: { open: boolean; onClose:
     const controller = new AbortController(), id = crypto.randomUUID();
     request.current = controller;
     setBusy(true); setStarting(true); setError(''); setRefreshNeeded(false);
-    rememberBackendUpdate(id);
+    remember(id); setUnresolved(false); setOffline(false);
+    setSnapshot(current => current ? { ...current, operation: null } : current);
     try {
       const value = await backendUpdateApi.install({ id, token: offer.token, version: offer.latestVersion,
         recover: Boolean(offer.recoveryRequired) }, controller.signal);
-      setSnapshot(current => current ? { ...current, operation: value } : current);
+      if (value.id === id) setSnapshot(current => current ? { ...current, operation: value } : current);
       setOffer(null); setMonitor(true);
     } catch (failure) {
       if (!controller.signal.aborted) {
         // Do not repeat an uncertain POST. Read the persisted job instead.
-        try {
-          const value = await backendUpdateApi.status(controller.signal);
-          setSnapshot(value);
-          if (value.operation?.id === id) { setMonitor(true); return; }
-          rememberBackendUpdate(null);
-          setError(failure instanceof Error ? failure.message : '更新启动未完成，请重新检查。');
-          setOffer(null);
-        } catch { setMonitor(true); setOffline(true); }
+        setOffer(null);
+        if (failure instanceof HttpError && [400, 401, 403].includes(failure.status)) {
+          remember(null);
+          setError(failure.message);
+        } else {
+          setMonitor(true);
+          setError('更新请求的结果尚未确认，正在查询已提交的任务。');
+        }
       }
     } finally {
       if (!controller.signal.aborted) { setBusy(false); setStarting(false); }
@@ -193,13 +216,18 @@ export function BackendUpdateDialog({ open, onClose }: { open: boolean; onClose:
           if (refreshNeeded && operation) {
             const controller = new AbortController(); request.current = controller;
             void refresh(operation, controller.signal).finally(() => { request.current = null; });
+          } else if (unresolved) {
+            setUnresolved(false); setError(''); setOffline(false); setMonitor(true);
           } else if (offer?.canUpdate && (offer.available || offer.recoveryRequired)) void install();
           else void check();
         }}>
         {busy ? <LoaderCircle size={18} className="spin" /> : offer?.available ? <Download size={18} /> : <RefreshCw size={18} />}
-        <span>{busy ? starting ? '正在准备更新…' : '正在检查…' : refreshNeeded ? '重试刷新网页' : offer?.recoveryRequired ? '恢复旧版'
+        <span>{busy ? starting ? '正在准备更新…' : '正在检查…' : refreshNeeded ? '重试刷新网页'
+          : unresolved ? '重新查询更新任务' : offer?.recoveryRequired ? '恢复旧版'
           : offer?.available ? `更新至 ${offer.latestVersion}` : '检查 Remote 更新'}</span>
       </button>}
+      {unresolved && !running && !frontend && <button type="button" className="notification-enable"
+        disabled={busy} onClick={() => void check()}><RefreshCw size={18} /><span>检查 Remote 更新</span></button>}
       {offer?.available && !running && <p className="notification-intro">
         更新完成后将刷新页面。主会话文字草稿会保留；临时侧聊、待发图片和技能选择会清除。
       </p>}

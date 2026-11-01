@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 export const updateDirectory = root => path.join(root, 'output', 'web-update');
 export const activeUpdate = root => path.join(updateDirectory(root), 'active.json');
 const publicDetails = {
+  launch: '正在准备独立更新任务，原服务继续运行。',
   fetch: '正在获取正式版本，原服务继续运行。',
   compare: '正在检查本地文件和版本冲突。',
   dependencies: '正在临时目录安装依赖，原服务继续运行。',
@@ -44,28 +45,48 @@ export async function ensureDirectory(root) {
   }
 }
 
-export async function writeState(root, value) {
-  await ensureDirectory(root);
-  const target = activeUpdate(root);
+async function writeRecord(root, target, value) {
   const temporary = path.join(updateDirectory(root), `${crypto.randomUUID()}.tmp`);
   const file = await fs.open(temporary, 'wx', 0o600);
   try { await file.writeFile(JSON.stringify(value)); await file.sync(); } finally { await file.close(); }
   try { await fs.rename(temporary, target); } finally { await fs.rm(temporary, { force: true }); }
 }
 
-export async function readState(root) {
-  await safeDirectory(path.join(root, 'output'));
-  await safeDirectory(updateDirectory(root));
-  const stat = await fs.lstat(activeUpdate(root)).catch(error => {
+export async function writeState(root, value) {
+  if (value.root !== root || !validId(value.id)) throw new Error('更新记录不匹配。');
+  await ensureDirectory(root);
+  // Keep the exact job readable after another browser starts a later update.
+  await writeRecord(root, path.join(updateDirectory(root), `${value.id}.json`), value);
+  await writeRecord(root, activeUpdate(root), value);
+}
+
+async function readRecord(root, target) {
+  const stat = await fs.lstat(target).catch(error => {
     if (error.code !== 'ENOENT') throw error;
     return null;
   });
   if (!stat) return null;
   if (stat.isSymbolicLink() || !stat.isFile() || stat.size > 128 * 1024) throw new Error('更新记录无效。');
-  const value = JSON.parse(await fs.readFile(activeUpdate(root), 'utf8'));
+  const value = JSON.parse(await fs.readFile(target, 'utf8'));
   if (value.root !== root || !validId(value.id) || !['running', 'completed', 'failed', 'recovered',
     'recovery-failed', 'interrupted'].includes(value.status)) throw new Error('更新记录不匹配。');
   return value;
+}
+
+export async function readState(root, id) {
+  if (id !== undefined && !validId(id)) throw new Error('更新任务无效。');
+  await safeDirectory(path.join(root, 'output'));
+  await safeDirectory(updateDirectory(root));
+  if (id !== undefined) {
+    const job = await readRecord(root, path.join(updateDirectory(root), `${id}.json`));
+    if (job) {
+      if (job.id !== id) throw new Error('更新记录不匹配。');
+      return job;
+    }
+  }
+  // Older workers only write active.json.
+  const active = await readRecord(root, activeUpdate(root));
+  return id === undefined || active?.id === id ? active : null;
 }
 
 // Only this public projection crosses HTTP. Logs, tool output and host paths stay local.

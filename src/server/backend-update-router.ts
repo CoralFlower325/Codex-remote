@@ -3,15 +3,19 @@ import type { BackendUpdateRequest, BackendUpdateStatus, BackendUpdateCheck, Bac
 import { asyncRoute } from './http-route.js';
 
 interface Updater {
-  status(): Promise<BackendUpdateStatus>;
+  status(id?: string): Promise<BackendUpdateStatus>;
   check(): Promise<BackendUpdateCheck>;
   start(request: BackendUpdateRequest): Promise<BackendUpdateOperation>;
 }
 export function backendUpdateRouter(requireAuth: RequestHandler, trusted: RequestHandler, updater: () => Promise<Updater>) {
   const router = Router();
   router.use(requireAuth);
-  router.get('/', asyncRoute(async (_req, res) => {
-    res.json(await (await updater()).status());
+  router.get('/', asyncRoute(async (req, res) => {
+    const id = req.query.id;
+    if (id !== undefined && (typeof id !== 'string' || !/^[a-f0-9-]{36}$/.test(id))) {
+      res.status(400).json({ error: '更新任务无效。' }); return;
+    }
+    res.json(await (await updater()).status(id));
   }));
   router.post('/check', trusted, asyncRoute(async (_req, res) => {
     res.json(await (await updater()).check());

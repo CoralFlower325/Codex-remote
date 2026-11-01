@@ -15,6 +15,12 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
+Remote 0.2.9 fixes missing/mismatched web-update tasks, durable job lookup,
+bounded stalled downloads and worker takeover races. Query the saved job ID
+after an uncertain install response; never replay installation automatically.
+Claim the job under the existing update lock, then release it before preparing,
+installing or recovering. See [web backend updates](web-backend-update.md).
+
 Remote 0.2.8 adds optional host-side Office previews and hardens malformed
 messages, login concurrency, proxy trust, HTML real-path grants and damaged
 optional state. Preserve original downloads, private temporary conversion and

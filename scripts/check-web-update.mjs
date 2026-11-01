@@ -8,13 +8,15 @@ import { chromium } from '../desktop/node_modules/playwright/index.mjs';
 
 const app = express(), server = http.createServer(app), sockets = new WebSocketServer({ server });
 const pkg = JSON.parse(await fs.readFile('package.json', 'utf8'));
-const target = '0.2.7';
+const target = '9.9.9';
 const build = JSON.parse(await fs.readFile('dist/client/version.json', 'utf8'));
 const model = { id: 'demo', model: 'demo', displayName: 'Demo', isDefault: true,
   defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'high' }] };
 let current = pkg.version, available = false, offline = false, operation = null, installs = 0, platform = 'win32';
-const snapshot = () => ({ currentVersion: current, platform, arch: platform === 'win32' ? 'x64' : 'arm64',
-  supported: true, operation });
+let statusBehavior = 'normal', installReply = 'normal', statusReads = [], checkCalls = 0, installIds = [];
+const snapshot = (id = null) => ({ currentVersion: current, platform, arch: platform === 'win32' ? 'x64' : 'arm64',
+  supported: true, operation: statusBehavior === 'missing' || id && statusBehavior !== 'foreign' && operation?.id !== id
+    ? null : operation });
 app.use(express.json());
 app.get('/api/auth/status', (_q, r) => r.json({ configured: true, authenticated: true, setupAllowed: false }));
 app.get('/api/bootstrap', (_q, r) => r.json({ configured: true, authenticated: true,
@@ -22,15 +24,28 @@ app.get('/api/bootstrap', (_q, r) => r.json({ configured: true, authenticated: t
 app.get('/api/threads', (_q, r) => r.json({ data: [], nextCursor: null }));
 app.get('/api/permissions', (_q, r) => r.json({ data: [{ id: ':workspace', allowed: true }], defaultProfile: ':workspace' }));
 app.get('/api/connections', (_q, r) => r.json({ publicOrigin: null, lanOrigins: [] }));
-app.get('/api/remote-update', (_q, r) => offline ? r.sendStatus(503) : r.json(snapshot()));
-app.post('/api/remote-update/check', (_q, r) => r.json({ ...snapshot(), available,
-  canUpdate: true, latestVersion: available ? target : current, token: '11111111-1111-4111-8111-111111111111' }));
+app.get('/api/remote-update', (q, r) => {
+  statusReads.push(typeof q.query.id === 'string' ? q.query.id : null);
+  if (statusBehavior === 'unauthorized') return r.status(401).json({ error: 'Synthetic expired session' });
+  return offline ? r.sendStatus(503) : r.json(snapshot(q.query.id));
+});
+app.post('/api/remote-update/check', (_q, r) => {
+  checkCalls++;
+  r.json({ ...snapshot(), available, canUpdate: true, latestVersion: available ? target : current,
+    token: '11111111-1111-4111-8111-111111111111' });
+});
 app.post('/api/remote-update/install', (q, r) => {
-  installs++;
+  installs++; installIds.push(q.body.id);
   operation = { id: q.body.id, version: target, fromVersion: current, status: 'running', updatedAt: Date.now(),
     progress: { percent: 18, step: 'runtime', title: '下载运行包', detail: '已下载 0.0 / 20.0 MB。',
       startedAt: Date.now(), stepStartedAt: Date.now(), endedAt: null, status: 'running' } };
-  r.status(202).json(operation);
+  if (installReply === 'lost') {
+    // Acknowledge receipt before truncating the body, avoiding browser-level
+    // retry of an unopened reused connection while losing the JSON response.
+    r.status(202).type('json').flushHeaders();
+    r.write('{"id":');
+    setTimeout(() => r.destroy(), 50);
+  } else r.status(202).json(operation);
 });
 app.get('/remote-client/sw.js', async (_q, r) => {
   r.set('Service-Worker-Allowed', '/').type('js').send((await fs.readFile('dist/client/sw-origin.js', 'utf8'))
@@ -71,12 +86,26 @@ if (process.argv.includes('--serve')) {
   console.log(origin);
 } else {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const directory = 'output/playwright/web-update-026';
+  const directory = 'output/playwright/web-update-029';
   await fs.mkdir(directory, { recursive: true });
   const results = [];
   try {
-    for (const size of JSON.parse(await fs.readFile('scripts/acceptance-viewports.json', 'utf8'))) {
+    const sizes = JSON.parse(await fs.readFile('scripts/acceptance-viewports.json', 'utf8'));
+    const openUpdate = async page => {
+      if (await page.locator('.app-shell').getAttribute('data-layout') === 'mobile' &&
+        !await page.locator('#workspace-sidebar').getAttribute('class').then(value => value.includes('sidebar--open'))) {
+        await page.getByRole('button', { name: '打开任务列表', exact: true }).click();
+      }
+      await page.getByRole('button', { name: '设置', exact: true }).click();
+      await page.getByRole('menuitem', { name: '检查 Remote 更新', exact: true }).click();
+      await page.getByRole('dialog', { name: 'Remote 更新', exact: true }).waitFor();
+    };
+    const reset = () => {
       current = pkg.version; available = false; offline = false; operation = null; installs = 0;
+      statusBehavior = 'normal'; installReply = 'normal'; statusReads = []; checkCalls = 0; installIds = [];
+    };
+    for (const size of process.argv.includes('--recovery-only') ? [] : sizes) {
+      reset();
       platform = size.mobile ? 'darwin' : 'win32';
       const context = await browser.newContext({ viewport: { width: size.width, height: size.height },
         deviceScaleFactor: size.deviceScaleFactor, isMobile: size.mobile, hasTouch: size.mobile });
@@ -85,15 +114,7 @@ if (process.argv.includes('--serve')) {
       let navigations = 0;
       page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations++; });
       await page.goto(origin);
-      const open = async () => {
-        if (await page.locator('.app-shell').getAttribute('data-layout') === 'mobile' &&
-          !await page.locator('#workspace-sidebar').getAttribute('class').then(value => value.includes('sidebar--open'))) {
-          await page.getByRole('button', { name: '打开任务列表', exact: true }).click();
-        }
-        await page.getByRole('button', { name: '设置', exact: true }).click();
-        await page.getByRole('menuitem', { name: '检查 Remote 更新', exact: true }).click();
-        await page.getByRole('dialog', { name: 'Remote 更新', exact: true }).waitFor();
-      };
+      const open = () => openUpdate(page);
       await page.locator('.account-button').waitFor({ state: 'attached' });
       await open();
       await page.getByText('后端已是最新版本，无需更新。', { exact: true }).waitFor();
@@ -122,6 +143,7 @@ if (process.argv.includes('--serve')) {
       await page.getByText('等待后端重新连接，已完成的进度保留。', { exact: true }).waitFor({ timeout: 12_000 });
       assert.equal(await page.locator('progress').getAttribute('value'), '88');
       assert.equal(installs, 1);
+      assert(statusReads.some(id => id === installIds[0]), 'Polling must address the expected update ID.');
       await page.screenshot({ path: `${directory}/${size.name}-reconnect.png` });
       offline = false; current = target; operation.status = 'completed';
       operation.progress.percent = 100; operation.progress.status = 'completed'; operation.progress.endedAt = Date.now();
@@ -141,11 +163,117 @@ if (process.argv.includes('--serve')) {
       assert.equal(installs, 1);
       assert.equal(await page.evaluate(() => sessionStorage.getItem('remote-backend-update')), null);
       assert.equal(errors.length, 0, errors.join('\n'));
-      results.push({ viewport: size.name, platform, installs, navigations, workerScript, privateCached, errors });
+      results.push({ scenario: 'normal-update', viewport: size.name, platform, installs, navigations,
+        polledExpectedId: true, workerScript, privateCached, errors });
       await context.close();
       console.log(`PASS ${size.name}`);
     }
-    await fs.writeFile(`${directory}/results.json`, JSON.stringify(results, null, 2));
+    // Regression fixtures never attach to a real installation. Exercise stale
+    // receipts and uncertain POST acknowledgements on desktop and the narrowest
+    // mobile viewport, accelerating only the browser's bounded monitor clock.
+    const recoveryResults = [];
+    const expectedId = '22222222-2222-4222-8222-222222222222';
+    const foreignId = '33333333-3333-4333-8333-333333333333';
+    const runningOperation = (id, percent = 67) => ({ id, version: target, fromVersion: current,
+      status: 'running', updatedAt: Date.now(), progress: { percent, step: 'runtime',
+        title: id === foreignId ? 'FOREIGN UPDATE MUST NOT APPEAR' : 'Synthetic matching update',
+        detail: 'Synthetic update progress', startedAt: Date.now(), stepStartedAt: Date.now(),
+        endedAt: null, status: 'running' } });
+    for (const size of sizes.filter(value => ['desktop-compact', 'small-phone'].includes(value.name))) {
+      for (const scenario of ['missing', 'foreign-running', 'lost-post-response', 'expired-auth']) {
+        reset(); platform = size.mobile ? 'darwin' : 'win32';
+        const context = await browser.newContext({ viewport: { width: size.width, height: size.height },
+          deviceScaleFactor: size.deviceScaleFactor, isMobile: size.mobile, hasTouch: size.mobile, serviceWorkers: 'block' });
+        const seeded = scenario !== 'lost-post-response';
+        if (seeded) await context.addInitScript(id => sessionStorage.setItem('remote-backend-update', id), expectedId);
+        if (scenario === 'missing') statusBehavior = 'missing';
+        if (scenario === 'foreign-running') { statusBehavior = 'foreign'; operation = runningOperation(foreignId, 83); }
+        if (scenario === 'expired-auth') statusBehavior = 'unauthorized';
+        const page = await context.newPage(), errors = [];
+        page.on('pageerror', error => errors.push(error.message));
+        let navigations = 0;
+        page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations++; });
+        await page.goto(origin);
+        await page.locator('.account-button').waitFor({ state: 'attached' });
+        await openUpdate(page);
+        let jobId = expectedId;
+        if (!seeded) {
+          await page.getByText('后端已是最新版本，无需更新。', { exact: true }).waitFor();
+          await page.getByRole('button', { name: '关闭 Remote 更新', exact: true }).click();
+          available = true;
+          await openUpdate(page);
+          installReply = 'lost'; statusBehavior = 'missing';
+          const uncertainStatus = page.waitForResponse(response =>
+            response.url().includes('/api/remote-update?') && response.request().method() === 'GET');
+          await page.getByRole('button', { name: `更新至 ${target}`, exact: true }).click();
+          await page.waitForFunction(() => Boolean(sessionStorage.getItem('remote-backend-update')));
+          jobId = await page.evaluate(() => sessionStorage.getItem('remote-backend-update'));
+          await (await uncertainStatus).finished();
+          assert.equal(installs, 1);
+        } else {
+          await page.waitForFunction(() => Boolean(document.querySelector('.backend-update-progress') ||
+            document.querySelector('.backend-update-error')));
+        }
+        assert(statusReads.some(id => id === jobId), `${scenario}: missing expected ID in status GET`);
+        if (scenario === 'foreign-running') assert.equal(
+          await page.getByText('FOREIGN UPDATE MUST NOT APPEAR', { exact: true }).count(), 0,
+          'An older backend ignoring the ID query must never supply this job progress.');
+        await page.clock.install();
+        await page.clock.fastForward(31_000);
+        const requery = page.getByRole('button', { name: '重新查询更新任务', exact: true });
+        await requery.waitFor();
+        assert.equal(await page.locator('.backend-update-progress').count(), 0,
+          `${scenario}: abandoned or foreign progress must not remain visible`);
+        assert.equal(await page.getByText('FOREIGN UPDATE MUST NOT APPEAR', { exact: true }).count(), 0);
+        assert.equal(await page.evaluate(() => sessionStorage.getItem('remote-backend-update')), jobId);
+        await page.screenshot({ path: `${directory}/${size.name}-${scenario}-unresolved.png` });
+        const installsBefore = installs, checksBefore = checkCalls, readsBefore = statusReads.length;
+        const retryStatus = page.waitForResponse(response => {
+          const url = new URL(response.url());
+          return url.pathname === '/api/remote-update' && url.searchParams.get('id') === jobId &&
+            response.request().method() === 'GET';
+        });
+        await requery.click();
+        await (await retryStatus).finished();
+        await page.evaluate(() => Promise.resolve());
+        assert(statusReads.length > readsBefore, 'Explicit recovery must issue another status GET.');
+        assert.equal(statusReads.at(-1), jobId);
+        assert.equal(installs, installsBefore, 'Recovery must not replay an install POST.');
+        assert.equal(checkCalls, checksBefore, 'Recovery must not silently create a new update offer.');
+        await page.clock.fastForward(31_000);
+        await requery.waitFor();
+        if (scenario === 'foreign-running') {
+          // Forgetting the old ID is a distinct explicit action. Only then may
+          // the currently active foreign job become the observed operation.
+          const beforeExplicitCheck = statusReads.length;
+          await page.getByRole('button', { name: '检查 Remote 更新', exact: true }).click();
+          await page.getByText('FOREIGN UPDATE MUST NOT APPEAR', { exact: true }).waitFor();
+          assert.equal(await page.evaluate(() => sessionStorage.getItem('remote-backend-update')), foreignId);
+          assert.equal(installs, installsBefore);
+          assert.equal(statusReads[beforeExplicitCheck], null);
+        } else {
+          // The same persisted job may appear after a restart or slow worker
+          // launch. Requery adopts it without creating any new action.
+          statusBehavior = 'normal'; operation = runningOperation(jobId);
+          await requery.click();
+          await page.getByText('Synthetic matching update', { exact: true }).waitFor();
+          assert.equal(await page.locator('progress').getAttribute('value'), '67');
+          assert.equal(await page.evaluate(() => sessionStorage.getItem('remote-backend-update')), jobId);
+          assert.equal(installs, installsBefore);
+        }
+        assert.equal(navigations, 1, 'A missing, running or foreign job must not reload the page.');
+        assert.deepEqual(errors, []);
+        await page.screenshot({ path: `${directory}/${size.name}-${scenario}.png` });
+        recoveryResults.push({ scenario, viewport: size.name, expectedIdPolled: true,
+          preservesReceipt: true, noInstallReplay: true, recoveryVisible: true,
+          lateMatchingJob: scenario !== 'foreign-running', explicitForeignObservation: scenario === 'foreign-running',
+          installs, errors });
+        await context.close();
+        console.log(`PASS ${size.name} ${scenario}`);
+      }
+    }
+    if (results.length) await fs.writeFile(`${directory}/results.json`, JSON.stringify(results, null, 2));
+    await fs.writeFile(`${directory}/recovery-results.json`, JSON.stringify(recoveryResults, null, 2));
   } finally {
     await browser.close();
     for (const socket of sockets.clients) socket.terminate();

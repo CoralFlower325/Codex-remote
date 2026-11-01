@@ -3,10 +3,10 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { installation, probe } from '../desktop/controller.mjs';
 import { prepareUpdate, installUpdate } from '../desktop/updater.mjs';
-import { recoverPendingUpdate, pendingUpdate } from '../desktop/update-transaction.mjs';
+import { acquireUpdateLock, recoverPendingUpdate, pendingUpdate } from '../desktop/update-transaction.mjs';
 import { createUpdateProgress, updateError } from '../desktop/update-progress.mjs';
 import { serviceControls, requireService } from './web-update-service.mjs';
-import { writeState, validId } from './web-update-state.mjs';
+import { alive, readState, writeState, validId } from './web-update-state.mjs';
 import { fetchRelease } from './web-update-network.mjs';
 
 export async function runUpdate(request, dependencies = {}) {
@@ -14,8 +14,7 @@ export async function runUpdate(request, dependencies = {}) {
     controls = serviceControls, recover = recoverPendingUpdate } = dependencies;
   if (!validId(request.id)) throw new Error('更新任务无效。');
   const info = await installation(request.root);
-  let state = { id: request.id, root: info.root, fromVersion: request.fromVersion,
-    version: request.version, status: 'running', pid: process.pid, updatedAt: Date.now(), progress: null };
+  let previous, state;
   let queue = Promise.resolve();
   let writeFailure = null;
   const save = () => {
@@ -28,12 +27,35 @@ export async function runUpdate(request, dependencies = {}) {
   };
   const flush = async () => { await queue; if (writeFailure) throw writeFailure; };
   const progress = (_title, detail) => {
-    state = { ...state, updatedAt: Date.now(), progress: detail };
-    if (detail.status === 'recovered' || detail.status === 'recovery-failed') state.status = detail.status;
+    state = { ...state, updatedAt: Date.now(),
+      progress: { ...detail, startedAt: previous?.progress?.startedAt ?? detail.startedAt } };
     // A completed install is published only after the durable transaction returns.
     void save();
   };
-  await save();
+  // Serialize worker takeover with a new start. Once claimed, the live worker
+  // PID prevents replacement until its final durable outcome is published.
+  const unlock = await acquireUpdateLock(info.root);
+  try {
+    previous = await readState(info.root, request.id);
+    const active = await readState(info.root);
+    if (active && active.id !== request.id || previous && (previous.status !== 'running' ||
+      previous.pid === null && Date.now() - previous.updatedAt > 30_000 ||
+      previous.pid !== request.backendPid && alive(previous.pid))) {
+      throw new Error('更新任务已结束或已被替代，未改动原服务。');
+    }
+    state = { id: request.id, root: info.root, fromVersion: request.fromVersion,
+      version: request.version, status: 'running', pid: process.pid, updatedAt: Date.now(), progress: previous?.progress ?? null };
+    await save();
+    await flush();
+  } finally { await unlock(); }
+  let heartbeatPending = false;
+  const heartbeat = setInterval(() => {
+    if (heartbeatPending) return;
+    heartbeatPending = true;
+    state = { ...state, updatedAt: Date.now() };
+    void save().finally(() => { heartbeatPending = false; });
+  }, 5000);
+  heartbeat.unref();
   try {
     await owned(info.root, request.backendPid);
     const health = await probe(`${info.localUrl}/health`);
@@ -58,11 +80,11 @@ export async function runUpdate(request, dependencies = {}) {
       state = { ...state, status: 'completed', updatedAt: Date.now() };
     }
   } catch (error) {
-    if (!['recovered', 'recovery-failed'].includes(state.status)) state.status = 'failed';
+    state.status = ['recovered', 'recovery-failed'].includes(state.progress?.status) ? state.progress.status : 'failed';
     state = { ...state, updatedAt: Date.now(), message: state.status === 'recovered'
       ? '本次更新未完成，已恢复旧版。' : state.status === 'recovery-failed'
         ? '恢复尚未完成，请在本机管理器恢复更新。' : `更新未完成。${updateError(error)}` };
-  }
+  } finally { clearInterval(heartbeat); }
   await save();
   await flush();
   return state;

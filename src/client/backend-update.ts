@@ -4,7 +4,8 @@ import type { BackendUpdateCheck, BackendUpdateOperation, BackendUpdateRequest, 
 
 const pendingKey = 'remote-backend-update';
 export const backendUpdateApi = {
-  status: (signal?: AbortSignal) => api<BackendUpdateStatus>('/api/remote-update', {
+  status: (signal?: AbortSignal, id?: string | null) => api<BackendUpdateStatus>(
+    `/api/remote-update${id ? `?id=${encodeURIComponent(id)}` : ''}`, {
     cache: 'no-store', timeoutMs: 8000, ...(signal ? { signal } : {})
   }),
   check: (signal?: AbortSignal) => api<BackendUpdateCheck>('/api/remote-update/check', {
@@ -15,7 +16,10 @@ export const backendUpdateApi = {
   })
 };
 export function pendingBackendUpdate(): string | null {
-  try { return sessionStorage.getItem(pendingKey); } catch { return null; }
+  try {
+    const id = sessionStorage.getItem(pendingKey);
+    return id && /^[a-f0-9-]{36}$/.test(id) ? id : null;
+  } catch { return null; }
 }
 export function rememberBackendUpdate(id: string | null) {
   try {

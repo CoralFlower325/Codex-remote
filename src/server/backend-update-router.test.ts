@@ -28,13 +28,23 @@ async function fixture() {
   }, async () => updater));
   const server = http.createServer(app); servers.push(server); server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/remote-update`;
-  return { updater, get: () => fetch(base, { headers: { Cookie: 'operator=true' } }),
+  return { updater, get: (query = '') => fetch(`${base}${query}`, { headers: { Cookie: 'operator=true' } }),
     post: (suffix: string, body: unknown, authenticated = true, origin = 'https://remote.example') => fetch(`${base}/${suffix}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Origin: origin,
         ...(authenticated ? { Cookie: 'operator=true' } : {}) }, body: JSON.stringify(body)
     }) };
 }
 describe('authenticated remote update routes', () => {
+  it('validates an exact job lookup without allowing arbitrary paths or query arrays', async () => {
+    const f = await fixture(), id = crypto.randomUUID();
+    expect((await f.get(`?id=${id}`)).status).toBe(200);
+    expect(f.updater.status).toHaveBeenCalledWith(id);
+    f.updater.status.mockClear();
+    for (const query of ['?id=..%2Foutside', '?id=', `?id=${id}&id=${id}`]) {
+      expect((await f.get(query)).status).toBe(400);
+    }
+    expect(f.updater.status).not.toHaveBeenCalled();
+  });
   it('requires authentication and trusted origin before any update check or action', async () => {
     const f = await fixture();
     expect((await f.post('check', {}, false)).status).toBe(401);

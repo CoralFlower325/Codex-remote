@@ -2,6 +2,13 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.9', changes: [
+    '修复远程更新找不到任务后仍显示进行中、无法重新查询的问题，不再将其他任务的进度误作本次更新。',
+    '更新准备前保存任务编号，按编号保留和查询进度；启动响应丢失后只查询原任务，不重复提交安装。',
+    '下载增加响应等待及无数据超时，沿用有限重试；准备失败保留旧服务，迟到或已被替代的任务不能启动安装。',
+    '独立更新进程定期保存存活状态，恢复完成前继续占用任务，避免并发更新。',
+    '稳定管理器仍为 0.2.0，无变更；0.2.0AU 自更新开发与签名断点继续暂停。'
+  ] },
   { version: '0.2.8', changes: [
     '新增 Word、Excel、PowerPoint 与开放文档格式预览，主机安装 LibreOffice 后可翻页、缩放、复制本页文字，并下载未改动的原文件。',
     '文档在主机私有临时目录转换，限制大小、排队和耗时；缺少转换器或文件异常时显示具体错误，可刷新重试。',

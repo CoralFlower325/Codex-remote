@@ -373,7 +373,11 @@ Disconnections retain the last confirmed progress until authenticated polling
 resumes. Success installs the matching public web client and refreshes the page;
 current-version checks never refresh. Main-chat text survives, while unsent
 images, skills and temporary chats clear on refresh. It updates Remote, leaving
-the manager at its own version. See [recovery and hosting details](web-backend-update.md).
+the manager at its own version. A missing task keeps its ID and offers an explicit
+status retry without resubmitting installation. A separate update check can observe
+the host's current task. Downloads stop after 30 seconds waiting for response
+headers or 60 seconds without body data, using the existing bounded network retry.
+See [recovery and hosting details](web-backend-update.md).
 
 The header's **Toggle summary panel pin** opens the conversation summary: attached pull requests, outputs, temporary side chats, native subagents and sources. A wide desktop can pin the 300px panel; narrower desktop and mobile use a dismissible overlay. PRs come from native thread attachments; completed answer links, generated images and supported structured MCP resource activities supply outputs. Missing local output files are filtered out. Sources include provided files/links, web searches and successful MCP connectors. Resource links use the existing preview/download inspector. Create-output actions and source-file selection append to the existing draft for review; they never send automatically. The MCP entry opens connected-server status, not a connector installer. Summary reads page independently of chat history, with **Load earlier summaries** after each bounded automatic batch. Provider-specific outputs without supported links or resource metadata may be absent.
 
