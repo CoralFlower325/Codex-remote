@@ -83,7 +83,7 @@ import { QuestionDock, QuestionCard } from './components/QuestionDock';
 import { parseQuestionReplies, questionItemId } from '../shared/async-user-input';
 import { historyConfig } from './history-config';
 import { QueuedMessages } from './components/QueuedMessages';
-import type { Thread, WorkspaceBootstrap } from './types';
+import type { Thread, ThreadHistoryPage, WorkspaceBootstrap } from './types';
 
 let scope: InstanceType<typeof hooks.Scope>;
 afterEach(() => {
@@ -285,7 +285,7 @@ describe('slow history transport regression', () => {
 
 describe('cached history verification', () => {
   const timing = { id: 't', status: 'completed' as const, startedAt: 1, completedAt: 2, durationMs: 1000 };
-  const page = {
+  const page: ThreadHistoryPage & { result: { thread: Thread } } = {
     result: { thread },
     items: [
       { turnId: 't', startedAtMs: null, completedAtMs: null,
@@ -297,7 +297,7 @@ describe('cached history verification', () => {
         item: { type: 'agentMessage', id: 'a', text: 'Answer' } }
     ], nextCursor: 'older', turns: [timing], turnsCursor: null, activeTurnId: null
   };
-  it('marks the stripped preview as incomplete, then restores the same final history on five reopenings', async () => {
+  it('waits for the latest native page instead of flashing old rounds on five reopenings', async () => {
     const f = fixture(path => String(path).includes('/thread/open?') ? json(page)
       : String(path).includes('/thread/timings?') ? json(page) : new Promise(() => {}));
     await f.remote.openThread(thread.id); await settle();
@@ -307,9 +307,9 @@ describe('cached history verification', () => {
     for (let attempt = 0; attempt < 5; attempt++) {
       f.remote.closeThread(); scope.render();
       const opening = f.remote.openThread(thread.id); scope.render();
-      expect(f.remote.loadingThread).toBe(false);
+      expect(f.remote.loadingThread).toBe(true);
       expect(f.remote.historySnapshot).toBe('loading');
-      expect(f.remote.items.map(item => item.id)).toEqual(['u', 'a']);
+      expect(f.remote.items).toEqual([]);
       await opening; await settle();
       expect(f.remote.historySnapshot).toBeNull();
       expect(f.remote.items).toEqual(expected);
@@ -342,6 +342,100 @@ describe('cached history verification', () => {
     expect(f.remote.historySnapshot).toBeNull();
     expect(f.remote.items.map(item => item.id)).toEqual(['u', 'child', 'a']);
     expect(f.remote.hasMoreHistory).toBe(true);
+  });
+  it('does not display a device preview while waiting for the latest round', async () => {
+    vi.mocked(readDeviceChat).mockResolvedValue({ thread, page });
+    let finish!: (value: Response) => void;
+    const fetcher = vi.fn<typeof fetch>(path => String(path).includes('/thread/open?')
+      ? new Promise(resolve => { finish = resolve; }) : new Promise(() => {}));
+    const f = fixture(fetcher);
+    const opening = f.remote.openThread(thread.id);
+    await settle();
+    expect(f.remote.items).toEqual([]);
+    expect(f.remote.loadingThread).toBe(true);
+    expect(fetcher.mock.calls.filter(([path]) => String(path).includes('/thread/open?'))
+      .every(([path]) => new URL(String(path), 'http://localhost').searchParams.get('fresh') === '1')).toBe(true);
+    finish(await json({ ...page, items: [...page.items, { turnId: 'latest',
+      item: { type: 'agentMessage', id: 'latest-answer', text: 'Latest answer' } }] }));
+    await opening; await settle();
+    expect(f.remote.items.at(-1)?.id).toBe('latest-answer');
+    expect(f.remote.historySnapshot).toBeNull();
+  });
+  it('keeps a second stale native response marked incomplete', async () => {
+    const fetcher = vi.fn<typeof fetch>(path => String(path).includes('/thread/open?')
+      ? json({ ...page, snapshot: { stale: true, savedAt: 1 } }) : new Promise(() => {}));
+    const f = fixture(fetcher);
+    await f.remote.openThread(thread.id); await settle();
+    expect(fetcher.mock.calls.filter(([path]) => String(path).includes('/thread/open?'))).toHaveLength(2);
+    expect(f.remote.historySnapshot).toBe('failed');
+  });
+  it('does not flash a stale host response while its replacement is still downloading', async () => {
+    let reads = 0, finish!: (value: Response) => void;
+    const f = fixture(path => String(path).includes('/thread/open?')
+      ? ++reads === 1 ? json({ ...page, snapshot: { stale: true, savedAt: 1 } })
+        : new Promise(resolve => { finish = resolve; }) : new Promise(() => {}));
+    const opening = f.remote.openThread(thread.id);
+    await settle();
+    expect(reads).toBe(2);
+    expect(f.remote.items).toEqual([]);
+    expect(f.remote.loadingThread).toBe(true);
+    finish(await json(page)); await opening; await settle();
+    expect(f.remote.items.at(-1)?.id).toBe('a');
+  });
+  it('rechecks history after the native subscription attaches', async () => {
+    let reads = 0;
+    const f = fixture(path => String(path).includes('/thread/open?')
+      ? json({ ...page, items: [...page.items, ...(++reads > 1 ? [{ turnId: 'new',
+        item: { type: 'agentMessage', id: 'new-answer', text: 'Subscribed answer' } }] : [])] })
+      : String(path).includes('/thread/timings?') ? json(page) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
+        result: message.method === 'thread/resume' ? { thread } : { data: [] } });
+    } });
+    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    await settle(); await settle();
+    expect(reads).toBe(2);
+    expect(f.remote.items.at(-1)?.id).toBe('new-answer');
+  });
+  it('runs one trailing reconciliation when completions arrive during an existing refresh', async () => {
+    let reads = 0, finish!: (value: Response) => void;
+    const f = fixture(path => String(path).includes('/thread/open?')
+      ? ++reads === 2 ? new Promise(resolve => { finish = resolve; })
+        : json({ ...page, items: [...page.items, ...(reads > 2 ? [{ turnId: 'latest',
+          item: { type: 'agentMessage', id: 'last-answer', text: 'Last answer' } }] : [])] })
+      : String(path).includes('/thread/timings?') ? json(page) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    const completion = () => connection.options.onMessage({ type: 'event', method: 'turn/completed',
+      params: { threadId: thread.id } });
+    completion(); await settle();
+    completion(); completion(); await settle();
+    expect(reads).toBe(2);
+    finish(await json(page)); await settle(); await settle();
+    expect(reads).toBe(3);
+    expect(f.remote.items.at(-1)?.id).toBe('last-answer');
+  });
+  it('refreshes the selected tail on foreground return without restarting task pagination', async () => {
+    let reads = 0;
+    const fetcher = vi.fn<typeof fetch>(path => String(path).includes('/thread/open?')
+      ? (reads++, json(page)) : String(path).includes('/thread/timings?') ? json(page) : new Promise(() => {}));
+    const f = fixture(fetcher);
+    await f.remote.openThread(thread.id); await settle();
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
+        result: message.method === 'thread/resume' ? { thread } : { data: [] } });
+    } });
+    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    await settle(); await settle();
+    const baseline = reads;
+    await vi.advanceTimersByTimeAsync(16_000);
+    window.dispatchEvent(new Event('focus')); await settle();
+    expect(reads).toBe(baseline + 1);
+    window.dispatchEvent(new Event('focus')); await settle();
+    expect(reads).toBe(baseline + 1);
+    expect(fetcher.mock.calls.filter(([path]) => String(path).startsWith('/api/threads?'))).toHaveLength(0);
   });
 });
 

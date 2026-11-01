@@ -84,6 +84,7 @@ export function ThreadTimeline({
   const navigationAnchorRef = useRef<string | null>(null);
   const readingAnchorRef = useRef<ReadingAnchor | null>(null);
   const restoredScrollTopRef = useRef<number | null>(null);
+  const readingFrameRef = useRef(0);
   const mountedRef = useRef(false);
   const previousScrollTopRef = useRef(0);
   const wantsEarlierRef = useRef(false);
@@ -291,6 +292,8 @@ export function ThreadTimeline({
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      cancelAnimationFrame(readingFrameRef.current);
+      readingFrameRef.current = 0;
       earlierBoundaryRef.current = null;
       continuationTopRef.current = null;
       scrollActivityRef.current!.cancel();
@@ -484,7 +487,10 @@ export function ThreadTimeline({
           !loadingEarlierRef.current && !viewingHistory && !wantsEarlierRef.current &&
           stream.scrollHeight - stream.scrollTop - stream.clientHeight <= 4;
         setAwayFromBottom(!stickToBottomRef.current);
-        rememberReadingPosition();
+        if (!readingFrameRef.current) readingFrameRef.current = requestAnimationFrame(() => {
+          readingFrameRef.current = 0;
+          rememberReadingPosition();
+        });
         if (!navigationAnchorRef.current && stream.scrollTop < stream.clientHeight * 2) prefetchEarlier();
       }}
     >

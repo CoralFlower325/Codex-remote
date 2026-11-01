@@ -5,6 +5,35 @@ export interface ReadingAnchor {
   scrollTop: number;
 }
 
+function firstVisibleAnchor(child: HTMLElement, top: number, bottom: number): HTMLElement | null {
+  const nodes = child.querySelectorAll<HTMLElement>('[data-scroll-anchor]');
+  let low = 0, high = nodes.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (nodes[middle]!.getBoundingClientRect().top <= top + 1) low = middle + 1;
+    else high = middle;
+  }
+  const outerAnchor = (node: HTMLElement | undefined) => {
+    if (!node) return null;
+    let parent = node.parentElement?.closest<HTMLElement>('[data-scroll-anchor]');
+    while (parent && parent !== child) {
+      node = parent;
+      parent = node.parentElement?.closest<HTMLElement>('[data-scroll-anchor]');
+    }
+    return node;
+  };
+  // Search positions, then retain an enclosing anchor when present.
+  // Container bottoms overlap their children and cannot be binary-searched.
+  for (const index of [Math.max(0, low - 1), low]) {
+    const node = outerAnchor(nodes[index]);
+    if (node) {
+      const rect = node.getBoundingClientRect();
+      if (rect.bottom > top + 1 && rect.top < bottom) return node;
+    }
+  }
+  return null;
+}
+
 export function releaseReadingTail(inner: HTMLElement): boolean {
   if (!inner.style.getPropertyValue('--reading-tail')) return false;
   inner.style.removeProperty('--reading-tail');
@@ -28,7 +57,7 @@ export function captureReadingAnchor(stream: HTMLElement, inner: HTMLElement): R
     const child = inner.children[index]!;
     if (child.getBoundingClientRect().top >= viewport.bottom) break;
     if (!(child instanceof HTMLElement) || !visible(child)) continue;
-    const node = [...child.querySelectorAll<HTMLElement>('[data-scroll-anchor]')].find(visible)
+    const node = firstVisibleAnchor(child, viewport.top, viewport.bottom)
       ?? (child.dataset.scrollAnchor ? child : null);
     if (node) return { key: node.dataset.scrollAnchor!, node, offset: node.getBoundingClientRect().top - viewport.top,
       scrollTop: stream.scrollTop };

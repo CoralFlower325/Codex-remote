@@ -2,6 +2,13 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.13', changes: [
+    '进入主会话时优先读取最新原生记录，旧缓存仅在读取失败时回退显示，避免先闪现之前轮次。',
+    '恢复会话订阅后再次核对最新内容，保留刷新期间的新补读请求；返回前台时独立核对当前会话。',
+    '仍然过期的历史响应保留未同步状态和重试入口，不再提前宣布同步完成。',
+    '减少长会话滚动时的逐条布局测量，阅读锚点与轮次导航更新按帧合并，保留上滑补页和阅读位置。',
+    '正式管理器保持 0.2.1，无变更；安装包仍在 Remote 0.2.10 发布页提供。'
+  ] },
   { version: '0.2.12', changes: [
     '支持上传 PDF，在任务、引导、排队和侧聊中引用主机文件，可预览和下载；失败保留草稿并支持重试。',
     '缓存历史增加同步状态和失败重试，子智能体详情重新核对过期历史并独立补齐原生轮次时间。',

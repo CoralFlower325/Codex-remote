@@ -42,6 +42,7 @@ export const ThreadNavigation = memo(function ThreadNavigation({ turns, streamRe
     const inner = innerRef.current;
     if (!stream || !inner) return;
     let frame = 0;
+    let needsMeasure = true;
     let anchors: Array<{ key: string; top: number }> = [];
     const measure = () => {
       const origin = stream.getBoundingClientRect().top - stream.scrollTop;
@@ -57,19 +58,30 @@ export const ThreadNavigation = memo(function ThreadNavigation({ turns, streamRe
     };
     const update = () => {
       const position = stream.scrollTop + Math.min(120, stream.clientHeight * .22);
-      const anchor = [...anchors].reverse().find(anchor => anchor.top <= position) ?? anchors[0];
+      let low = 0, high = anchors.length;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (anchors[middle]!.top <= position) low = middle + 1;
+        else high = middle;
+      }
+      const anchor = anchors[Math.max(0, low - 1)];
       if (anchor) setCurrent(value => value === anchor.key ? value : anchor.key);
     };
     const schedule = () => {
       if (frame) return;
-      frame = requestAnimationFrame(() => { frame = 0; update(); });
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (needsMeasure) { needsMeasure = false; measure(); }
+        else update();
+      });
     };
-    const observer = new ResizeObserver(measure);
-    const mutations = new MutationObserver(measure);
+    const changed = () => { needsMeasure = true; schedule(); };
+    const observer = new ResizeObserver(changed);
+    const mutations = new MutationObserver(changed);
     observer.observe(inner);
     mutations.observe(inner, { childList: true, subtree: true });
     stream.addEventListener('scroll', schedule, { passive: true });
-    measure();
+    schedule();
     return () => { cancelAnimationFrame(frame); observer.disconnect(); mutations.disconnect(); stream.removeEventListener('scroll', schedule); };
   }, [entries, innerRef, streamRef]);
 

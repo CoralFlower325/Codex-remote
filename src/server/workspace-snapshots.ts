@@ -22,7 +22,7 @@ class SnapshotCache<T extends object> {
 
   constructor(private capacity: number, private maxBytes: number) {}
 
-  read(key: string, load: () => Promise<T>, fresh = false): Promise<T & { snapshot: Snapshot }> {
+  read(key: string, load: () => Promise<T>, fresh = false, reuseCleanMs = 2000): Promise<T & { snapshot: Snapshot }> {
     const now = Date.now();
     let entry = this.entries.get(key);
     if (!entry) {
@@ -32,7 +32,7 @@ class SnapshotCache<T extends object> {
       this.entries.delete(key);
       this.entries.set(key, entry);
     }
-    const stale = entry.dirty || now - entry.savedAt >= 2000;
+    const stale = entry.dirty || now - entry.savedAt >= reuseCleanMs;
     if (entry.value && now - entry.savedAt < 5 * 60_000 && (!fresh || !stale)) {
       if (stale) void this.load(key, entry, load).catch(() => undefined);
       return Promise.resolve({ ...entry.value, snapshot: { stale, savedAt: entry.savedAt } });
@@ -108,11 +108,11 @@ export class WorkspaceSnapshots {
 
   open(threadId: string, mode: 'resume' | 'read' | 'new', fresh = false) {
     if (mode === 'new') return withReadDeadline(readOpenThread(this.request, threadId, mode));
-    return this.chats.read(threadId, () => readOpenThread(this.request, threadId, mode), fresh);
+    return this.chats.read(threadId, () => readOpenThread(this.request, threadId, mode), fresh, fresh ? 0 : 2000);
   }
 
   readTimings(threadId: string, fresh = false) {
-    return this.timings.read(threadId, () => readThreadTimings(this.request, threadId), fresh);
+    return this.timings.read(threadId, () => readThreadTimings(this.request, threadId), fresh, fresh ? 0 : 2000);
   }
 
   event(method: string, params: Record<string, unknown>): void {

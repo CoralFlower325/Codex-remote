@@ -157,6 +157,18 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   fallback and reconnect reads; apply late metadata without rewinding live rows.
   Chat opening starts with 40 items and at most two 100-item fill pages; timing
   reads run separately. Gate sends/queues on native metadata, timings and resume.
+  Main chats request fresh native text/timings before displaying a new selection;
+  do not flash old memory/device/host previews while latest reads are pending.
+  Keep already-mounted same-chat content; cached chat previews are failure fallback.
+  Fresh chat/timing requests bypass the host's clean two-second reuse window,
+  while identical pending reads still coalesce. Reconcile again after native
+  resume attaches; retain a trailing read when completion arrives during refresh.
+  A second stale response must retain an incomplete state and a retry control.
+  Foreground tail checks have a 15-second cooldown independent of five-minute
+  task-list recovery, and never replace a history-navigation window.
+  Batch reading-anchor capture and navigation measurements per animation frame.
+  Search ordered anchor positions instead of measuring every preceding message;
+  preserve enclosing anchors and actual layout heights.
   Older paging must survive a failed initial timing read without rewinding cursors.
   Preserve the documented page sizes, bounded retries, timeouts, cancellation,
   foreground priority and snapshot freshness in
@@ -349,7 +361,7 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   An explicit user version takes precedence.
   Remote and the desktop manager have independent versions. Remote's version lives
   in the root package/lockfile; the manager's lives in desktop/package/lockfile.
-  The stable manager is 0.2.1 with Remote 0.2.12. Remote-only changes must not increment, rebuild
+  The stable manager is 0.2.1 with Remote 0.2.13. Remote-only changes must not increment, rebuild
   or install the manager. Increment the manager patch only for its own changes.
   Manager self-update is paused as 0.2.0AU on archive/manager-0.2.0AU;
   keep AU self-update out of the stable manager and formal releases. Preserve AU history,

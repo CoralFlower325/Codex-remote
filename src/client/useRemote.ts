@@ -121,6 +121,8 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const turnTimingsRef = useRef(turnTimings);
   const selectionVersionRef = useRef(0);
   const historyRefreshRef = useRef<Promise<void> | null>(null);
+  const historyRefreshNextRef = useRef<{ threadId: string; version: number } | null>(null);
+  const lastHistoryReadRef = useRef(0);
   const connectionRef = useRef<RemoteConnection | null>(null);
   const newThreadsRef = useRef(new Set<string>());
   const permissionRequestVersionRef = useRef(0);
@@ -312,21 +314,18 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       const isNew = newThreadsRef.current.has(threadId);
       const archived = threadsRef.current.find((thread) => thread.id === threadId)?.archived;
       const query = new URLSearchParams({
-        threadId, mode: isNew ? 'new' : archived ? 'read' : 'resume'
+        threadId, mode: isNew ? 'new' : archived ? 'read' : 'resume', fresh: '1'
       });
       const path = `/api/thread/open?${query}`;
       const cachedPage = historyCacheRef.current.get(threadId);
       const cached = cachedPage ? provisionalHistory(cachedPage) : undefined;
-      const cachedItems = cached ? cached.items.map((entry) => ({
-        ...entry.item, turnId: entry.turnId,
-        startedAtMs: entry.startedAtMs, completedAtMs: entry.completedAtMs
-      })) : [];
       const sameThread = activeThreadRef.current === threadId;
       if (!options.silent) {
         editSelectionRef.current += 1;
         prioritizeInteraction();
         earlierPageRef.current.clear();
         selectionVersionRef.current += 1;
+        historyRefreshNextRef.current = null;
         if (!historyRequestsRef.current.has(path)) historyRequestsRef.current.cancel();
         pendingRevealRef.current = null;
         viewingHistoryRef.current = false;
@@ -347,13 +346,12 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         setTimedThreadId(null);
         timedThreadRef.current = null;
         timingErrorRef.current = null;
-        setItems(cachedItems);
+        if (!sameThread) setItems([]);
         setHistorySnapshot(isNew ? null : 'loading');
-        const timings = { ...(sameThread ? turnTimingsRef.current : {}),
-          ...Object.fromEntries((cached?.turns ?? []).map((turn) => [turn.id, turn])) };
+        const timings = sameThread ? turnTimingsRef.current : {};
         turnTimingsRef.current = timings;
         setTurnTimings(timings);
-        turnsCursorRef.current = cached?.turnsCursor ?? null;
+        turnsCursorRef.current = null;
         olderHistoryCursorRef.current = null;
         setHasMoreHistory(false);
         setActiveTurnId(null);
@@ -361,11 +359,14 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         if (!sameThread) { goalRevisionRef.current++; setActiveGoal(null); }
       }
       const version = selectionVersionRef.current;
-      let baseline = options.silent ? itemsRef.current : cachedItems;
+      let baseline = options.silent || sameThread ? itemsRef.current : [];
       const timingBaseline = turnTimingsRef.current;
       const turnRevision = turnRevisionRef.current;
       let nativeArrived = false;
       let nativeTimingArrived = false;
+      let historyFailed = false;
+      let savedPreview: Awaited<ReturnType<typeof readDeviceChat>> = null;
+      let stalePreview: { thread: Thread; page: ThreadHistoryPage } | null = null;
       const currentSelection = () => version === selectionVersionRef.current && activeThreadRef.current === threadId;
       const preview = (thread: Thread, page: ThreadHistoryPage) => {
         if (!currentSelection() || options.silent || nativeArrived) return;
@@ -384,6 +385,14 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         setHistorySnapshot('loading');
         markStartup('chat-snapshot');
       };
+      const fallback = () => {
+        if (!currentSelection() || nativeArrived || sameThread) return;
+        const listed = threadsRef.current.find(thread => thread.id === threadId);
+        if (stalePreview) preview(stalePreview.thread, stalePreview.page);
+        else if (cached && listed) preview(listed, cached);
+        else if (savedPreview) preview(savedPreview.thread, savedPreview.page);
+        setHistorySnapshot('failed');
+      };
       if (options.silent) flushStreamingDeltas();
       else clearStreamingDeltas();
       if (!options.silent) {
@@ -391,21 +400,22 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         setLoadingHistory(false);
       }
       if (!options.silent) {
-        setLoadingThread(cachedItems.length === 0);
-        void readDeviceChat(threadId).then(saved => {
-          if (saved && !cached) preview(saved.thread, saved.page);
-        });
+        setLoadingThread(!sameThread || itemsRef.current.length === 0);
       }
+      if (!options.silent) void readDeviceChat(threadId).then(saved => {
+        savedPreview = saved;
+        if (historyFailed) fallback();
+      });
       setLastError(null);
       const endForeground = options.silent ? () => {} : beginForegroundRead();
       type TimingPage = Pick<ThreadHistoryPage, 'turns' | 'turnsCursor' | 'activeTurnId'> & {
         snapshot?: { stale: boolean; savedAt: number }
       };
-      const timingPath = `/api/thread/timings?${new URLSearchParams({ threadId })}`;
+      const timingPath = `/api/thread/timings?${new URLSearchParams({ threadId, fresh: '1' })}`;
       const timings: Promise<TimingPage> = isNew ? Promise.resolve({
         turns: [], turnsCursor: null, activeTurnId: null
       }) : historyRequestsRef.current.get<TimingPage>(timingPath, historyConfig.readTimeoutMs, 3).then(page =>
-        page.snapshot?.stale ? historyRequestsRef.current.get<TimingPage>(`${timingPath}&fresh=1`, historyConfig.readTimeoutMs, 3) : page);
+        page.snapshot?.stale ? historyRequestsRef.current.get<TimingPage>(timingPath, historyConfig.readTimeoutMs, 3) : page);
       void timings.then(page => {
         if (!currentSelection()) return;
         const firstTimingPage = timedThreadRef.current !== threadId;
@@ -438,8 +448,8 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           result: { thread: Thread; collaborationMode?: CollaborationMode } & PermissionSettings
         }>(path, historyConfig.readTimeoutMs, 3);
         if (response.snapshot?.stale) {
-          preview(response.result.thread, response);
-          response = await historyRequestsRef.current.get(`${path}&fresh=1`, historyConfig.readTimeoutMs, 3);
+          stalePreview = { thread: response.result.thread, page: response };
+          response = await historyRequestsRef.current.get(path, historyConfig.readTimeoutMs, 3);
         }
         if (!currentSelection()) return;
         nativeArrived = true;
@@ -464,7 +474,8 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         setActiveThread(thread);
         setVerifiedThreadId(threadId);
         verifiedThreadRef.current = threadId;
-        setHistorySnapshot(null);
+        setHistorySnapshot(page.snapshot?.stale ? 'failed' : null);
+        lastHistoryReadRef.current = Date.now();
         if (!page.timingsPending && turnRevisionRef.current === turnRevision) {
           activeTurnIdRef.current = page.activeTurnId;
           setActiveTurnId(page.activeTurnId);
@@ -498,7 +509,12 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           return;
         }
         if (currentSelection()) {
-          if (verifiedThreadRef.current !== threadId) setHistorySnapshot('failed');
+          if (options.silent) setHistorySnapshot('failed');
+          if (verifiedThreadRef.current !== threadId) {
+            historyFailed = true;
+            fallback();
+            setHistorySnapshot('failed');
+          }
           setLastError(error instanceof Error ? error.message : String(error));
         }
         throw error;
@@ -538,6 +554,11 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         setActiveThread(current => current?.id === verifiedThreadId
           ? { ...current, ...result.thread, permissionProfile: permissionProfileId(result) } : current);
         setThreadReady(true);
+        // The initial read can finish before the native subscription is attached.
+        if (!viewingHistoryRef.current) {
+          setHistorySnapshot('loading');
+          void openThread(verifiedThreadId, { silent: true, preserveHistory: true }).catch(() => undefined);
+        }
         if (resumeError) setLastError(current => current === resumeError
           ? metadataErrorsRef.current.models ?? metadataErrorsRef.current.projects ?? null : current);
         markStartup('chat-interactive');
@@ -550,7 +571,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     };
     resume();
     return () => { stopped = true; window.clearTimeout(retryTimer); };
-  }, [authenticated, connected, verifiedThreadId, activeThreadId, showArchived, rpc]);
+  }, [authenticated, connected, verifiedThreadId, activeThreadId, showArchived, rpc, openThread]);
 
   const prepareEarlierHistory = useCallback(() => {
     const threadId = activeThreadRef.current;
@@ -1147,10 +1168,18 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
 
   const refreshActiveHistory = useCallback(() => {
     const threadId = activeThreadRef.current;
-    if (!threadId || historyRefreshRef.current || viewingHistoryRef.current) return;
-    historyRefreshRef.current = openThread(threadId, { silent: true, preserveHistory: true })
-      .catch(() => undefined)
-      .finally(() => { historyRefreshRef.current = null; });
+    if (!threadId || viewingHistoryRef.current) return;
+    historyRefreshNextRef.current = { threadId, version: selectionVersionRef.current };
+    if (historyRefreshRef.current) return;
+    historyRefreshRef.current = (async () => {
+      while (historyRefreshNextRef.current) {
+        const next = historyRefreshNextRef.current;
+        historyRefreshNextRef.current = null;
+        if (activeThreadRef.current !== next.threadId || selectionVersionRef.current !== next.version ||
+            viewingHistoryRef.current || disposedRef.current) continue;
+        await openThread(next.threadId, { silent: true, preserveHistory: true }).catch(() => undefined);
+      }
+    })().finally(() => { historyRefreshRef.current = null; });
   }, [openThread]);
 
   const steerTurn = useCallback(
@@ -1448,10 +1477,15 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     if (!authenticated || !connected) return;
     const recover = () => {
       if (document.visibilityState !== 'visible') return;
-      if (Date.now() - lastRecoveryRef.current < 300_000) return;
-      lastRecoveryRef.current = Date.now();
-      void refreshThreads().catch(() => undefined);
-      refreshActiveHistory();
+      const now = Date.now();
+      if (now - lastHistoryReadRef.current >= 15_000) {
+        lastHistoryReadRef.current = now;
+        refreshActiveHistory();
+      }
+      if (now - lastRecoveryRef.current >= 300_000) {
+        lastRecoveryRef.current = now;
+        void refreshThreads().catch(() => undefined);
+      }
     };
     const timer = window.setInterval(recover, 300_000);
     window.addEventListener('focus', recover);

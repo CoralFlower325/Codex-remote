@@ -15,7 +15,19 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-Remote 0.2.12 pairs with stable manager 0.2.1, unchanged in this batch.
+Remote 0.2.13 pairs with stable manager 0.2.1, unchanged in this batch.
+New main-chat selections wait for fresh native text/timings instead of flashing
+old memory/device/host previews; caches are failure fallback. Fresh host reads
+bypass clean two-second reuse while sharing pending reads. Reconcile after
+native resume, retain trailing completion refreshes and independently check the
+foreground tail after a 15-second cooldown. Preserve history-navigation windows.
+Reading-anchor capture and navigation measurement coalesce per frame and search
+ordered positions. All 777 tests, typecheck, build and eight synthetic viewports
+passed. Long-response anchor capture fell from roughly 9 ms to 0.5 ms under
+four-times CPU throttling; ordinary scroll frame times did not improve consistently.
+See [acceptance and device limits](chat-loading-acceptance.md).
+
+The preceding 0.2.12 batch added PDF uploads and workspace fixes.
 PDF uploads use authenticated private host storage and the Desktop text
 file-context envelope. Preserve per-draft ownership, retry identity and the
 retain-before-send boundary, including uncertain sends. Unsent uploads are

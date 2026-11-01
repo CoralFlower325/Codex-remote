@@ -1,5 +1,31 @@
-import { describe, expect, it } from 'vitest';
-import { releaseReadingTail, restoreReadingAnchor, type ReadingAnchor } from './reading-anchor';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { captureReadingAnchor, releaseReadingTail, restoreReadingAnchor, type ReadingAnchor } from './reading-anchor';
+
+afterEach(() => vi.unstubAllGlobals());
+
+function layout() {
+  let reads = 0;
+  const stream = { scrollTop: 50_020, getBoundingClientRect: () => ({ top: 0, bottom: 600 }) };
+  class Node {
+    children: Node[] = [];
+    parentElement: Node | null = null;
+    dataset: { scrollAnchor?: string };
+    constructor(key: string | null, readonly top: number, readonly bottom: number) {
+      this.dataset = key ? { scrollAnchor: key } : {};
+    }
+    getBoundingClientRect() { reads++; return { top: this.top - stream.scrollTop, bottom: this.bottom - stream.scrollTop }; }
+    closest(): Node | null { return this.dataset.scrollAnchor ? this : this.parentElement?.closest() ?? null; }
+    querySelectorAll(): Node[] {
+      return this.children.flatMap(child => [...(child.dataset.scrollAnchor ? [child] : []), ...child.querySelectorAll()]);
+    }
+    append(...nodes: Node[]) { nodes.forEach(node => { node.parentElement = this; this.children.push(node); }); }
+  }
+  vi.stubGlobal('HTMLElement', Node);
+  const inner = new Node(null, 0, 100_000), section = new Node('response', 0, 100_000);
+  inner.append(section);
+  return { Node, inner, section, stream, reads: () => reads,
+    capture: () => captureReadingAnchor(stream as HTMLElement, inner as unknown as HTMLElement) };
+}
 
 function reader() {
   const stream = { scrollTop: 100, getBoundingClientRect: () => ({ top: 0 }) };
@@ -12,6 +38,23 @@ function reader() {
 }
 
 describe('reading position', () => {
+  it('finds the visible message in a long live response without measuring every preceding message', () => {
+    const l = layout();
+    l.section.append(...Array.from({ length: 1000 }, (_, i) => new l.Node(`message-${i}`, i * 100, (i + 1) * 100)));
+    const anchor = l.capture();
+    expect(anchor?.key).toBe('message-500');
+    expect(anchor?.offset).toBe(-20);
+    expect(l.reads()).toBeLessThan(30);
+  });
+  it('retains an enclosing anchor instead of binary-searching overlapping container bottoms', () => {
+    const l = layout(), group = new l.Node('activity', 50_000, 51_000);
+    group.append(...Array.from({ length: 10 }, (_, i) => new l.Node(`command-${i}`, 50_000 + i * 100, 50_100 + i * 100)));
+    l.section.append(new l.Node('before', 0, 50_000), group, new l.Node('after', 51_000, 100_000));
+    l.stream.scrollTop = 50_520;
+    expect(l.capture()?.key).toBe('activity');
+    group.append(new l.Node('late-command', 50_990, 51_000));
+    expect(l.capture()?.key).toBe('activity');
+  });
   it('releases historical compensation when returning toward the latest content', () => {
     let tail = '500px';
     const inner = { style: { getPropertyValue: () => tail, removeProperty: () => { tail = ''; } } };

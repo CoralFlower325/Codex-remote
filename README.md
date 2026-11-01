@@ -110,7 +110,7 @@ Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
 remains pending.
 
-Remote **0.2.12** pairs with stable manager **0.2.1**. Install the new manager
+Remote **0.2.13** pairs with stable manager **0.2.1**. Install the new manager
 manually over 0.2.0, select the same host directory and retry; updating Remote
 cannot replace the old manager's bundled updater. [Manager downloads](docs/update-downloads.md)
 use the project's public distribution, with official GitHub alternatives.

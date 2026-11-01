@@ -98,6 +98,16 @@ describe('bounded native workspace snapshots', () => {
     finish({ data: [], nextCursor: null });
     expect(await loading).toMatchObject({ snapshot: { stale: true } });
   });
+  it('always rechecks native chat text and timings for an explicit latest read, even inside two seconds', async () => {
+    const request = native();
+    const snapshots = new WorkspaceSnapshots(request);
+    await snapshots.open('chat', 'read');
+    await snapshots.readTimings('chat');
+    await snapshots.open('chat', 'read', true);
+    await snapshots.readTimings('chat', true);
+    expect(request.mock.calls.filter(([method]) => method === 'thread/read')).toHaveLength(2);
+    expect(request.mock.calls.filter(([method]) => method === 'thread/turns/list')).toHaveLength(2);
+  });
 
   it('reuses a refresh completed while the stale response travelled to the browser', async () => {
     vi.useFakeTimers();
