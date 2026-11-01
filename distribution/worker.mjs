@@ -7,6 +7,15 @@ const assetPath = new RegExp(`^/releases/download/v${version}/([A-Za-z0-9._-]{1,
 const redirectStatuses = new Set([301, 302, 303, 307, 308]);
 const publicHeaders = ['content-type', 'content-length', 'content-disposition', 'etag', 'last-modified',
   'accept-ranges', 'content-range'];
+const cacheTimestamp = 'X-Distribution-Cache-Stored-At';
+
+async function cacheMetadata(cache, key, result) {
+  if (!cache) return;
+  const headers = new Headers(result.headers);
+  headers.set(cacheTimestamp, String(Date.now()));
+  try { await cache.put(key, new Response(result.clone().body, { status: result.status, headers })); }
+  catch { /* A cache failure must not block checked public metadata. */ }
+}
 
 function failure(status, message, extra = {}) {
   return Response.json({ error: message }, { status, headers: { 'Cache-Control': 'no-store',
@@ -87,7 +96,7 @@ async function snapshotResponse(request, snapshot, cache, key, status) {
     'X-Content-Type-Options': 'nosniff', 'X-Release-Source': 'release-snapshot',
     'X-Release-Snapshot-At': snapshot.generatedAt,
     ...(status ? { 'X-Release-Upstream-Status': String(status) } : {}) } });
-  try { await cache?.put(key, result.clone()); } catch { /* A checked snapshot remains usable without cache. */ }
+  await cacheMetadata(cache, key, result);
   return request.method === 'HEAD' ? new Response(null, result) : result;
 }
 
@@ -111,7 +120,17 @@ export async function handleDistribution(request, { fetcher = fetch, cache, snap
   try {
     if (metadata) {
       const cached = await cache?.match(key);
-      if (cached) return request.method === 'HEAD' ? new Response(null, cached) : cached;
+      if (cached) {
+        const storedAt = Number(cached.headers.get(cacheTimestamp));
+        const age = Date.now() - storedAt;
+        if (Number.isFinite(storedAt) && storedAt > 0 && age >= 0 && age < 60_000) {
+          const headers = new Headers(cached.headers);
+          headers.set('Cache-Control', 'public, max-age=60');
+          headers.delete(cacheTimestamp);
+          return new Response(request.method === 'HEAD' ? null : cached.body, { status: cached.status, headers });
+        }
+        cached.body?.cancel().catch(() => {});
+      }
     }
     const target = metadata ? metadataUrl : `https://github.com/${repository}${url.pathname}`;
     // Metadata HEAD uses the same checked GET representation and cache as GET.
@@ -143,7 +162,7 @@ export async function handleDistribution(request, { fetcher = fetch, cache, snap
       outputHeaders.set('Content-Length', String(bytes.byteLength));
       const result = new Response(bytes, { headers: outputHeaders });
       // Only bounded public JSON enters the cache, never installer streams.
-      try { await cache?.put(key, result.clone()); } catch { /* Cache failure must not block a valid release. */ }
+      await cacheMetadata(cache, key, result);
       return request.method === 'HEAD' ? new Response(null, result) : result;
     }
     return new Response(request.method === 'HEAD' ? null : response.body,

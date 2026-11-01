@@ -36,6 +36,33 @@ describe('bounded official release distribution', () => {
     expect(cache.put).toHaveBeenCalledTimes(1);
   });
 
+  it.each(['GET', 'HEAD'])('restores the public metadata TTL on a platform cached %s response', async method => {
+    const fetcher = vi.fn();
+    const cache = { match: vi.fn(async () => new Response('checked metadata', {
+      headers: { 'cache-control': 'public, max-age=14400', 'x-release-source': 'release-snapshot',
+        'x-distribution-cache-stored-at': String(Date.now()) }
+    })) };
+    const result = await handleDistribution(new Request(origin + '/releases/latest', { method }), { fetcher, cache });
+    expect(result.headers.get('cache-control')).toBe('public, max-age=60');
+    expect(result.headers.get('x-release-source')).toBe('release-snapshot');
+    expect(result.headers.has('x-distribution-cache-stored-at')).toBe(false);
+    expect(await result.text()).toBe(method === 'HEAD' ? '' : 'checked metadata');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each([String(Date.now() - 60_001), '0', 'invalid'])('ignores stale or legacy cached metadata %s', async timestamp => {
+    const fetcher = vi.fn(async () => latest());
+    const cache = { match: vi.fn(async () => new Response('old release', {
+      headers: { 'cache-control': 'public, max-age=14400', 'x-distribution-cache-stored-at': timestamp }
+    })), put: vi.fn() };
+    const response = await handleDistribution(new Request(origin + '/releases/latest'), { fetcher, cache });
+    expect(response.status).toBe(200);
+    expect((await response.json()).tag_name).toBe('v0.3.0');
+    expect(response.headers.get('cache-control')).toBe('public, max-age=60');
+    expect(response.headers.has('x-distribution-cache-stored-at')).toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it('streams a manager installer through an allowed signed CDN without buffering or leaking redirect data', async () => {
     const name = '/releases/download/v0.3.0/Codex-Remote-Manager-0.2.1-win-x64.exe';
     const body = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array([1, 2, 3])); controller.close(); } });

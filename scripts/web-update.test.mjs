@@ -191,21 +191,29 @@ describe('independent worker transaction', () => {
   it('persists a heartbeat during quiet preparation without inventing progress', async () => {
     const f = await fixture(), id = crypto.randomUUID();
     let complete;
+    const preparation = new Promise(resolve => { complete = resolve; });
+    const prepare = vi.fn(() => preparation);
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
     const result = runUpdate({ id, root: f.root, version: '0.2.6', fromVersion: '0.2.5',
       backendPid: process.pid, release: {} }, {
       owned: async () => {}, controls: () => ({}),
-      prepare: () => new Promise(resolve => { complete = resolve; }), install: async () => {}
+      prepare, install: async () => {}
     });
-    await vi.waitFor(() => expect(complete).toBeTypeOf('function'));
-    const before = await readState(f.root);
-    await vi.advanceTimersByTimeAsync(5000);
-    await vi.waitFor(async () => expect((await readState(f.root)).updatedAt).toBeGreaterThan(before.updatedAt));
-    expect((await readState(f.root)).progress).toBeNull();
-    complete({});
+    try {
+      await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce(), { timeout: 5000 });
+      const before = await readState(f.root);
+      await vi.advanceTimersByTimeAsync(5000);
+      // Advancing fake timers does not flush the two real filesystem records.
+      await vi.waitFor(async () => expect((await readState(f.root)).updatedAt)
+        .toBeGreaterThan(before.updatedAt), { timeout: 5000 });
+      expect((await readState(f.root)).progress).toBeNull();
+    } finally {
+      complete({});
+      await result;
+    }
     expect((await result).status).toBe('completed');
     expect(vi.getTimerCount()).toBe(0);
-  });
+  }, 20_000);
   it('prepares before stopping and reports completion only after verification returns', async () => {
     const f = await fixture(), calls = [];
     const request = { id: crypto.randomUUID(), root: f.root, version: '0.2.6', fromVersion: '0.2.5',
