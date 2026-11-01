@@ -46,7 +46,7 @@ export interface Turn extends TurnTiming {
 }
 
 export type ThreadItem = (
-  | { type: 'userMessage'; id: string; content: Array<{ type: string; text?: string; path?: string; url?: string }> }
+  | { type: 'userMessage'; id: string; content: Array<{ type: string; text?: string; name?: string; path?: string; url?: string }> }
   | { type: 'agentMessage'; id: string; text: string; phase?: 'commentary' | 'partial_answer' | 'final_answer' | null; delivery?: string | null;
       questions?: Array<{ title: string; options: string[] | null }> | null }
   | { type: 'reasoning'; id: string; summary: string[]; content: string[] }

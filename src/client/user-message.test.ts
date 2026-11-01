@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { ThreadTimeline } from './components/ThreadTimeline';
-import { userMessageText } from '../shared/user-message';
+import { userMessageDisplayText, userMessageText } from '../shared/user-message';
 
 const fileContext = [
   '',
@@ -78,5 +78,27 @@ describe('user message display', () => {
     expect(html).toContain('/api/local-image?path=C%3A%2Fimages%2Fscreenshot.png');
     expect(html.indexOf('image-thumbnail')).toBeLessThan(html.indexOf('Keep **my text**'));
     expect(html).toContain('user-message-attachments');
+  });
+
+  it('projects native skill mentions and legacy skill-only inputs without rewriting history', () => {
+    const content = [{ type: 'text', text: '[$design](/skills/design/SKILL.md) # Keep **text**' },
+      { type: 'skill', name: 'design', path: '/skills/design/SKILL.md' }];
+    expect(userMessageDisplayText(content)).toBe('$design # Keep **text**');
+    expect(content[0]?.text).toContain('[$design](/skills/design/SKILL.md)');
+    expect(userMessageDisplayText([{ type: 'skill', name: 'design', path: '/skills/design/SKILL.md' }])).toBe('$design');
+    expect(userMessageDisplayText([{ type: 'text',
+      text: '[$design](C:\\skills\\design (local)\\SKILL.md)' }])).toBe('$design');
+    expect(userMessageDisplayText([{ type: 'text', text: '[$literal](https://example.com) **keep**' }]))
+      .toBe('[$literal](https://example.com) **keep**');
+    const code = '`[$design](/skills/design/SKILL.md)`\n\n```\n[$design](/skills/design/SKILL.md)\n```';
+    expect(userMessageDisplayText([{ type: 'text', text: code }])).toBe(code);
+    const html = renderToStaticMarkup(createElement(ThreadTimeline, {
+      threadId: 'test', items: [{ type: 'userMessage', id: 'skill', content }],
+      loading: false, activeTurnId: null, turnTimings: {}, hasMoreHistory: false, loadingHistory: false,
+      onLoadEarlier: async () => {}
+    }));
+    expect(html).toContain('user-message-text');
+    expect(html).toContain('$design # Keep **text**');
+    expect(html).not.toContain('/skills/design');
   });
 });

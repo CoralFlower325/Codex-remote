@@ -2,6 +2,7 @@ import type { ChatTransport } from './chat-transport';
 import type { ThreadItem } from './types';
 import type { TurnTiming } from '../shared/turn-timing';
 import { userMessageText } from '../shared/user-message';
+import { withSkillMentions } from '../shared/skill-input';
 
 export type UserMessage = Extract<ThreadItem, { type: 'userMessage' }>;
 
@@ -24,7 +25,10 @@ export function editedMessageInput(item: UserMessage, text: string) {
   const boundary = /^\s*# (?:Files|Applications) mentioned by the user:[ \t]*\r?\n/.test(original)
     ? /^## My request:[ \t]*\r?\n/m.exec(original) : null;
   const prefix = boundary ? original.slice(0, boundary.index + boundary[0].length) : '';
-  return [...(text.trim() || prefix ? [{ type: 'text', text: prefix + text.trim(), text_elements: [] }] : []), ...inputs];
+  const skills = inputs.flatMap(part => part.type === 'skill' && part.name && part.path
+    ? [{ name: part.name, path: part.path }] : []);
+  const prompt = withSkillMentions(text, skills);
+  return [...(prompt || prefix ? [{ type: 'text', text: prefix + prompt, text_elements: [] }] : []), ...inputs];
 }
 
 export class MessageEditError extends Error {

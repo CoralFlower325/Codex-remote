@@ -111,7 +111,7 @@ export interface TimelineSection {
 
 export function buildTimelineSections(entries: TimelineEntry[], previous: TimelineSection[] = []): TimelineSection[] {
   const sections: TimelineSection[] = [];
-  const lastResponse = new Map<string, TimelineSection>();
+  const firstResponse = new Map<string, TimelineSection>();
   for (const entry of entries) {
     const item = entry.type === 'activity' ? entry.items[0]! : entry.item;
     const user = item.type === 'userMessage';
@@ -121,9 +121,9 @@ export function buildTimelineSections(entries: TimelineEntry[], previous: Timeli
       sections.push(section);
     }
     section.entries.push(entry);
-    if (!user && item.turnId) lastResponse.set(item.turnId, section);
+    if (!user && item.turnId && !firstResponse.has(item.turnId)) firstResponse.set(item.turnId, section);
   }
-  for (const section of lastResponse.values()) section.showTiming = true;
+  for (const section of firstResponse.values()) section.showTiming = true;
   // A page can begin inside a response. Keep its identity when its prefix arrives.
   const previousByItem = new Map<string, string>();
   for (const section of previous) {
@@ -145,4 +145,29 @@ export function buildTimelineSections(entries: TimelineEntry[], previous: Timeli
     return existing && existing.showTiming === section.showTiming && existing.entries.length === section.entries.length &&
       existing.entries.every((entry, index) => entry === section.entries[index]) ? existing : section;
   });
+}
+
+export function finalAnswerIndex(entries: TimelineEntry[]): number {
+  for (let index = entries.length - 1; index >= 0; index--) {
+    const entry = entries[index]!;
+    if (entry.type === 'message' && entry.item.type === 'agentMessage' &&
+      entry.item.phase !== 'commentary' && entry.item.phase !== 'partial_answer' &&
+      (!entry.item.questions?.length || entry.item.text.trim())) return index;
+  }
+  return -1;
+}
+
+export function timelineTurnResponses(sections: TimelineSection[]) {
+  const turns = new Map<string, { finalStartedAtMs: number | null; hasTrace: boolean; lastResponseKey: string }>();
+  for (const section of sections) {
+    if (section.user || !section.turnId) continue;
+    const turn = turns.get(section.turnId) ?? { finalStartedAtMs: null, hasTrace: false, lastResponseKey: section.key };
+    const finalIndex = finalAnswerIndex(section.entries);
+    const final = section.entries[finalIndex];
+    if (final?.type === 'message') turn.finalStartedAtMs = final.item.startedAtMs ?? null;
+    turn.hasTrace ||= (finalIndex < 0 ? section.entries.length : finalIndex) > 0;
+    turn.lastResponseKey = section.key;
+    turns.set(section.turnId, turn);
+  }
+  return turns;
 }

@@ -1,4 +1,5 @@
 import type { CollaborationMode, SkillInfo } from './types';
+import { withSkillMentions } from '../shared/skill-input';
 
 export const slashCommands = [
   { id: 'new', label: '新聊天', description: '开始一个新任务', aliases: ['clear'], needsThread: false, idleOnly: false },
@@ -71,8 +72,9 @@ export function collaborationMode(mode: 'default' | 'plan', model: string, effor
 }
 
 export function turnInput(text: string, images: Array<{ url: string }>, skills: SkillInfo[] = []) {
+  const prompt = withSkillMentions(text, skills);
   return [
-    ...(text.trim() ? [{ type: 'text', text: text.trim(), text_elements: [] }] : []),
+    ...(prompt ? [{ type: 'text', text: prompt, text_elements: [] }] : []),
     ...images.map(({ url }) => ({ type: 'image', url })),
     ...skills.map(({ name, path }) => ({ type: 'skill', name, path }))
   ];

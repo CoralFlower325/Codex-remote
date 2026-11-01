@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-10-31.
+Last reconciled: 2026-11-01.
 
 ## Authority
 
@@ -15,7 +15,15 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-Remote 0.2.6 adds authenticated web backend updates in Settings. The independent
+Remote 0.2.7 fixes skill-only input and same-turn work timing. Keep the native
+text mention together with skill input for sending, steering, queues, side chats
+and edits. Never rewrite persisted history to repair display. Work timing belongs
+to the first response in a native turn; its final-answer anchor and process
+expansion span all steering slices. Errors remain outside the fold at the last
+response. Run `node scripts/check-skill-timing.mjs` after building; see
+[acceptance and limits](skill-timing-acceptance.md).
+
+Authenticated web backend updates are available in Settings. The independent
 worker snapshots updater code and dependencies under output before replacing
 the live installation; Windows WMI / a separate macOS launchd job isolates it
 from service shutdown. Only the selected backend restarts. Keep the existing
@@ -98,86 +106,17 @@ all generations. Active WS/SSE/terminal peers check revocation on activity and a
 five-second idle intervals. External tunnels and Desktop remain independently
 owned. Install both the manager and host update for the security controls.
 
-The preceding 0.1.14 batch adds verified platform runtime assets and durable installation
-transactions. Standard updates use release-provided source baselines and production
-dependencies without Git/npm/build; customized inputs retain the source path.
-`runtime.yml` builds Windows x64 and Apple Silicon assets, validates the unpacked
-runtime and uploads the manifest/archive pair. Manager 0.1.14 must be installed
-separately to use the new updater. A flushed installation journal precedes service
-stop; startup recovery restores the original run state and retains dependency
-backups across repeated crashes. Recovery failure blocks mutations, preserving
-later source edits and damaged evidence. Read the bilingual manager guides.
+The [manager guide](desktop-manager.md) defines current installation discovery,
+owned service controls, windowless Windows tasks, external macOS tunnel limits,
+verified runtime packages, persistent installation recovery and Chinese progress.
+Keep cache isolation, stopped-state preservation, private data and later edits
+protected. Standard updates do not need Git/npm/build; customized installations
+retain the isolated source path. Manager packaging and
+[platform smoke acceptance](desktop-manager-acceptance.md) remain separate.
 
-The preceding 0.1.13 batch exposes Chinese update stages, completed-step percentages,
-elapsed times and bounded raw command output. Long steps do not fake progress.
-Transient downloads retry within finite limits; the original registry/proxy
-configuration remains authoritative. Preparation validates an actual offline
-install before stopping service. Installation retains old dependencies for
-network-independent recovery and uses the prepared cache offline.
-Reports distinguish preparation failure, recovered old versions and incomplete
-recovery; successful installs are not reported failed solely for cleanup errors.
-Release titles, headings and summaries use Chinese, preserving necessary names
-and identifiers. The manager executable updates separately from host files.
-
-The preceding 0.1.12 batch isolates npm caches for update preparation, installation and
-rollback, bypassing user-cache permission failures without modifying that cache.
-Install the new manager executable before retrying a host update. Desktop
-diagnostics distinguish endpoint/page/bridge readiness and clear on recovery;
-Start can leave Desktop pending, while updates require a previously healthy
-Desktop connection to recover. Ordinary Desktop launches need not expose 9229.
-GUI review also corrected hidden diagnostics in the smallest manager window,
-platform-specific log advice, lost operation errors and macOS activation after
-hiding. Smoke checks cover visible diagnostics, dismissal/recovery and Mac
-activation in addition to tray/menu-bar transitions.
-First-run discovery validates existing service registrations, nearby paths and
-common user folders without executing controls. A valid saved selection wins;
-one registered service can be selected automatically, while ambiguous unowned
-checkouts require the user's selection. Manual browsing remains available.
-
-The preceding 0.1.11 batch preserves conflicting local Markdown during manager updates,
-with incoming copies and a retention receipt, while continuing to reject source/
-configuration conflicts. Windows tasks run without persistent consoles and migrate
-on Start. External macOS tunnels stay externally owned; the manager separately
-checks public-origin health. Users blocked in a 0.1.10 manager must install the
-new manager executable before retrying. See the bilingual manager guide below.
-
-The preceding 0.1.10 functional batch adds an optional Windows/macOS desktop manager:
-tray/menu-bar residency, owned platform controls, layered local health and staged
-release updates with conflict detection, backups and recovery. See the bilingual
-[manager guide](desktop-manager.md). Electron dependencies are separately installed.
-Unsigned packaging and live Mac acceptance have separate boundaries.
-macOS installers target Apple Silicon only. The packaging workflow opens a
-synthetic Electron window on each supported OS; signed-in Mac acceptance remains
-separate. See [manager acceptance](desktop-manager-acceptance.md).
-
-The preceding 0.1.9 functional batch integrates PR #6's native question visibility,
-cross-turn pending forms, temporary-chat answers, sidebar badges and opt-in
-question notifications. Maintainer corrections preserve embedded message order
-and simultaneous approval indicators. See [the integration review](pr-6-review.md).
-
-The preceding 0.1.8 functional batch adds an on-demand native conversation summary panel
-and checks the loaded build before offering a confirmed update with release notes.
-Already current checks preserve the page. See [summary scope](native-summary-panel.md)
-and [the update investigation](manual-version-update.md). Functional batches now
-publish a matching GitHub Release, source commit and change summary.
-
-The preceding 0.1.7 functional batch integrates PR #5's phone conversation-index sheet
-refinements and independent sidebar spinner layer. Maintainer corrections scope
-the trigger background/focus changes to mobile and preserve the next patch
-version. Physical iOS animation smoothness is not confirmed. See
-[the integration review](pr-5-review.md).
-
-The preceding 0.1.6 functional batch integrates PR #4's plain sidebar title and removal
-of the help shortcut. The proposed further button shrinking was rejected:
-mobile remains 36px and desktop retains its existing sizes. See
-[the integration review](pr-4-review.md) for scope and verification.
-
-The preceding 0.1.5 functional batch integrates PR #3 after maintainer corrections:
-manual public-app updates, a standalone recovery entry and mobile-only control
-and sidebar-gesture refinements. See [the integration review](pr-3-review.md)
-for accepted changes, corrected regressions and desktop/mobile evidence.
-Prior native question forms, lazy execution details, 15-second chat/timing
-downloads, connection recovery and notification previews are retained.
+The [documentation index](README.md) links historical PR reviews and investigations.
+Use the current [guides](guide.md) for supported questions, approvals, summary
+panels and mobile controls; do not treat old release descriptions as new defaults.
 
 ## Next Work
 
@@ -189,7 +128,8 @@ do not create real model turns or notifications just to verify layout.
 Mobile composer controls intentionally use 36px sizing on small screens.
 Preserve desktop sizing and corners; mobile adaptation must not become a global
 style change. Main and side-chat controls must have matching mobile geometry.
-Only an actual manual update refreshes the page: main-chat text drafts persist, while
+Only a confirmed frontend update or successful backend update refreshes the page:
+main-chat text drafts persist, while
 temporary side chats, unsent images and skill selections are cleared.
 
 Outstanding acceptance:

@@ -52,11 +52,25 @@ describe('slash command routing', () => {
 
   it('builds native skill, text and image input for both new turns and steering', () => {
     expect(turnInput('  Inspect layout  ', [{ url: 'data:image/png;base64,example' }], [skills[0]!])).toEqual([
-      { type: 'text', text: 'Inspect layout', text_elements: [] },
+      { type: 'text', text: '[$design](/skills/design/SKILL.md) Inspect layout', text_elements: [] },
       { type: 'image', url: 'data:image/png;base64,example' },
       { type: 'skill', name: 'design', path: '/skills/design/SKILL.md' }
     ]);
-    expect(turnInput('', [], [skills[0]!])).toEqual([{ type: 'skill', name: 'design', path: '/skills/design/SKILL.md' }]);
+    expect(turnInput('', [], [skills[0]!])).toEqual([
+      { type: 'text', text: '[$design](/skills/design/SKILL.md)', text_elements: [] },
+      { type: 'skill', name: 'design', path: '/skills/design/SKILL.md' }
+    ]);
+  });
+
+  it('retains a visible native mention per selected skill without duplicating one already in the prompt', () => {
+    const prompt = '[$design](/skills/design/SKILL.md) Inspect both';
+    expect(turnInput(prompt, [], skills.slice(0, 2))).toEqual([
+      { type: 'text', text: `[$design](/plugins/design/SKILL.md) ${prompt}`, text_elements: [] },
+      { type: 'skill', name: 'design', path: '/skills/design/SKILL.md' },
+      { type: 'skill', name: 'design', path: '/plugins/design/SKILL.md' }
+    ]);
+    expect(turnInput('Plain **text**', [])).toEqual([{ type: 'text', text: 'Plain **text**', text_elements: [] }]);
+    expect(turnInput('', [{ url: 'image' }])).toEqual([{ type: 'image', url: 'image' }]);
   });
 
   it('uses native collaboration settings with the current provider model and reasoning level', () => {

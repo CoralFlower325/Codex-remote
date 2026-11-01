@@ -72,6 +72,12 @@ describe('independent temporary chat state', () => {
     expect(edited.slice(1)).toEqual(input.slice(1));
     expect(queuedDraft(edited)).toMatchObject({ text: 'changed', attachments: [{ url: 'data:image/png;base64,AA==' }],
       skills: [{ path: '/skills/skill' }] });
+    expect(edited[0]).toMatchObject({ text: '[$skill](/skills/skill) changed' });
+    const draft = queuedDraft(replaceQueuedText(input, ''));
+    expect(draft.text).toBe('');
+    expect(turnInput(draft.text, draft.attachments, draft.skills)).toEqual(replaceQueuedText(input, ''));
+    const repeated = queuedDraft(edited);
+    expect(turnInput(repeated.text, repeated.attachments, repeated.skills)).toEqual(edited);
   });
 
   it('renders an ephemeral reply supplied only inside the completed native turn', () => {
@@ -79,6 +85,14 @@ describe('independent temporary chat state', () => {
       turn: { id: 't', status: 'completed', items: [{ type: 'agentMessage', id: 'a', text: 'OK' }] } });
     expect(state.items).toMatchObject([{ id: 'a', type: 'agentMessage', turnId: 't', text: 'OK' }]);
     expect(state.activeTurnId).toBeNull();
+  });
+
+  it('restores multiple queued skill chips even when an existing mention changes their text order', () => {
+    const skills = [{ name: 'a', path: '/a/SKILL.md', description: '', enabled: true },
+      { name: 'b', path: '/b/SKILL.md', description: '', enabled: true }];
+    const draft = queuedDraft(turnInput('[$a](/a/SKILL.md) Request', [], skills));
+    expect(draft.text).toBe('Request');
+    expect(draft.skills.map(skill => skill.name)).toEqual(['a', 'b']);
   });
 
   it('retains native work anchors through side-chat item and turn completion', () => {

@@ -49,6 +49,15 @@ describe('editing interrupted input', () => {
     expect(calls[4]?.params).toEqual({ threadId: 'thread', model: 'model', input: editedMessageInput(item, 'Updated') });
     expect(reverted).toHaveBeenCalledOnce();
   });
+  it('preserves visible skill input when an interrupted message is edited down to a skill alone', () => {
+    const skill = { type: 'skill', name: 'design', path: '/skills/design/SKILL.md' };
+    const original: UserMessage = { ...item, content: [
+      { type: 'text', text: '[$design](/skills/design/SKILL.md) Original' }, skill
+    ] };
+    const expected = [{ type: 'text', text: '[$design](/skills/design/SKILL.md)', text_elements: [] }, skill];
+    expect(editedMessageInput(original, '')).toEqual(expected);
+    expect(editedMessageInput(original, '[$design](/skills/design/SKILL.md)')).toEqual(expected);
+  });
   it('blocks changed, running or replaced native turns before mutating anything', async () => {
     for (const turn of [{ ...stopped, status: 'inProgress' as const }, { ...stopped, id: 'newer' }]) {
       const { rpc, calls, request } = fixture();

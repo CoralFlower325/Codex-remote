@@ -2,6 +2,13 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.7', changes: [
+    '修复只选择技能直接发送时消息不可见的问题，提交原生技能引用文本与技能参数，保持 Remote 与 Desktop 的会话记录一致。',
+    '排队、引导、临时侧聊和停止后编辑共用技能输入规则，编辑空文字时保留技能，避免重复添加引用。',
+    '同一轮的已处理时长固定在第一段回复处，追加引导不移动、不重置计时；继续使用原生开始时间与最终答案开始时间。',
+    '完成后由同一用时入口展开整轮过程，保留引导消息、最终回复、子智能体入口与原生错误。',
+    '稳定管理器仍为 0.2.0，无功能变更；0.2.0AU 自更新开发与签名断点继续暂停。'
+  ] },
   { version: '0.2.6', changes: [
     '网页设置新增检查 Remote 更新，识别当前连接的 Windows 或 Apple Silicon 后端，发现新版时只显示版本号和更新按钮。',
     '支持从网页确认远程更新，复用运行包校验、文件冲突检查、备份与失败恢复，独立任务在后端重启期间继续运行。',

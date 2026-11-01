@@ -1,28 +1,28 @@
 # Codex Remote Guide
 
-Remote 0.2.5 preserves unsent image/skill drafts when switching chats, adds image
+Remote preserves unsent image/skill drafts when switching chats, provides image
 previews above the input, and releases obsolete history spacing on return toward
 latest. Draft images/skills remain in memory and clear on page reload.
 The top connection banner uses quiet monochrome `Reconnecting` / `Retry`.
 Per-turn runtime errors use Desktop-style compact rows and native retry/message
 formatting, without extra Remote headings or duplicated status labels.
 See [composer and spacing acceptance](composer-layout-acceptance.md).
-Remote 0.2.4 keeps late native events inside their owning turn and reconciles
+Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
 The stable manager is 0.2.0, supplied with Remote v0.2.2, and uses manual installer
 upgrades. Manager self-update is preserved on the paused 0.2.0AU development line;
 see [the checkpoint](manager-self-update-checkpoints.md).
 
-From 0.1.16, native runtime errors appear in their owning turns across main, side
+Native runtime errors appear in their owning turns across main, side
 and subagent chats. Original messages, available HTTP codes and native retry state
 are retained; Remote does not retry model submissions. See [runtime error scope](native-runtime-errors.md).
 
-Manager 0.1.15 adds connection diagnosis/owned-service repair and local password/
+The manager provides connection diagnosis/owned-service repair and local password/
 device administration. Public timeouts remain unconfirmed observations. Update
 both host and manager; see [the manager guide](desktop-manager.md) for scope.
 
-Manager 0.1.14+ prefers Windows x64 / Apple Silicon prebuilt runtimes. Standard
+The manager prefers Windows x64 / Apple Silicon prebuilt runtimes. Standard
 updates skip npm installation, tests and local compilation; Node.js 22.19+ is still
 required. Source customizations or unavailable baselines use isolated source builds.
 Reopening the manager recovers interrupted installs before other mutations. Failed
@@ -423,6 +423,10 @@ commands, output, paths, and available file diffs.
 
 Active replies show elapsed work time. Completed turns fold their earlier activity
 and progress under a duration disclosure, leaving the final reply visible.
+One work timer stays at the first response in each native turn. Additional
+steering messages neither move it nor reset its start; the same disclosure
+expands process records on both sides of steering messages. The final answer
+stays visible and the native final-answer start freezes work time across slices.
 Timing uses native turn timestamps and durations, including after reloading and
 loading older history. Missing timing is never estimated from page-load time.
 User requests and assistant responses have more space between them, while body
@@ -609,7 +613,13 @@ Type `/` at the start of the composer to browse commands and enabled skills. Fil
 | `/mcp` | Read native MCP server status, following all returned pages |
 | `/help` | Return to the command menu |
 
-Selecting a skill adds a removable attachment; enter the request and send it normally. Skill input also works when adding instructions to an active turn. Disabled skills are excluded, and `/skills` still exposes skills whose names overlap built-in commands.
+Selecting a skill adds a removable attachment; send it alone or add a request.
+Remote submits its native text mention together with the skill input so both
+Remote and Desktop retain a visible message. Queued input, steering, temporary
+side chats and stopped-message edits preserve this pair without adding duplicate
+mentions. Older skill-only records are projected for display without changing
+native history. Disabled skills are excluded, and `/skills` still exposes skills
+whose names overlap built-in commands.
 
 `/plan <request>` enables plan mode and leaves the request in the composer for review before sending. Plan settings use the selected provider model and reasoning level, and Desktop-origin mode updates are reflected in Remote. Compaction, review, and fork require a saved chat; they and mode changes are unavailable while a turn is active. Existing images remain attached when using settings commands.
 

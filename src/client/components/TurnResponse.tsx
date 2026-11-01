@@ -2,11 +2,12 @@ import { Check, ChevronRight, Copy, GitFork, MoreHorizontal, Pencil } from 'luci
 import { createPortal } from 'react-dom';
 import { memo, useEffect, useId, useMemo, useState } from 'react';
 import type { TimelineEntry, TimelineSection } from '../timeline-model';
+import { finalAnswerIndex } from '../timeline-model';
 import type { ThreadItem } from '../types';
 import { itemKey } from '../remote-state';
 import { elapsedTurnMs, formatWorkDuration, type TurnTiming } from '../../shared/turn-timing';
 import { hostNow } from '../host-clock';
-import { userMessageText } from '../../shared/user-message';
+import { userMessageDisplayText } from '../../shared/user-message';
 import { localImageSource } from '../markdown-media';
 import { copyText } from '../clipboard';
 import { ImagePreview } from './ImagePreview';
@@ -17,26 +18,26 @@ import { MarkdownText } from './MarkdownText';
 import { ActivityGroup, ActivityItem } from './TimelineActivity';
 import type { UserMessage } from '../message-edit';
 
-export const ResponseSection = memo(function ResponseSection({ section, timing, active, onInteract, onFork, onError }: {
+export const ResponseSection = memo(function ResponseSection({
+  section, timing, finalStartedAtMs, hasTrace, showError, open, onToggleTurn, active, onInteract, onFork, onError
+}: {
   section: TimelineSection;
   timing: TurnTiming | undefined;
+  finalStartedAtMs: number | null;
+  hasTrace: boolean;
+  showError: boolean;
+  open: boolean;
+  onToggleTurn: (turnId: string) => void;
   active: boolean;
   onInteract: () => void;
   onFork: ((turnId: string) => Promise<void>) | undefined;
   onError: ((error: unknown) => void) | undefined;
 }) {
-  const [open, setOpen] = useState(false);
   const bodyId = useId();
-  let finalIndex = -1;
-  section.entries.forEach((entry, index) => {
-    if (entry.type === 'message' && entry.item.type === 'agentMessage' &&
-      entry.item.phase !== 'commentary' && entry.item.phase !== 'partial_answer' &&
-      (!entry.item.questions?.length || entry.item.text.trim())) finalIndex = index;
-  });
+  const finalIndex = finalAnswerIndex(section.entries);
   const finalEntry = section.entries[finalIndex];
   const completed = !active && (timing ? timing.status !== 'inProgress'
     : finalEntry?.type === 'message' && finalEntry.item.completedAtMs != null);
-  const finalStartedAtMs = finalEntry?.type === 'message' ? finalEntry.item.startedAtMs ?? null : null;
   const agentItems = useMemo(() => section.entries.flatMap(entry =>
     entry.type === 'event' && isSubagentItem(entry.item) ? [entry.item] : []), [section.entries]);
   const firstAgentKey = section.entries.find(entry => entry.type === 'event' && isSubagentItem(entry.item))?.key;
@@ -51,9 +52,9 @@ export const ResponseSection = memo(function ResponseSection({ section, timing, 
       : <ActivityItem item={entry.item} running={false} key={entry.key} />
     : <MessageItem item={entry.item} key={entry.key} />;
   return <section className="turn-response" data-turn-id={section.turnId} data-scroll-anchor={`response-${section.key}`}>
-    {(timing || active && section.showTiming) && <div className="worked-divider">
-      {completed && trace.length > 0 ? <button type="button" className="turn-disclosure" aria-expanded={open} aria-controls={bodyId}
-        onClick={() => { onInteract(); setOpen(value => !value); }}>
+    {section.showTiming && (timing || active) && <div className="worked-divider">
+      {completed && hasTrace && section.turnId ? <button type="button" className="turn-disclosure" aria-expanded={open} aria-controls={bodyId}
+        onClick={() => { onInteract(); onToggleTurn(section.turnId!); }}>
         <TurnDuration timing={timing} active={false} finalStartedAtMs={finalStartedAtMs} />
         <ChevronRight size={13} className={open ? 'is-open' : ''} aria-hidden="true" />
       </button> : <TurnDuration timing={timing} active={active} finalStartedAtMs={finalStartedAtMs} />}
@@ -61,7 +62,7 @@ export const ResponseSection = memo(function ResponseSection({ section, timing, 
     {(!completed || open) && <div className="turn-activity" id={bodyId}>{trace.map(renderEntry)}</div>}
     {completed && agentItems.length > 0 && <SubagentRows items={agentItems} />}
     {answer.map(renderEntry)}
-    <NativeTurnError turn={timing} />
+    {showError && <NativeTurnError turn={timing} />}
     {!active && finalIndex >= 0 && <ReplyActions text={section.entries.slice(finalIndex).flatMap(entry =>
       entry.type === 'message' && entry.item.type === 'agentMessage' ? [entry.item.text] : []).join('\n\n')}
       turnId={section.turnId} onFork={onFork} onError={onError} />}
@@ -145,8 +146,7 @@ export const MessageItem = memo(function MessageItem({ item, showFull = false, o
 }) {
   const [expanded, setExpanded] = useState(false);
   if (item.type === 'userMessage') {
-    const text = (item.content ?? []).filter((entry) => entry.type === 'text')
-      .map((entry) => userMessageText(entry.text ?? '')).filter(Boolean).join('\n\n');
+    const text = userMessageDisplayText(item.content ?? []);
     const images = (item.content ?? []).filter((entry) => entry.type === 'image' || entry.type === 'localImage');
     const long = text.length > 900 && !showFull;
     return (

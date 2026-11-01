@@ -3,7 +3,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { HistoryThreadContext } from '../history-details';
 import { itemKey } from '../remote-state';
 import type { ThreadItem } from '../types';
-import { buildTimelineEntries, buildTimelineSections, type TimelineEntry, type TimelineSection } from '../timeline-model';
+import { buildTimelineEntries, buildTimelineSections, timelineTurnResponses, type TimelineEntry, type TimelineSection } from '../timeline-model';
 import type { TurnTiming } from '../../shared/turn-timing';
 import type { OutlineTurn } from '../../shared/thread-outline';
 import { ThreadNavigation, type NavigationTarget } from './ThreadNavigation';
@@ -98,6 +98,15 @@ export function ThreadTimeline({
   const entries = useMemo(() => buildTimelineEntries(items, activeTurnId,
     previousSectionsRef.current.flatMap(section => section.entries)), [items, activeTurnId]);
   const sections = useMemo(() => buildTimelineSections(entries, previousSectionsRef.current), [entries]);
+  const responses = useMemo(() => timelineTurnResponses(sections), [sections]);
+  const [expandedTurns, setExpandedTurns] = useState<Set<string>>(() => new Set());
+  const toggleTurn = useCallback((turnId: string) => {
+    setExpandedTurns(previous => {
+      const next = new Set(previous);
+      if (!next.delete(turnId)) next.add(turnId);
+      return next;
+    });
+  }, []);
   useLayoutEffect(() => { previousSectionsRef.current = sections; }, [sections]);
   const alignNavigationTarget = useCallback(() => {
     const stream = streamRef.current;
@@ -481,7 +490,11 @@ export function ThreadTimeline({
             !sections.slice(index + 1).some(other => other.turnId === section.turnId) &&
             <NativeTurnError turn={turnTimings[section.turnId]} />}
         </Fragment>
-        : <ResponseSection section={section} timing={section.showTiming && section.turnId ? turnTimings[section.turnId] : undefined}
+        : <ResponseSection section={section} timing={section.turnId ? turnTimings[section.turnId] : undefined}
+            finalStartedAtMs={responses.get(section.turnId ?? '')?.finalStartedAtMs ?? null}
+            hasTrace={responses.get(section.turnId ?? '')?.hasTrace ?? false}
+            showError={responses.get(section.turnId ?? '')?.lastResponseKey === section.key}
+            open={expandedTurns.has(section.turnId ?? '')} onToggleTurn={toggleTurn}
             active={section.turnId === activeTurnId} onInteract={preserveActivityPosition} key={section.key}
             onFork={onFork} onError={onActionError} />
       )}

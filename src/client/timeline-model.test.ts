@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildTimelineEntries, buildTimelineSections, isActivityIssue } from './timeline-model';
+import { buildTimelineEntries, buildTimelineSections, isActivityIssue, timelineTurnResponses } from './timeline-model';
+import { elapsedTurnMs } from '../shared/turn-timing';
 import type { ThreadItem } from './types';
 
 function command(id: string, status: 'inProgress' | 'completed' | 'failed' | 'declined' = 'completed'): ThreadItem {
@@ -141,7 +142,7 @@ describe('timeline model', () => {
     expect(entries.map(entry => entry.type)).toEqual(['activity', 'activity', 'message', 'activity']);
   });
 
-  it('keeps user steering visible and assigns a single duration to the last response slice', () => {
+  it('keeps user steering visible and assigns a single duration to the first response slice', () => {
     const sections = buildTimelineSections(buildTimelineEntries([
       { type: 'userMessage', id: 'u', content: [], turnId: 't' },
       { ...agent('progress'), phase: 'commentary', turnId: 't' },
@@ -150,9 +151,46 @@ describe('timeline model', () => {
       { ...agent('answer'), phase: 'final_answer', turnId: 't' }
     ]));
     expect(sections.map(section => [section.user, section.showTiming, section.entries.length]))
-      .toEqual([[true, false, 1], [false, false, 1], [true, false, 1], [false, true, 2]]);
+      .toEqual([[true, false, 1], [false, true, 1], [true, false, 1], [false, false, 2]]);
   });
 
+  it('keeps the original work clock and final-answer anchor across steering slices and other turns', () => {
+    const items: ThreadItem[] = [
+      { type: 'userMessage', id: 'u', content: [], turnId: 't', startedAtMs: 100_000 },
+      { ...agent('progress'), phase: 'commentary', turnId: 't' },
+      { type: 'userMessage', id: 'steer', content: [], turnId: 't', startedAtMs: 140_000 },
+      { ...command('c'), turnId: 't' },
+      { ...agent('answer'), phase: 'final_answer', turnId: 't', startedAtMs: 147_250, completedAtMs: 200_000 },
+      { type: 'userMessage', id: 'new-user', content: [], turnId: 'new' },
+      { ...agent('new-answer'), phase: 'final_answer', turnId: 'new', startedAtMs: 300_000 }
+    ];
+    const sections = buildTimelineSections(buildTimelineEntries(items));
+    const turns = timelineTurnResponses(sections);
+    expect(sections.filter(section => section.showTiming).map(section => section.turnId)).toEqual(['t', 'new']);
+    expect(sections[1]?.showTiming).toBe(true);
+    expect(turns.get('t')).toEqual({
+      finalStartedAtMs: 147_250, hasTrace: true, lastResponseKey: sections[3]!.key
+    });
+    const timing = { id: 't', status: 'inProgress' as const, startedAt: 100, completedAt: null, durationMs: null };
+    expect(elapsedTurnMs(timing, 999_000, turns.get('t')!.finalStartedAtMs)).toBe(47_250);
+    expect(elapsedTurnMs({ ...timing, status: 'completed', completedAt: 200 }, 999_000,
+      turns.get('t')!.finalStartedAtMs)).toBe(47_250);
+    expect(turns.get('new')?.finalStartedAtMs).toBe(300_000);
+  });
+
+  it('moves only timing ownership to the earlier native response when a partial turn is paged in', () => {
+    const tail: ThreadItem[] = [
+      { type: 'userMessage', id: 'steer', content: [], turnId: 't' },
+      { ...agent('answer'), phase: 'final_answer', turnId: 't', startedAtMs: 147_250 }
+    ];
+    const previous = buildTimelineSections(buildTimelineEntries(tail));
+    const next = buildTimelineSections(buildTimelineEntries([
+      { ...agent('progress'), phase: 'commentary', turnId: 't' }, ...tail
+    ]), previous);
+    expect(next.map(section => section.showTiming)).toEqual([true, false, false]);
+    expect(next[2]!.key).toBe(previous[1]!.key);
+    expect(timelineTurnResponses(next).get('t')?.finalStartedAtMs).toBe(147_250);
+  });
   it('retains a partial response and its open activity when earlier items arrive', () => {
     const tail: ThreadItem[] = [
       { ...command('second'), turnId: 't' }, { ...agent('answer'), turnId: 't' }

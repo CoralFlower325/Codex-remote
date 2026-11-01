@@ -61,6 +61,9 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   answer's native startedAtMs, before answer generation ends. Use saved turn
   completedAt when that anchor is unavailable, then durationMs as a fallback.
   Format narrow Chinese units with zero units omitted, matching Desktop.
+  Keep one work divider at the first response of a native turn. Steering never
+  moves or restarts it; share final-answer timing and process expansion across
+  that turn's response slices while leaving steering messages and errors visible.
   Running labels use host time calibrated by existing heartbeat round trips,
   not an uncorrected phone/browser clock. Recalibrate on reconnect.
   Refresh only the active time label once per second. Keep user/assistant gaps
@@ -139,90 +142,41 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   history is loaded; do not claim a complete unread steering-message index.
 - Start authentication status and authenticated bootstrap reads concurrently.
   Either verified server response can open the workspace; metadata must not
-  block entry. Bound both reads to six seconds, with capped retry backoff and
-  cancellation/restart on online/visibility recovery. A successful login POST
-  establishes identity without another status round trip. Preserve HTTP-only
-  authentication; local storage is never proof of access.
-  After verified login, store only a boolean returning-device hint to render
-  the empty Workspace before authentication finishes on repeat entry. Keep
-  useRemote unauthenticated until the server confirms access; do not create
-  sockets or start task reads from the hint. Preserve the mounted shell and
-  local UI state when verification succeeds or an unfinished check restarts.
-  Clear the hint and unmount private state on expiry/logout. Failed network
-  checks show a nonblocking retry banner in the returning shell. Never present
-  shell timing as faster authentication or chat readiness.
-  Apply HTTP task/model/project snapshots independently of socket readiness.
-  If bootstrap stalls for 1.5 seconds after authentication enables loading,
-  start the task read directly, never from the unauthenticated returning shell.
-  Page all tasks through authenticated /api/threads with native all-provider
-  cursors, independently of the socket. Cancel downloads and background-yield
-  waits on logout/unmount or archive-list changes. Share initial list loading across
-  bootstrap, timeout fallback and reconnect; late metadata must not replace
-  newer native results. Native model/project fallbacks wait at most 1.5 seconds
-  after socket readiness. Open chats with one native-backed HTTP
-  read-only request: start with 40 latest records without waiting for resume or
-  timings. If these lack a visible user message and final/legacy assistant
-  answer, follow at most two native 100-record pages, retaining the latest
-  items and remaining cursor. This bounded fill is separate from scroll paging.
-  Read timings independently; gate sending/queues on native metadata, timings,
-  resume and the socket. Older paging obtains missing initial timing cursors
-  and older timing pages through bounded authenticated HTTP, independently of
-  realtime RPC. A failed initial timing read must not hide the history sentinel.
-  Late initial timings must not rewind a cursor already advanced by paging.
-  Task first pages contain 50 rows, then 200 per native cursor. Share pending
-  native task reads across bootstrap/fallback, including bootstrap timeout.
-  Pause background task pages during the selected chat's foreground read.
-  Host snapshots keep task first pages and five chats with a two-second fresh
-  window and five-minute retention; native events/actions invalidate them.
-  Display stale data provisionally, then join a fresh read before using cursors.
-  After server authentication only, read the bounded private IndexedDB snapshot:
-  1000 task summaries, three chats of 40 items, 24 hours, 1 MiB total.
-  Persist text/finished activity only; exclude image bodies, reasoning, tool
-  output, diffs, permissions, running turns, ephemeral and subagent chats.
-  Logout/expired authentication clears it and blocks prior asynchronous saves.
-  Preserve newer native rows/live messages over every late snapshot; remove
-  obsolete snapshot rows during final native reconciliation.
-  Bound pooled HTTP reads to 15 seconds and surface expired authentication.
-  Task first attempts use four seconds, then retry independently of WebSocket
-  state at 0.5/1/2/4 seconds, capped at five seconds. Online/foreground recovery
-  replaces a first-page read stalled for two seconds only after a real offline
-  or hidden-page transition. Ordinary focus, redundant online and initial
-  sync.ready must not cancel a healthy pending task read. Old completions must not
-  clear replacement state. Bound shared native snapshot/metadata reads to eight
-  seconds so retries cannot remain attached to a 120-second native read.
-  Main-chat WebSocket attempts allow three seconds to connect and six seconds
-  for sync.ready. After 500ms still connecting, warm authenticated HTTP
-  EventSource in parallel; the first open transport wins and the unused
-  candidate closes. Before sync, selecting a route is not a lost live session.
-  On failure, use authenticated HTTP EventSource plus one-shot
-  POSTs, with 12-second transport/sync deadlines. Both transports share native
-  RPC handling, watched threads and the replay journal. Bind HTTP peers to the
-  verified cookie session; flush uncompressed no-store events. Never retry an
-  uncertain action POST. An isolated failed POST rejects only its matching RPC
-  or approval, preserving a healthy SSE stream; 401/409 or stream failure
-  invalidates the peer. Reads and pings bypass action acknowledgement waits.
-  Sync/watch controls have a separate ordered lane, with three safe attempts
-  at 0.5/1-second intervals; superseded watches stop. Never apply these retries
-  to model or approval actions. Remember successful HTTP use in tab-session storage
-  as a route preference only, never authentication. Foreground heartbeats run
-  every five seconds. After two seconds without a reply on a synchronized main
-  channel, verify a new HTTP peer with a ping before retiring the original.
-  A late original pong cancels the candidate. Handover uses normal sync/replay
-  and rejects pending actions without resending them. Heartbeat replies still
-  allow 12 seconds; pause probes in hidden pages and start fresh on foreground/pageshow.
-  Ordinary focus/pageshow must not shorten or reset handshake deadlines. Pause
-  unfinished handshakes while hidden and give the current stage its full budget
-  on actual foreground return. Redundant online events probe healthy channels
-  instead of destroying them.
-  Pongs do not count as sync readiness. Visible retry starts at 250ms and caps at
-  five seconds. Manual reconnect preserves the mounted workspace and drafts,
-  cancels stale task/history reads, and never repeats uncertain model actions.
-  Preload the Workspace module from the shell. Return the installed version's
-  cached public shell immediately, keeping its modules and document together;
-  install newer versions through the service-worker update lifecycle. Never
-  overwrite the installed shell with a different network version.
-  Local User Timing marks remote:shell/auth/bootstrap/tasks/chat/connected contain
-  timings only; do not export private content or add background telemetry.
+  block entry. Preserve six-second deadlines, bounded recovery and HTTP-only
+  identity. Login success needs no extra status round trip. The returning-device
+  boolean may show an empty shell but never authorize sockets, reads or sending.
+  Expiry/logout unmount private state and clear the hint; network failure keeps
+  the returning shell with a retry banner. Preserve mounted drafts across recovery.
+  HTTP task/model/project reads work before socket readiness. Share bootstrap,
+  fallback and reconnect reads; apply late metadata without rewinding live rows.
+  Chat opening starts with 40 items and at most two 100-item fill pages; timing
+  reads run separately. Gate sends/queues on native metadata, timings and resume.
+  Older paging must survive a failed initial timing read without rewinding cursors.
+  Preserve the documented page sizes, bounded retries, timeouts, cancellation,
+  foreground priority and snapshot freshness in
+  [Loading and networks](docs/guide.md#loading-and-mobile-networks).
+  Never cancel a healthy task read on routine focus, online or initial sync.ready.
+  Private IndexedDB snapshots require verified authentication: 1000 task rows,
+  three chats of 40 items, 24 hours and 1 MiB total. Save only finished text/
+  activity, excluding images, reasoning, output, diffs, permissions, running,
+  ephemeral and subagent chats. Logout clears them and blocks late saves.
+  WebSocket and authenticated SSE share native RPC, watch ownership and replay.
+  Race the HTTP candidate after 500ms; close the unused route. Preserve the
+  existing handshake budgets and pause unfinished attempts while hidden.
+  HTTP peers bind to the verified cookie; events stay uncompressed and no-store.
+  Never retry uncertain action POSTs. Isolated POST failure rejects its own RPC;
+  401/409 or stream failure invalidates the peer. Reads/pings bypass action waits.
+  Only sync/watch controls have safe ordered retries; never model/approval actions.
+  HTTP route preference is not authentication. Five-second foreground heartbeats
+  retain the 12-second reply deadline; after two seconds without a pong, verify
+  a new HTTP peer before handover. A late original pong cancels the candidate.
+  Handover rejects uncertain actions without replay. Redundant focus/online
+  probes healthy connections without resetting deadlines; pongs are not sync.ready.
+  Manual reconnect preserves the workspace, drafts and reading state while
+  cancelling stale reads. Preload Workspace; serve the installed public shell
+  immediately with its matching modules and install newer shells through SW.
+  Local remote:shell/auth/bootstrap/tasks/chat/connected marks contain timings
+  only; never export private content or add background telemetry.
 - Abort abandoned HTTP history and permission reads when their selection changes;
   coalesce identical pending reads. Bootstrap and WebSocket share model/project
   lookups, with a five-second completed-result handoff. Invalidate on project
@@ -248,6 +202,9 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   does not undo executed file changes.
 - Composer slash commands use native RPC actions, not text prompts. Skills come
   from `skills/list` for the current directory and submit as native skill input.
+  Include the native `[$name](path)` text mention as well, including skill-only
+  sends, queues, steering, side chats and edits; do not duplicate existing mentions.
+  Display legacy skill-only inputs without rewriting persisted history.
   Keep collaboration mode synchronized through resume/settings notifications.
   Keep main-chat image/skill drafts in workspace memory per chat, including
   pending file reads/sends across navigation. Persist text only; reload discards
