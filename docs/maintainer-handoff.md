@@ -15,7 +15,7 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-Remote 0.2.13 pairs with stable manager 0.2.1, unchanged in this batch.
+Remote 0.2.14 pairs with stable manager 0.2.1, unchanged in this batch.
 New main-chat selections wait for fresh native text/timings instead of flashing
 old memory/device/host previews; caches are failure fallback. Fresh host reads
 bypass clean two-second reuse while sharing pending reads. Reconcile after

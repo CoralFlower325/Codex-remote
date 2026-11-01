@@ -176,3 +176,43 @@ kbd {
   grid-template-columns: var(--sidebar-collapsed) minmax(0, 1fr);
 }
 
+/* Keep transient surfaces spatially connected to the control that opened them. */
+@keyframes ui-popover-in {
+  from { opacity: 0; transform: translateY(-4px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ui-dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ui-drawer-in {
+  from { opacity: .6; transform: translateX(18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes ui-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.task-menu,
+.account-menu,
+.summary-menu,
+.queue-menu,
+.slash-menu {
+  animation: ui-popover-in 160ms cubic-bezier(.2, .8, .2, 1) both;
+  transform-origin: top right;
+  will-change: opacity, transform;
+}
+
+dialog[open] {
+  animation: ui-dialog-in 180ms cubic-bezier(.2, .8, .2, 1) both;
+  will-change: opacity, transform;
+}
+
+dialog[open]::backdrop {
+  animation: ui-backdrop-in 180ms ease-out both;
+}
+

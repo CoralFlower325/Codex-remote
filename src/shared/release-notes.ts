@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.14', changes: [
+    '修复进入会话后正文已经到达却因订阅重连和轮次时间读取反复闪动的问题，正文先稳定显示，附属时间信息后台补齐。',
+    '模型、权限、项目、推理菜单增加从触发按钮方向展开的进入和退出动效，移动端底部菜单与遮罩同步过渡。',
+    '统一任务菜单、账户菜单、斜杠菜单、待发消息菜单、摘要菜单、检查器和对话框的轻量进入动效，保留键盘焦点与 Escape 关闭行为。',
+    '正式管理器保持 0.2.1，无变更。'
+  ] },
   { version: '0.2.13', changes: [
     '进入主会话时优先读取最新原生记录，旧缓存仅在读取失败时回退显示，避免先闪现之前轮次。',
     '恢复会话订阅后再次核对最新内容，保留刷新期间的新补读请求；返回前台时独立核对当前会话。',

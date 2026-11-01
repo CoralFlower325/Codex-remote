@@ -967,6 +967,7 @@
   z-index: calc(var(--z-inspector) - 1);
   border: 0;
   background: rgb(15 23 42 / 0.18);
+  animation: ui-backdrop-in 180ms ease-out both;
 }
 
 .inspector {
@@ -983,6 +984,8 @@
   border-left: 1px solid var(--line);
   border-radius: 0;
   background: var(--surface);
+  animation: ui-drawer-in 180ms cubic-bezier(.2, .8, .2, 1) both;
+  will-change: opacity, transform;
 }
 
 .inspector[hidden],

@@ -216,6 +216,28 @@
   background: var(--surface);
   box-shadow: 0 4px 8px rgb(0 0 0 / 0.08);
   padding: 5px;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  will-change: opacity, transform;
+}
+
+.composer-popover--enter {
+  animation: composer-popover-in 180ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.composer-popover--exit {
+  animation: composer-popover-out 135ms cubic-bezier(.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+@keyframes composer-popover-in {
+  from { opacity: 0; transform: translateY(5px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes composer-popover-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(3px) scale(.99); }
 }
 
 .popover-heading {

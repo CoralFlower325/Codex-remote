@@ -77,6 +77,8 @@ export function Composer({
   const [slashIndex, setSlashIndex] = useState(0);
   const [listening, setListening] = useState(false);
   const [menu, setMenu] = useState<'settings' | 'models' | 'permissions' | 'projects' | null>(null);
+  const [renderedMenu, setRenderedMenu] = useState<typeof menu>(null);
+  const [popoverPhase, setPopoverPhase] = useState<'enter' | 'idle' | 'exit'>('enter');
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties>({});
   const draftRef = useRef(draft);
   const inserted = useRef<number | null>(null);
@@ -99,7 +101,8 @@ export function Composer({
     ? Math.min(100, Math.max(0, usedTokens / contextWindow * 100)) : null;
   const modelInfo = models.find((entry) => entry.model === model);
   const effortOptions = useMemo(() => reasoningOptionsForModel(modelInfo), [modelInfo]);
-  const menuLabel = menu === 'permissions' ? '访问权限' : menu === 'models' ? '模型' : menu === 'projects' ? '项目' : '推理强度';
+  const activeMenu = renderedMenu ?? menu;
+  const menuLabel = activeMenu === 'permissions' ? '访问权限' : activeMenu === 'models' ? '模型' : activeMenu === 'projects' ? '项目' : '推理强度';
   draftRef.current = draft;
   const slashQuery = parseSlashQuery(draft);
   const slashOpen = focused && Boolean(slashQuery) && !slashDismissed && !menu && !sending && !disabled;
@@ -108,6 +111,22 @@ export function Composer({
     hasThread: hasSavedThread, running: Boolean(activeTurnId), skillsOnly
   }), [slashQuery?.name, slashQuery?.argument, skills, hasSavedThread, activeTurnId, skillsOnly]);
   const slashId = `slash-${controlId}`;
+
+  useEffect(() => {
+    if (menu) {
+      setRenderedMenu(menu);
+      setPopoverPhase('enter');
+      const timer = window.setTimeout(() => setPopoverPhase('idle'), 180);
+      return () => window.clearTimeout(timer);
+    }
+    if (!renderedMenu) return;
+    setPopoverPhase('exit');
+    const timer = window.setTimeout(() => {
+      setRenderedMenu(null);
+      setPopoverPhase('enter');
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [menu]);
 
   const updateDraft = (text: string) => {
     draftRef.current = text;
@@ -246,7 +265,7 @@ export function Composer({
   }, [focusRequest]);
 
   const closeMenu = () => {
-    const trigger = menu === 'permissions' ? permissionButtonRef.current : menu === 'projects' ? projectButtonRef.current : settingsButtonRef.current;
+    const trigger = activeMenu === 'permissions' ? permissionButtonRef.current : activeMenu === 'projects' ? projectButtonRef.current : settingsButtonRef.current;
     setMenu(null);
     trigger?.focus({ preventScroll: true });
   };
@@ -280,7 +299,8 @@ export function Composer({
         setPopoverStyle({
           position: 'fixed', left: 8, right: 8, width: 'auto',
           bottom: window.innerHeight - top + 8,
-          maxHeight: Math.min(window.innerHeight * .55, top - 16)
+          maxHeight: Math.min(window.innerHeight * .55, top - 16),
+          transformOrigin: '50% 100%'
         });
         return;
       }
@@ -294,7 +314,8 @@ export function Composer({
         left: Math.max(12, Math.min(alignStart ? rect.left : rect.right - width, window.innerWidth - width - 12)),
         width,
         bottom: window.innerHeight - rect.top + 8,
-        maxHeight: Math.max(120, rect.top - 20)
+        maxHeight: Math.max(120, rect.top - 20),
+        transformOrigin: alignStart ? 'left bottom' : 'right bottom'
       });
     };
     updatePosition();
@@ -308,7 +329,7 @@ export function Composer({
       cancelAnimationFrame(frame);
       window.removeEventListener('resize', updatePosition);
     };
-  }, [layout, menu]);
+  }, [activeMenu, layout]);
 
   const changeSetting = async (action: () => void | Promise<void>) => {
     if (changing) return;
@@ -421,12 +442,12 @@ export function Composer({
       {slashOpen && <SlashMenu id={slashId} options={options} index={slashIndex} skillsOnly={skillsOnly}
         loading={skillsLoading} error={skillsError} anchor={composerRef}
         onSelect={(option) => void chooseSlash(option)} onIndex={setSlashIndex} onClose={() => setSlashDismissed(true)} />}
-      {menu && createPortal(
+      {renderedMenu && createPortal(
         <>
-          <button type="button" className={`composer-menu-dismiss${layout === 'mobile' ? ' composer-popover-backdrop' : ''}`}
+          <button type="button" className={`composer-menu-dismiss${layout === 'mobile' ? ' composer-popover-backdrop' : ''}${popoverPhase === 'exit' ? ' is-exiting' : ''}`}
             aria-label="关闭菜单" onClick={closeMenu} tabIndex={-1} />
           <div ref={popoverRef}
-            className={`composer-popover${layout === 'mobile' ? ' composer-popover--mobile' : ''}`}
+            className={`composer-popover${layout === 'mobile' ? ' composer-popover--mobile' : ''} composer-popover--${popoverPhase}`}
             style={popoverStyle} role="menu"
             aria-label={menuLabel}
             onKeyDown={(event) => {
@@ -451,7 +472,7 @@ export function Composer({
             }}
           >
             <div className="popover-heading">
-              {menu === 'models' && (
+              {activeMenu === 'models' && (
                 <button type="button" className="icon-button icon-button--small" aria-label="返回推理强度"
                   title="返回推理强度" onClick={() => setMenu('settings')}><ArrowLeft size={15} /></button>
               )}
@@ -459,7 +480,7 @@ export function Composer({
               {layout === 'mobile' && <button type="button" className="icon-button" aria-label="关闭菜单" onClick={closeMenu}><X size={18} /></button>}
             </div>
             <div className="model-list">
-              {menu === 'projects' ? (
+              {activeMenu === 'projects' ? (
                 <>
                   <button type="button" role="menuitemradio" className="model-option project-option"
                     aria-checked={!selectedProjectId} onClick={() => void changeSetting(() => onProjectChange?.(''))}>
@@ -473,14 +494,14 @@ export function Composer({
                     </button>
                   ))}
                 </>
-              ) : menu === 'permissions' ? permissionProfiles.map((profile) => (
+              ) : activeMenu === 'permissions' ? permissionProfiles.map((profile) => (
                 <button type="button" role="menuitemradio" className="model-option" key={profile.id}
                   aria-checked={permissions === profile.id} disabled={changing || profile.allowed === false}
                   onClick={() => void changeSetting(() => onPermissionsChange(profile.id))}>
                   <span>{permissionLabel(profile.id)}</span>
                   {permissions === profile.id && <Check size={15} aria-hidden="true" />}
                 </button>
-              )) : menu === 'models' ? models.map((entry) => (
+              )) : activeMenu === 'models' ? models.map((entry) => (
                 <button type="button" role="menuitemradio" className="model-option" key={entry.id}
                   aria-checked={entry.model === model} title={entry.displayName} disabled={changing}
                   onClick={() => void changeSetting(() => onModelChange(entry.model))}>
@@ -496,7 +517,7 @@ export function Composer({
                 </button>
               ))}
             </div>
-            {menu === 'settings' && (
+            {activeMenu === 'settings' && (
               <button type="button" role="menuitem" className="model-submenu-button" onClick={() => setMenu('models')}>
                 <span>模型</span><span className="model-submenu-value">{modelDisplayName(models, model)}</span><ChevronRight size={15} />
               </button>

@@ -556,7 +556,9 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         setThreadReady(true);
         // The initial read can finish before the native subscription is attached.
         if (!viewingHistoryRef.current) {
-          setHistorySnapshot('loading');
+          // The initial native page is already the stable visual baseline. Rejoining
+          // the live subscription must not make the whole conversation look stale
+          // again while the silent reconciliation runs in the background.
           void openThread(verifiedThreadId, { silent: true, preserveHistory: true }).catch(() => undefined);
         }
         if (resumeError) setLastError(current => current === resumeError
@@ -1845,7 +1847,9 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     questionCounts,
     loadingThread,
     historySnapshot,
-    threadReady: threadReady && timedThreadId === activeThreadId && verifiedThreadId === activeThreadId,
+    // Timings are ancillary metadata. They can arrive after the conversation page
+    // and must not keep the composer or the visible timeline in a loading state.
+    threadReady: threadReady && verifiedThreadId === activeThreadId,
     showArchived,
     lastError,
     messageEditPending,

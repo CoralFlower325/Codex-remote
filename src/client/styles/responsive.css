@@ -151,6 +151,12 @@
   z-index: calc(var(--z-popover) - 1);
   border: 0;
   background: rgb(15 23 42 / 0.22);
+  opacity: 1;
+  transition: opacity 180ms ease-out;
+}
+
+.composer-popover-backdrop.is-exiting {
+  opacity: 0;
 }
 
 .composer-popover--mobile {
