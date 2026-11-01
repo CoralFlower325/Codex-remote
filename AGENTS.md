@@ -113,8 +113,14 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   the owning chat's cwd, retain native line suffixes, and keep preview content
   out of public caches. HTML runs without same-origin privileges; its short-lived
   resource grant is read-only and confined to the document's directory.
-  Never expose the Remote session to generated HTML. Binary Office formats are
-  downloads; HTML preview does not build source projects.
+  Never expose the Remote session to generated HTML. Resolve HTML grant resources
+  against their real directory and reject symlink/junction escapes.
+  Office previews use optional host LibreOffice conversion to temporary PDF,
+  with isolated profiles, macros/active content/link updates disabled, bounded
+  input/output, queue and owned-process timeouts. This is not an OS sandbox.
+  Keep original downloads and actionable missing-converter errors. Do not upload
+  documents to external viewers or persist converted content in public caches.
+  HTML preview does not build source projects.
   Load only active previews and release hidden document renderers. Surface
   local HTML HTTP failures before iframe rendering; renew grants on reopening.
   Bound metadata/HTML reads to 15 seconds and isolate lazy-module failures.

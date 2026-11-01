@@ -30,6 +30,30 @@ function subscription(id = 'device') {
   };
 }
 
+async function routerFixture(notifications: PushNotifications) {
+  const app = express();
+  app.use(express.json());
+  app.use('/api/notifications', notifications.router());
+  const server = http.createServer(app);
+  servers.push(server);
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/notifications`;
+  return (route: string, body: unknown, method = 'POST') => new Promise<Response>((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const req = http.request(`${base}${route}`, { method, headers: {
+      'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload)
+    } }, response => {
+      const chunks: Buffer[] = [];
+      response.on('data', chunk => chunks.push(Buffer.from(chunk)));
+      response.on('error', reject);
+      response.on('end', () => resolve(new Response(Buffer.concat(chunks), { status: response.statusCode })));
+    });
+    req.on('error', reject);
+    req.end(payload);
+  });
+}
+
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -38,6 +62,89 @@ afterEach(async () => {
 });
 
 describe('private standard Web Push subscriptions', () => {
+  it('isolates corrupt private state and preserves the original without generating replacement keys', async () => {
+    const { directory } = create();
+    const file = path.join(directory, 'web-push.json');
+    const original = '{"keys":';
+    fs.writeFileSync(file, original, 'utf8');
+    const device = subscription();
+    const generate = vi.spyOn(webPush, 'generateVAPIDKeys');
+    const damaged = new PushNotifications(directory, 'https://remote.example.test');
+    expect(generate).not.toHaveBeenCalled();
+    expect(() => damaged.watch('main')).not.toThrow();
+    expect(damaged.subscribe(device)).toBe(false);
+    const request = await routerFixture(damaged);
+    expect((await request('/status', { endpoint: device.endpoint })).status).toBe(503);
+    expect((await request('/subscription', { subscription: device })).status).toBe(503);
+    expect(generate).not.toHaveBeenCalled();
+    expect(fs.readFileSync(file, 'utf8')).toBe(original);
+  });
+  it('keeps failed revocation paused and returns 503 until retry durably removes the subscription', async () => {
+    const send = vi.spyOn(webPush, 'sendNotification').mockResolvedValue(sent);
+    const { directory, notifications } = create();
+    const device = subscription();
+    notifications.subscribe(device);
+    notifications.watch('main');
+    const key = notifications.publicKey;
+    const file = path.join(directory, 'web-push.json');
+    const original = fs.readFileSync(file, 'utf8');
+    const rename = fs.renameSync;
+    let failing = true;
+    vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (to === file && failing) throw Object.assign(new Error('Synthetic disk full'), { code: 'ENOSPC' });
+      rename(from, to);
+    });
+    const request = await routerFixture(notifications);
+    expect((await request('/subscription', { endpoint: device.endpoint }, 'DELETE')).status).toBe(503);
+    expect(notifications.status(device.endpoint)).toBe(false);
+    expect(fs.readFileSync(file, 'utf8')).toBe(original);
+    await notifications.notifyTurn({ threadId: 'main', turn: { id: 'turn', status: 'completed' } });
+    expect(await notifications.test(device.endpoint)).toBe('missing');
+    expect(send).not.toHaveBeenCalled();
+    expect((await request('/subscription', { endpoint: device.endpoint }, 'DELETE')).status).toBe(503);
+    expect((await request('/status', { endpoint: device.endpoint })).status).toBe(503);
+    expect(fs.readFileSync(file, 'utf8')).toBe(original);
+
+    failing = false;
+    expect((await request('/subscription', { endpoint: device.endpoint }, 'DELETE')).status).toBe(200);
+    const restarted = new PushNotifications(directory, 'https://remote.example.test');
+    expect(restarted.status(device.endpoint)).toBe(false);
+    expect(restarted.publicKey).toBe(key);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).subscriptions).toEqual([]);
+  });
+  it('rolls back a failed subscription and preserves existing devices when storage recovers', async () => {
+    const send = vi.spyOn(webPush, 'sendNotification').mockResolvedValue(sent);
+    const { directory, notifications } = create();
+    const existing = subscription('existing'), added = subscription('added');
+    notifications.subscribe(existing);
+    notifications.watch('main');
+    const file = path.join(directory, 'web-push.json');
+    const original = fs.readFileSync(file, 'utf8');
+    const rename = fs.renameSync;
+    let failing = true;
+    vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (to === file && failing) throw Object.assign(new Error('Synthetic disk full'), { code: 'ENOSPC' });
+      rename(from, to);
+    });
+    const request = await routerFixture(notifications);
+    expect((await request('/subscription', { subscription: added })).status).toBe(503);
+    expect((await request('/subscription', { subscription: added })).status).toBe(503);
+    expect(notifications.status(added.endpoint)).toBe(false);
+    expect(await notifications.test(existing.endpoint)).toBe('failed');
+    await notifications.notifyTurn({ threadId: 'main', turn: { id: 'turn', status: 'completed' } });
+    expect(send).not.toHaveBeenCalled();
+    expect(fs.readFileSync(file, 'utf8')).toBe(original);
+
+    failing = false;
+    const recovered = await request('/status', { endpoint: added.endpoint });
+    expect(recovered.status).toBe(200);
+    expect(await recovered.json()).toEqual({ enabled: false });
+    const restarted = new PushNotifications(directory, 'https://remote.example.test');
+    expect(restarted.status(added.endpoint)).toBe(false);
+    expect(restarted.status(existing.endpoint)).toBe(true);
+    expect((await request('/subscription', { subscription: added })).status).toBe(200);
+    expect(new PushNotifications(directory, 'https://remote.example.test').status(added.endpoint)).toBe(true);
+  });
   it('persists stable VAPID keys, subscriptions and ordinary-chat scope across restarts', async () => {
     const generate = vi.spyOn(webPush, 'generateVAPIDKeys');
     const send = vi.spyOn(webPush, 'sendNotification').mockResolvedValue(sent);

@@ -293,7 +293,8 @@ cp .env.example .env
 | `CODEX_HOME` | `~/.codex` | Codex state and configuration directory |
 | `CODEX_WORKDIR` | Home directory | Default working directory |
 | `CODEX_DESKTOP_DEBUG_PORT` | `9229` | Local Desktop debug endpoint |
-| `TRUST_PROXY` | `1` | Trust forwarding headers behind the intended local proxy |
+| `TRUST_PROXY` | `1` | Trust loopback proxies only; `0` disables trust; otherwise comma-separated trusted IPs/CIDRs |
+| `LIBREOFFICE_PATH` | Standard install detection | Optional host LibreOffice executable for Office previews |
 | `SESSION_DAYS` | `30` | Browser session lifetime |
 
 Keep `HOST` on loopback when using a local tunnel or reverse proxy. The Windows tunnel helper assumes port `4545` unless you pass its `-LocalUrl` parameter.
@@ -534,8 +535,27 @@ Native `codex-file-citation` references in assistant replies appear as compact
 blue filename links and open the same inspector. Literal examples in code and
 user messages remain unchanged.
 Images and PDFs open in the same panel. PDF rendering is loaded on demand and
-provides page navigation, zoom and page-text copying. Office and other
-binary files currently offer downloads rather than document rendering.
+provides page navigation, zoom and page-text copying. Word (`doc`, `docx`, `odt`,
+`rtf`), Excel (`xls`, `xlsx`, `ods`) and PowerPoint (`ppt`, `pptx`, `odp`) use the
+same page controls through host-side LibreOffice conversion to PDF. Install
+LibreOffice separately on the Remote host; standard Windows, macOS and Linux
+locations are detected, or set `LIBREOFFICE_PATH` to its executable and restart
+Remote. Runtime packages do not bundle LibreOffice. Missing converters,
+encrypted/damaged documents and conversion failures show a retryable error;
+the original file remains downloadable.
+
+Conversion copies the input into a private temporary directory with a fresh
+profile and disables macros, active OLE/DDE content and automatic document-link
+updates. It does not upload the document to an online viewer. It is not an OS
+sandbox: only preview files you trust. Original files are never rewritten.
+Input and rendered PDF are each limited to 32 MiB; one conversion runs at a time,
+with at most three distinct pending files and a 45-second process budget per
+file. The client allows 150 seconds including queueing. Hiding a preview releases
+the browser renderer; already queued host conversions can still finish.
+Temporary files are removed after conversion and converted PDFs are not cached
+after the in-flight readers finish. Pagination, fonts, formulas and slides may
+differ from Microsoft Office; previews do not replace editing or original-file
+inspection. Other binary formats remain downloads.
 
 Local HTML runs in an isolated iframe, including relative CSS, images, scripts,
 and modules within its directory. Its resource URL grants read access to that

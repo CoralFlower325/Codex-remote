@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Router } from 'express';
+import { Router, type ErrorRequestHandler } from 'express';
 import webPush from 'web-push';
 import { asyncQuestions, questionItemId } from '../shared/async-user-input.js';
 import type { PushSubscription, VapidKeys } from 'web-push';
@@ -82,18 +82,43 @@ export class PushNotifications {
   private readonly state: PushState;
   private readonly subscriptions: Map<string, PushSubscription>;
   private readonly watchedThreads: Set<string>;
+  private unavailable = false;
+  private persistenceFailed = false;
 
   constructor(dataDir: string, private readonly subject: string, private readonly readThread?: ThreadReader) {
     this.file = path.join(dataDir, 'web-push.json');
-    fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
-    if (fs.existsSync(this.file)) {
-      this.state = JSON.parse(fs.readFileSync(this.file, 'utf8')) as PushState;
-    } else {
-      this.state = { keys: webPush.generateVAPIDKeys(), subscriptions: [], watchedThreads: [] };
+    let state: PushState = { keys: { publicKey: '', privateKey: '' }, subscriptions: [], watchedThreads: [] };
+    let fresh = false;
+    try {
+      fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+      if (fs.existsSync(this.file)) {
+        if (fs.statSync(this.file).size > 16 * 1024 * 1024) throw new Error('Push state too large');
+        const stored = JSON.parse(fs.readFileSync(this.file, 'utf8')) as PushState;
+        if (!stored?.keys || typeof stored.keys.publicKey !== 'string' || typeof stored.keys.privateKey !== 'string' ||
+          Buffer.from(stored.keys.publicKey, 'base64url').length !== 65 ||
+          Buffer.from(stored.keys.privateKey, 'base64url').length !== 32 ||
+          !Array.isArray(stored.subscriptions) || !stored.subscriptions.every(entry => subscriptionValue(entry)) ||
+          !Array.isArray(stored.watchedThreads) ||
+          !stored.watchedThreads.every(entry => typeof entry === 'string' && entry.length > 0 && entry.length <= 1024)) {
+          throw new Error('Invalid push state');
+        }
+        state = stored;
+      } else {
+        state = { keys: webPush.generateVAPIDKeys(), subscriptions: [], watchedThreads: [] };
+        fresh = true;
+      }
+    } catch { this.disable(); }
+    this.state = state;
+    this.subscriptions = new Map(state.subscriptions.map(subscription => [subscription.endpoint, subscription]));
+    this.watchedThreads = new Set(state.watchedThreads);
+    if (fresh) {
+      try { this.save(); } catch { /* Retry persistence on the next explicit request. */ }
     }
-    this.subscriptions = new Map(this.state.subscriptions.map(subscription => [subscription.endpoint, subscription]));
-    this.watchedThreads = new Set(this.state.watchedThreads);
-    if (!fs.existsSync(this.file)) this.save();
+  }
+
+  private disable(): void {
+    this.unavailable = true;
+    console.warn('[push] Notifications unavailable; private state was preserved. Check storage and restart after repair.');
   }
 
   get publicKey(): string {
@@ -104,31 +129,47 @@ export class PushNotifications {
     this.state.subscriptions = [...this.subscriptions.values()];
     this.state.watchedThreads = [...this.watchedThreads];
     const temporary = `${this.file}.${process.pid}.tmp`;
-    fs.writeFileSync(temporary, `${JSON.stringify(this.state, null, 2)}\n`, { mode: 0o600 });
-    fs.renameSync(temporary, this.file);
+    try {
+      fs.writeFileSync(temporary, `${JSON.stringify(this.state, null, 2)}\n`, { mode: 0o600 });
+      fs.renameSync(temporary, this.file);
+      this.persistenceFailed = false;
+    } catch (error) {
+      this.persistenceFailed = true;
+      console.warn('[push] Notification persistence failed; delivery is paused until storage recovers.');
+      throw error;
+    }
   }
 
   subscribe(value: unknown): boolean {
+    if (this.unavailable) return false;
     const subscription = subscriptionValue(value);
     if (!subscription) return false;
+    const previous = this.subscriptions.get(subscription.endpoint);
     this.subscriptions.set(subscription.endpoint, subscription);
-    this.save();
+    try { this.save(); }
+    catch (error) {
+      if (previous) this.subscriptions.set(subscription.endpoint, previous);
+      else this.subscriptions.delete(subscription.endpoint);
+      throw error;
+    }
     return true;
   }
 
   status(endpoint: string): boolean {
-    return this.subscriptions.has(endpoint);
+    return !this.unavailable && !this.persistenceFailed && this.subscriptions.has(endpoint);
   }
 
   unsubscribe(endpoint: string): void {
-    if (this.subscriptions.delete(endpoint)) this.save();
+    const removed = this.subscriptions.delete(endpoint);
+    // Keep revocation effective in memory and retry its durable write after failure.
+    if (removed || this.persistenceFailed && !this.unavailable) this.save();
   }
 
   // The caller admits only ordinary persisted chats, never side chats or subagents.
   watch(threadId: string): void {
-    if (!threadId || this.watchedThreads.has(threadId)) return;
+    if (this.unavailable || this.persistenceFailed || !threadId || this.watchedThreads.has(threadId)) return;
     this.watchedThreads.add(threadId);
-    this.save();
+    try { this.save(); } catch { /* Optional persistence must not fail the native action. */ }
   }
 
   private async conversationTitle(threadId: string, params: Record<string, unknown>): Promise<string> {
@@ -150,6 +191,7 @@ export class PushNotifications {
   }
 
   async notifyTurn(params: Record<string, unknown>): Promise<void> {
+    if (this.unavailable) return;
     const threadId = typeof params.threadId === 'string' ? params.threadId : '';
     const turn = params.turn as { id?: string; status?: string } | undefined;
     if (!this.subscriptions.size || !this.watchedThreads.has(threadId) || !turn?.id) return;
@@ -167,6 +209,7 @@ export class PushNotifications {
   }
 
   async notifyApproval(params: Record<string, unknown>, method?: string): Promise<void> {
+    if (this.unavailable) return;
     const threadId = typeof params.threadId === 'string' ? params.threadId : '';
     if (!this.subscriptions.size || !this.watchedThreads.has(threadId)) return;
     const questions = method === 'item/tool/requestUserInput' && Array.isArray(params.questions)
@@ -180,6 +223,7 @@ export class PushNotifications {
 
   /** Only newly pending IDs from live native events are eligible, never history hydration. */
   async notifyQuestions(params: Record<string, unknown>, newIds: string[]): Promise<void> {
+    if (this.unavailable) return;
     const threadId = typeof params.threadId === 'string' ? params.threadId : '';
     if (!this.subscriptions.size || !this.watchedThreads.has(threadId) || !Array.isArray(newIds) || !newIds.length) return;
     const ids = new Set(newIds);
@@ -200,6 +244,7 @@ export class PushNotifications {
   }
 
   private async send(subscription: PushSubscription, payload: NotificationPayload): Promise<void> {
+    if (this.unavailable || this.persistenceFailed) throw new Error('Notification storage is unavailable.');
     let timer: ReturnType<typeof setTimeout>;
     try {
       const sending = webPush.sendNotification(subscription, JSON.stringify(payload), {
@@ -254,6 +299,20 @@ export class PushNotifications {
 
   router(): Router {
     const router = Router();
+    router.use((_req, res, next) => {
+      if (this.unavailable) {
+        res.status(503).json({ error: '通知暂不可用，请在主机检查并恢复私有通知数据后重启 Remote。现有数据未重置。' });
+        return;
+      }
+      if (this.persistenceFailed) {
+        try { this.save(); }
+        catch {
+          res.status(503).json({ error: '通知数据保存失败，通知已暂停。请检查主机存储后重试，现有数据未重置。' });
+          return;
+        }
+      }
+      next();
+    });
     router.get('/public-key', (_req, res) => {
       res.setHeader('Cache-Control', 'no-store');
       res.json({ publicKey: this.publicKey });
@@ -279,6 +338,11 @@ export class PushNotifications {
       else if (result === 'failed') res.status(502).json({ error: 'Push delivery failed. Please retry.' });
       else res.json({ ok: true });
     });
+    const storageError: ErrorRequestHandler = (error, _req, res, next) => {
+      if (!this.persistenceFailed) { next(error); return; }
+      res.status(503).json({ error: '通知数据保存失败，通知已暂停。请检查主机存储后重试，现有数据未重置。' });
+    };
+    router.use(storageError);
     return router;
   }
 }

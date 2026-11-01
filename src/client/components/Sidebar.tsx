@@ -77,6 +77,7 @@ export function Sidebar({
   }, [projectPickerOpen]);
   useEffect(() => {
     if (!accountOpen) return;
+    footerRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     const controller = new AbortController();
     void api<{ publicOrigin: string | null; lanOrigins: string[] }>('/api/connections', {
       signal: controller.signal, cache: 'no-store'
@@ -145,7 +146,7 @@ export function Sidebar({
                 <button type="button" className="sidebar-project-row" aria-expanded={expanded}
                   onClick={() => setExpansion((current) => {
                     const next = { ...current, [section.id]: !expanded };
-                    localStorage.setItem('sidebar-project-expansion', JSON.stringify(next));
+                    try { localStorage.setItem('sidebar-project-expansion', JSON.stringify(next)); } catch { /* Optional preference. */ }
                     return next;
                   })}>
                   {section.project ? <FolderOpen size={16} /> : <MessageSquare size={16} />}
@@ -169,7 +170,19 @@ export function Sidebar({
       </div>
       <div className="sidebar-footer" ref={footerRef}>
         {accountOpen && (
-          <div className="account-menu" role="menu" aria-label="设置">
+          <div className="account-menu" role="menu" aria-label="设置" onKeyDown={event => {
+            const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), a[href]')];
+            const index = controls.indexOf(document.activeElement as HTMLElement);
+            if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+              event.preventDefault();
+              const next = event.key === 'Home' ? 0 : event.key === 'End' ? controls.length - 1
+                : (index + (event.key === 'ArrowUp' ? -1 : 1) + controls.length) % controls.length;
+              controls[next]?.focus();
+            } else if (event.key === 'Escape') {
+              event.preventDefault(); event.stopPropagation(); setAccountOpen(false);
+              footerRef.current?.querySelector<HTMLButtonElement>('.account-button')?.focus();
+            }
+          }}>
             <div className="account-menu-status"><span className={`connection-dot connection-dot--${remote.status}`} />{connectionLabel(remote.status)}</div>
             <button type="button" role="menuitem" onClick={() => {
               setAccountOpen(false);

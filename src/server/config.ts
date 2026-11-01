@@ -4,13 +4,14 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { proxyTrust } from './request-security.js';
 
 export interface AppConfig {
   host: string;
   port: number;
   publicOrigin: string | null;
   allowedOrigins: string[];
-  trustProxy: boolean;
+  trustProxy: false | string[];
   sessionDays: number;
   dataDir: string;
   authFile: string;
@@ -124,7 +125,7 @@ export const config: AppConfig = {
   allowedOrigins: [...new Set([...(publicOrigin ? [publicOrigin] : []), ...parseOrigins(process.env.ALLOWED_ORIGINS), ...lanOrigins])],
   lanPort,
   lanOrigins,
-  trustProxy: process.env.TRUST_PROXY !== '0',
+  trustProxy: proxyTrust(),
   sessionDays: Math.max(1, Number.parseInt(process.env.SESSION_DAYS?.trim() || '30', 10)),
   dataDir,
   authFile: path.join(dataDir, 'auth.json'),

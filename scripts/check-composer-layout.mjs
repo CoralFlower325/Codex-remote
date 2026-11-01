@@ -9,6 +9,8 @@ import { chromium } from '../desktop/node_modules/playwright/index.mjs';
 const app = express(), server = http.createServer(app), sockets = new WebSocketServer({ server });
 const model = { id: 'demo', model: 'demo', displayName: 'Codex Demo', isDefault: true,
   defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'high' }] };
+const skill = { name: 'synthetic-stop', path: '/skills/synthetic-stop/SKILL.md',
+  description: 'Synthetic stop acceptance', enabled: true, interface: { displayName: 'Synthetic Stop' } };
 const threads = ['a', 'b'].map(id => ({ id, name: `Synthetic chat ${id.toUpperCase()}`, cwd: '/project',
   preview: 'Synthetic data', model: 'demo', createdAt: 1, updatedAt: id === 'a' ? 20 : 10,
   status: { type: 'idle' }, permissionProfile: ':workspace' }));
@@ -29,11 +31,12 @@ const older = [
     text: Array.from({ length: 30 }, (_, i) => `Earlier answer paragraph ${i + 1}.`).join('\n\n') })
 ];
 const send = (socket, body) => socket.readyState === 1 && socket.send(JSON.stringify(body));
-let submissions = [], pendingSend = null, historyReads = 0;
+let submissions = [], pendingSend = null, historyReads = 0, actions = [];
 let syncEnabled = true, socketAttempts = 0;
 const httpPeers = new Map();
 const event = (method, params) => {
-  for (const socket of sockets.clients) send(socket, { type: 'event', method, params: { threadId: 'a', ...params } });
+  for (const socket of [...sockets.clients, ...httpPeers.values()])
+    send(socket, { type: 'event', method, params: { threadId: 'a', ...params } });
 };
 app.get('/api/auth/status', (_q, r) => r.json({ configured: true, authenticated: true, setupAllowed: false }));
 app.get('/api/bootstrap', (_q, r) => r.json({ configured: true, authenticated: true, workspace: {
@@ -63,8 +66,23 @@ function receive(socket, raw) {
     if (m.method === 'model/list') result.data = [model];
     if (['thread/read', 'thread/resume'].includes(m.method)) result = { thread: threads.find(t => t.id === p.threadId) ?? threads[0] };
     if (m.method === 'thread/turns/list') result.data = [...turns].reverse();
-    if (m.method === 'skills/list') result = { data: [], errors: [] };
+    if (m.method === 'skills/list') result = { data: [{ skills: [skill], errors: [] }] };
+    if (['turn/start', 'turn/steer', 'turn/interrupt'].includes(m.method)) actions.push({ method: m.method, params: p });
+    if (['thread/start', 'thread/fork'].includes(m.method) && p.ephemeral) {
+      result = { thread: { ...threads[0], id: 'side', ephemeral: true } };
+    }
+    if (m.method === 'turn/interrupt') {
+      send(socket, { type: 'rpc.result', id: m.id, result: {} });
+      event('turn/completed', { threadId: p.threadId, turn: { id: p.turnId, status: 'interrupted',
+        startedAt: Math.floor(Date.now() / 1000) - 2, completedAt: Math.floor(Date.now() / 1000), durationMs: 2000 } });
+      return;
+    }
     if (m.method === 'turn/start') {
+      if (p.threadId === 'side') {
+        result = { turn: { id: 'side-running', status: 'inProgress', startedAt: Math.floor(Date.now() / 1000) - 2 } };
+        send(socket, { type: 'rpc.result', id: m.id, result });
+        return;
+      }
       submissions.push(p);
       pendingSend = error => error
         ? send(socket, { type: 'rpc.error', id: m.id, error: { message: 'Synthetic send failure', code: -1 } })
@@ -96,16 +114,19 @@ sockets.on('connection', socket => {
   send(socket, { type: 'bridge.status', status: 'ready' });
   socket.on('message', raw => receive(socket, raw));
 });
-const directory = 'output/playwright/composer-025';
+const directory = 'output/playwright/composer-028';
 await fs.mkdir(directory, { recursive: true });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const results = [];
 try {
   for (const size of JSON.parse(await fs.readFile('scripts/acceptance-viewports.json', 'utf8'))) {
-    submissions = []; pendingSend = null; historyReads = 0; syncEnabled = true;
+    submissions = []; pendingSend = null; historyReads = 0; syncEnabled = true; actions = [];
     const context = await browser.newContext({ viewport: { width: size.width, height: size.height },
       deviceScaleFactor: size.deviceScaleFactor, isMobile: size.mobile, hasTouch: size.mobile, serviceWorkers: 'block' });
+    await context.addInitScript(() => {
+      window.SpeechRecognition = class { start() {} stop() {} abort() {} };
+    });
     const page = await context.newPage(), errors = [];
     page.on('pageerror', e => errors.push(e.message));
     const origin = `http://127.0.0.1:${server.address().port}`;
@@ -291,10 +312,89 @@ try {
     assert.equal(submissions.length, 2);
     assert.equal(await input.inputValue(), 'Retry draft');
     assert.equal(await page.locator('.composer-image').count(), 4);
+    // A busy turn must remain stoppable while its next text/image/skill draft
+    // is retained. Exercise the real controls without issuing model requests.
+    const chooseSkill = async composer => {
+      await composer.locator('textarea').fill('/synthetic-stop');
+      await page.getByRole('option').filter({ hasText: '/synthetic-stop' }).click();
+      await composer.locator('.composer-context-chip').getByText('Synthetic Stop', { exact: true }).waitFor();
+    };
+    const dualButtonGeometry = async composer => {
+      await composer.locator('.composer-stop').waitFor();
+      await composer.locator('.composer-send').waitFor();
+      const value = await composer.evaluate(root => {
+        const outer = root.getBoundingClientRect();
+        const nodes = [...root.querySelectorAll('.composer-toolbar button, .composer-toolbar .context-usage')];
+        const controls = nodes.filter(node => node.getClientRects().length).map(node => {
+          const rect = node.getBoundingClientRect();
+          return { name: node.getAttribute('aria-label'), left: rect.left, right: rect.right,
+            top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+        });
+        return { left: outer.left, right: outer.right, controls,
+          overflow: document.documentElement.scrollWidth > innerWidth };
+      });
+      assert.equal(value.overflow, false, JSON.stringify(value));
+      for (const control of value.controls) {
+        assert(control.left >= value.left - 1 && control.right <= value.right + 1,
+          `Control outside composer: ${JSON.stringify(control)}`);
+        assert(control.width >= 12 && control.height >= 12, `Collapsed control: ${JSON.stringify(control)}`);
+      }
+      for (let i = 0; i < value.controls.length; i++) for (let j = i + 1; j < value.controls.length; j++) {
+        const a = value.controls[i], b = value.controls[j];
+        const overlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const sameRow = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        assert(overlap <= 1 || sameRow <= 1, `Controls overlap: ${JSON.stringify([a, b])}`);
+      }
+      return value;
+    };
+    const mainComposer = page.locator('.thread-screen > .thread-bottom .composer');
+    await chooseSkill(mainComposer);
+    await mainComposer.locator('textarea').fill('Retry draft');
+    event('turn/started', { turn: { id: 'stop-with-draft', status: 'inProgress', startedAt: Math.floor(Date.now() / 1000) - 2 } });
+    event('thread/tokenUsage/updated', { tokenUsage: { last: { totalTokens: 100 }, modelContextWindow: 1000 } });
+    await mainComposer.locator('.context-usage').waitFor();
+    const mainDualButtons = await dualButtonGeometry(mainComposer);
+    await page.screenshot({ path: `${directory}/${size.name}-main-stop-draft.png` });
+    const mainActionCount = actions.length;
+    await mainComposer.locator('.composer-stop').click();
+    await mainComposer.locator('.composer-stop').waitFor({ state: 'detached' });
+    assert.deepEqual(actions.slice(mainActionCount).map(action => action.method), ['turn/interrupt']);
+    assert.deepEqual(actions.at(-1).params, { threadId: 'a', turnId: 'stop-with-draft' });
+    assert.equal(await mainComposer.locator('textarea').inputValue(), 'Retry draft');
+    assert.equal(await mainComposer.locator('.composer-image').count(), 4);
+    assert.equal(await mainComposer.locator('.composer-context-chip').count(), 1);
+    // A temporary side chat steers directly while active. Stopping must retain
+    // its own draft and never enqueue, start or steer that draft.
+    await page.getByRole('button', { name: '\u6253\u5f00\u4efb\u52a1\u68c0\u67e5\u5668', exact: true }).click();
+    await page.locator('.inspector-launcher button').first().click();
+    const sideComposer = page.locator('.side-chat-view .composer');
+    await sideComposer.locator('textarea').fill('Synthetic side start');
+    await sideComposer.locator('.composer-send').click();
+    await sideComposer.locator('.composer-stop').waitFor();
+    await chooseSkill(sideComposer);
+    await sideComposer.locator('textarea').fill('Keep side draft');
+    await sideComposer.locator('input[type=file]').setInputFiles({
+      name: 'side-image.png', mimeType: 'image/png', buffer: Buffer.from(selectedImage, 'base64')
+    });
+    await sideComposer.locator('.composer-image').waitFor();
+    event('thread/tokenUsage/updated', { threadId: 'side',
+      tokenUsage: { last: { totalTokens: 100 }, modelContextWindow: 1000 } });
+    await sideComposer.locator('.context-usage').waitFor();
+    const sideDualButtons = await dualButtonGeometry(sideComposer);
+    await page.screenshot({ path: `${directory}/${size.name}-side-stop-draft.png` });
+    const sideActionCount = actions.length;
+    await sideComposer.locator('.composer-stop').click();
+    await sideComposer.locator('.composer-stop').waitFor({ state: 'detached' });
+    assert.deepEqual(actions.slice(sideActionCount).map(action => action.method), ['turn/interrupt']);
+    assert.deepEqual(actions.at(-1).params, { threadId: 'side', turnId: 'side-running' });
+    assert.equal(await sideComposer.locator('textarea').inputValue(), 'Keep side draft');
+    assert.equal(await sideComposer.locator('.composer-image').count(), 1);
+    assert.equal(await sideComposer.locator('.composer-context-chip').count(), 1);
     assert.deepEqual(errors, []);
     results.push({ viewport: size.name, tailBefore, anchorDrift: anchorAfter - anchorBefore, ...layout, pasteSwitch: true, imagePreview: true,
       fileSelection: true, sendWhileSwitching: true, failedSendRetained: true, removalRetained: true,
-      nativeRetry: true, nativeFailure: true, errorStyle, bannerStyle, manualReconnect: true, noActionReplay: true, errors });
+      nativeRetry: true, nativeFailure: true, errorStyle, bannerStyle, manualReconnect: true, noActionReplay: true,
+      mainDualButtons, sideDualButtons, stopPreservesDraft: true, stopDoesNotSend: true, errors });
     await context.close();
   }
   await fs.writeFile(`${directory}/results.json`, JSON.stringify(results, null, 2), 'utf8');

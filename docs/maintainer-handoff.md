@@ -15,6 +15,14 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
+Remote 0.2.8 adds optional host-side Office previews and hardens malformed
+messages, login concurrency, proxy trust, HTML real-path grants and damaged
+optional state. Preserve original downloads, private temporary conversion and
+stable manager 0.2.0 health compatibility. LibreOffice is a separate optional
+dependency, not an OS sandbox or an online document service. See
+[document acceptance](document-preview-acceptance.md) and run its synthetic
+checks after building. Active composers retain Stop even with draft content.
+
 Remote 0.2.7 fixes skill-only input and same-turn work timing. Keep the native
 text mention together with skill input for sending, steering, queues, side chats
 and edits. Never rewrite persisted history to repair display. Work timing belongs

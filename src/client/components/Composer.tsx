@@ -601,12 +601,13 @@ export function Composer({
             {speechConstructor && <button type="button" className={`composer-circle-button${listening ? ' is-listening' : ''}`}
               aria-label={listening ? '停止听写' : '开始听写'} title={listening ? '停止听写' : '开始听写'}
               aria-pressed={listening} onClick={dictate}><Mic size={15} /></button>}
-            {activeTurnId && !draft.trim() && attachments.length === 0 && selectedSkills.length === 0 ? (
+            {activeTurnId && (
               <button type="button" className="composer-stop" disabled={stopping} onClick={() => void stop()}
                 aria-label="停止任务" title="停止任务">
                 {stopping ? <LoaderCircle size={16} className="spin" /> : <Square size={13} fill="currentColor" />}
               </button>
-            ) : (
+            )}
+            {(!activeTurnId || Boolean(draft.trim()) || attachments.length > 0 || selectedSkills.length > 0) && (
               <button type="button" className="composer-send" disabled={(!draft.trim() && attachments.length === 0 && selectedSkills.length === 0) || sending || disabled}
                  onClick={() => void submit()} aria-label={activeTurnId ? queueMessages ? '加入队列' : '发送补充要求' : '发送任务'}
                  title={activeTurnId ? queueMessages ? '加入队列' : '发送补充要求' : '发送任务'}>

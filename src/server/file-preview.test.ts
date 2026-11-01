@@ -5,6 +5,7 @@ import path from 'node:path';
 import express from 'express';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { filePreviewRouter, readPreviewFile } from './file-preview.js';
+import { OfficePreviews, OfficePreviewError } from './office-preview.js';
 
 // Use Node's HTTP client: an OS-assigned test port can be on Fetch's blocked-port list.
 function request(url: string | URL, options: { headers?: Record<string, string> } = {}): Promise<Response> {
@@ -36,7 +37,11 @@ describe('authenticated local previews', () => {
     app.use('/api/file-preview', filePreviewRouter((req, res, next) => {
       if (req.get('cookie') !== 'preview=test') { res.sendStatus(401); return; }
       next();
-    }));
+    }, new OfficePreviews(async source => {
+      if (source.endsWith('encrypted.docx')) throw new OfficePreviewError('Synthetic encrypted file', 422);
+      return Buffer.from('%PDF-synthetic');
+    })));
+    await fs.writeFile(path.join(directory, 'encrypted.docx'), 'encrypted fixture');
     server = app.listen(0, '127.0.0.1');
     await new Promise<void>(resolve => server.once('listening', resolve));
     origin = `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`;
@@ -48,7 +53,21 @@ describe('authenticated local previews', () => {
   it('reads bounded text and distinguishes renderable documents from binary downloads', async () => {
     expect(await readPreviewFile(path.join(directory, 'report.md'))).toMatchObject({ kind: 'markdown', truncated: false });
     expect(await readPreviewFile(path.join(directory, 'large.txt'))).toMatchObject({ kind: 'text', truncated: true });
-    expect(await readPreviewFile(path.join(directory, 'document.docx'))).toMatchObject({ kind: 'binary' });
+    expect(await readPreviewFile(path.join(directory, 'document.docx'))).toMatchObject({ kind: 'office',
+      previewUrl: expect.stringContaining('/api/file-preview/document?') });
+  });
+  it('requires authentication for converted documents and preserves private response/error boundaries', async () => {
+    const file = await readPreviewFile(path.join(directory, 'document.docx'));
+    expect((await request(origin + file.previewUrl)).status).toBe(401);
+    const response = await request(origin + file.previewUrl, { headers: { cookie: 'preview=test' } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('application/pdf');
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    expect(await response.text()).toBe('%PDF-synthetic');
+    const encrypted = await readPreviewFile(path.join(directory, 'encrypted.docx'));
+    const error = await request(origin + encrypted.previewUrl, { headers: { cookie: 'preview=test' } });
+    expect(error.status).toBe(422);
+    expect(await error.json()).toEqual({ error: 'Synthetic encrypted file' });
   });
   it('requires authentication for metadata and raw content', async () => {
     const result = await readPreviewFile(path.join(directory, 'page.html'));
@@ -83,5 +102,21 @@ describe('authenticated local previews', () => {
     const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 16 * 60_000);
     try { expect((await request(origin + file.previewUrl)).status).toBe(401); }
     finally { clock.mockRestore(); }
+  });
+  it('rejects an HTML grant crossing a directory symlink or junction', async () => {
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'preview-outside-'));
+    const link = path.join(directory, 'outside');
+    try {
+      await fs.writeFile(path.join(outside, 'private.txt'), 'synthetic private fixture');
+      await fs.symlink(outside, link, process.platform === 'win32' ? 'junction' : 'dir');
+      const response = await request(`${origin}/api/file-preview?path=${encodeURIComponent(path.join(directory, 'page.html'))}`,
+        { headers: { cookie: 'preview=test' } });
+      const file = await response.json();
+      const resource = new URL('./outside/private.txt', origin + file.previewUrl);
+      expect((await request(resource)).status).toBe(403);
+    } finally {
+      await fs.unlink(link).catch(() => {});
+      await fs.rm(outside, { recursive: true, force: true });
+    }
   });
 });

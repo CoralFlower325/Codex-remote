@@ -8,7 +8,7 @@ export function AppUpdateDialog({ onClose, completed }: { onClose: () => void; c
   const dialog = useRef<HTMLDialogElement>(null);
   const operation = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState('更新将刷新页面。主会话文字草稿会保留；临时侧聊、待发图片和技能选择会清除。');
+  const [status, setStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [available, setAvailable] = useState<AppBuild | null>(null);
   const [current, setCurrent] = useState(false);
@@ -61,6 +61,7 @@ export function AppUpdateDialog({ onClose, completed }: { onClose: () => void; c
         {busy ? <LoaderCircle size={18} className="spin" /> : <Download size={18} />}<span>{busy ? '正在处理…'
           : available ? `更新至 ${available.version}` : current ? '重新检查' : '检查并更新版本'}</span>
       </button>}
+      {!completed && <p className="notification-intro">更新将刷新页面。主会话文字草稿会保留；临时侧聊、待发图片和技能选择会清除。</p>}
       <div className="notification-feedback" role="status" aria-live="polite">
         {error ? <p className="notification-error">{error}</p> : !completed && <p>{status}</p>}
       </div>

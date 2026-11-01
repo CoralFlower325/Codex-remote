@@ -13,7 +13,6 @@ import { WebSocketServer } from 'ws';
 import {
   authFilePath,
   clearSessionCookie,
-  isLoopback,
   isPasswordConfigured,
   issueSession,
   readSessionCookie,
@@ -43,6 +42,7 @@ import { historyItemRouter } from './history-item-router.js';
 import { SessionConnections } from './session-connections.js';
 import { backendUpdateRouter } from './backend-update-router.js';
 import { updateClientRouter } from './update-client-router.js';
+import { localSetupRequest, LoginBudget } from './request-security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -50,6 +50,7 @@ const server = http.createServer(app);
 const lanServer = config.lanPort ? http.createServer(app) : null;
 const wss = new WebSocketServer({
   noServer: true,
+  maxPayload: 100 * 1024 * 1024,
   perMessageDeflate: {
     serverNoContextTakeover: true,
     clientNoContextTakeover: true,
@@ -102,11 +103,11 @@ function isAuthenticated(req: Request): boolean {
 }
 
 function isLocalRequest(req: Request): boolean {
-  return isLoopback(req.ip);
+  return localSetupRequest(req);
 }
 
 function isSecureRequest(req: Request): boolean {
-  return req.secure || req.get('x-forwarded-proto')?.split(',')[0]?.trim() === 'https';
+  return req.secure;
 }
 
 function allowedOrigins(): string[] {
@@ -140,38 +141,14 @@ function clientAddress(req: Request): string {
   return req.ip || req.socket.remoteAddress || 'unknown';
 }
 
-const loginAttempts = new Map<string, { count: number; blockedUntil: number; lastAttempt: number }>();
-
-function checkLoginRateLimit(key: string): void {
-  const now = Date.now();
-  const entry = loginAttempts.get(key);
-  if (!entry) return;
-  if (entry.blockedUntil > now) {
-    const seconds = Math.ceil((entry.blockedUntil - now) / 1000);
-    throw new Error(`Too many attempts. Try again in ${seconds} seconds.`);
-  }
-  if (now - entry.lastAttempt > 10 * 60_000) loginAttempts.delete(key);
-}
-
-function recordFailedLogin(key: string): void {
-  const now = Date.now();
-  const entry = loginAttempts.get(key) ?? { count: 0, blockedUntil: 0, lastAttempt: now };
-  entry.count += 1;
-  entry.lastAttempt = now;
-  entry.blockedUntil = entry.count >= 5 ? now + Math.min(10 * 60_000, entry.count * 20_000) : 0;
-  loginAttempts.set(key, entry);
-}
-
-function clearLoginFailures(key: string): void {
-  loginAttempts.delete(key);
-}
+const loginBudget = new LoginBudget();
+let settingUp = false;
 
 app.get('/health', (_req, res) => {
   res.json({
     ok: true,
     codex: codexBridge.getStatus(),
     transport: codexBridge.getTransport(),
-    binary: codexBridge.getBinary(),
     passwordConfigured: isPasswordConfigured()
   });
 });
@@ -202,9 +179,12 @@ app.post(
       res.status(403).json({ error: 'Initial password setup is only allowed from this computer.' });
       return;
     }
-
-    const password = typeof req.body?.password === 'string' ? req.body.password : '';
-    await setPassword(password);
+    if (settingUp) { res.status(409).json({ error: 'Password setup is already in progress.' }); return; }
+    settingUp = true;
+    try {
+      const password = typeof req.body?.password === 'string' ? req.body.password : '';
+      await setPassword(password);
+    } finally { settingUp = false; }
     const token = issueSession(req.headers['user-agent']);
     res.setHeader('Set-Cookie', sessionCookie(token, isSecureRequest(req)));
     res.json({ ok: true });
@@ -221,16 +201,21 @@ app.post(
     }
 
     const key = clientAddress(req);
-    checkLoginRateLimit(key);
+    const budget = loginBudget.begin(key);
+    if ('retryAfter' in budget) {
+      res.setHeader('Retry-After', String(budget.retryAfter));
+      res.status(429).json({ error: `Too many attempts. Try again in ${budget.retryAfter} seconds.` });
+      return;
+    }
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
-    const valid = await verifyPassword(password);
+    let valid = false;
+    try { valid = await verifyPassword(password); }
+    finally { budget.finish(valid); }
     if (!valid) {
-      recordFailedLogin(key);
       res.status(401).json({ error: 'Incorrect password.' });
       return;
     }
 
-    clearLoginFailures(key);
     const token = issueSession(req.headers['user-agent']);
     res.setHeader('Set-Cookie', sessionCookie(token, isSecureRequest(req)));
     res.json({ ok: true });
@@ -379,8 +364,9 @@ lanServer?.on('upgrade', handleUpgrade);
 wss.on('connection', (socket, req) => {
   connectClient(socket, () => Boolean(readSessionCookie(req.headers.cookie, req.headers['user-agent'])));
   socket.on('message', (data) => {
-    void handleClientMessage(socket, data.toString());
+    void handleClientMessage(socket, data.toString()).catch(() => socket.close(1011, 'Message handling failed'));
   });
+  socket.on('error', () => disconnectClient(socket));
   socket.on('close', () => disconnectClient(socket));
 });
 

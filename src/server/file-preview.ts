@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { Router, type RequestHandler, type Response } from 'express';
 import type { PreviewFile } from '../shared/file-preview.js';
 import { previewContentUrl } from '../shared/file-preview.js';
+import { OfficePreviews, OfficePreviewError, officeExtensions } from './office-preview.js';
 
 const MAX_TEXT_BYTES = 1024 * 1024;
 const images = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.avif', '.svg']);
@@ -18,6 +19,8 @@ export async function readPreviewFile(requestedPath: string): Promise<PreviewFil
     contentUrl: previewContentUrl(filePath), truncated: false };
   if (images.has(extension)) return { ...result, kind: 'image' };
   if (extension === '.pdf') return { ...result, kind: 'pdf' };
+  if (officeExtensions.has(extension)) return { ...result, kind: 'office',
+    previewUrl: `/api/file-preview/document?${new URLSearchParams({ path: filePath })}` };
   const file = await fs.open(filePath, 'r');
   try {
     const buffer = Buffer.alloc(Math.min(info.size, MAX_TEXT_BYTES));
@@ -30,7 +33,7 @@ export async function readPreviewFile(requestedPath: string): Promise<PreviewFil
   } finally { await file.close(); }
 }
 
-export function filePreviewRouter(authenticate: RequestHandler): Router {
+export function filePreviewRouter(authenticate: RequestHandler, office = new OfficePreviews()): Router {
   const router = Router();
   const grants = new Map<string, { directory: string; expires: number }>();
   const sendContent = (res: Response, filePath: string) => {
@@ -49,12 +52,33 @@ export function filePreviewRouter(authenticate: RequestHandler): Router {
     const filePath = path.resolve(grant.directory, relative);
     const within = path.relative(grant.directory, filePath);
     if (within === '..' || within.startsWith(`..${path.sep}`) || path.isAbsolute(within)) { res.sendStatus(403); return; }
-    const info = await fs.stat(filePath).catch(() => null);
+    const realPath = await fs.realpath(filePath).catch(() => null);
+    if (!realPath) { res.sendStatus(404); return; }
+    const realRelative = path.relative(grant.directory, realPath);
+    if (realRelative === '..' || realRelative.startsWith(`..${path.sep}`) || path.isAbsolute(realRelative)) {
+      res.sendStatus(403); return;
+    }
+    const info = await fs.stat(realPath).catch(() => null);
     if (!info?.isFile()) { res.sendStatus(404); return; }
     res.setHeader('Access-Control-Allow-Origin', 'null');
-    sendContent(res, filePath);
+    sendContent(res, realPath);
   });
   router.use(authenticate);
+  router.get('/document', async (req, res) => {
+    try {
+      const pdf = await office.read(typeof req.query.path === 'string' ? req.query.path : '');
+      if (res.destroyed) return;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Disposition', 'inline; filename="preview.pdf"');
+      res.send(pdf);
+    } catch (error) {
+      if (res.destroyed) return;
+      res.status(error instanceof OfficePreviewError ? error.status
+        : (error as NodeJS.ErrnoException).code === 'ENOENT' ? 404 : 422)
+        .json({ error: error instanceof OfficePreviewError ? error.message : '文档预览失败，请下载原文件或刷新重试。' });
+    }
+  });
   router.get('/', async (req, res) => {
     const requestedPath = typeof req.query.path === 'string' ? req.query.path : '';
     if (!requestedPath || !path.isAbsolute(requestedPath)) {
@@ -65,7 +89,7 @@ export function filePreviewRouter(authenticate: RequestHandler): Router {
       if (result.kind === 'html') {
         for (const [key, grant] of grants) if (grant.expires <= Date.now()) grants.delete(key);
         const key = randomUUID();
-        grants.set(key, { directory: path.dirname(result.path), expires: Date.now() + 15 * 60_000 });
+        grants.set(key, { directory: await fs.realpath(path.dirname(result.path)), expires: Date.now() + 15 * 60_000 });
         result.previewUrl = `/api/file-preview/render/${key}/${encodeURIComponent(result.name)}`;
       }
       res.json(result);

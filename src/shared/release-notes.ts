@@ -2,6 +2,14 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.8', changes: [
+    '新增 Word、Excel、PowerPoint 与开放文档格式预览，主机安装 LibreOffice 后可翻页、缩放、复制本页文字，并下载未改动的原文件。',
+    '文档在主机私有临时目录转换，限制大小、排队和耗时；缺少转换器或文件异常时显示具体错误，可刷新重试。',
+    '修复任务运行中输入草稿后停止按钮消失，补齐设置菜单键盘操作、存储不可用时的审阅操作与更新影响提示。',
+    '修复异常连接消息、登录并发与代理信任边界，阻断 HTML 预览资源经目录链接越界读取。',
+    '推送和图片索引损坏时保留原始数据并降级，推送写入失败不再误报成功。',
+    '稳定管理器仍为 0.2.0，无变更；0.2.0AU 自更新开发与签名断点继续暂停。'
+  ] },
   { version: '0.2.7', changes: [
     '修复只选择技能直接发送时消息不可见的问题，提交原生技能引用文本与技能参数，保持 Remote 与 Desktop 的会话记录一致。',
     '排队、引导、临时侧聊和停止后编辑共用技能输入规则，编辑空文字时保留技能，避免重复添加引用。',

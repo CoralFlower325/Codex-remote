@@ -32,6 +32,33 @@ function fixture() {
   return { ...hub, native, peer, send, eventJournal };
 }
 describe('shared realtime peer policy', () => {
+  it('rejects malformed client structures without rejecting the handler or breaking a healthy peer', async () => {
+    const hub = fixture(), peer = hub.peer();
+    hub.connectClient(peer.socket);
+    const malformed = ['{', 'null', '[]', '42', '{"type":"unknown"}',
+      '{"type":"thread.watch","threadId":null,"additionalThreadIds":42}',
+      JSON.stringify({ type: 'thread.watch', threadId: 'main', additionalThreadIds: Array(101).fill('side') }),
+      '{"type":"sync.resume","threadId":null,"epoch":null,"after":-1}',
+      '{"type":"rpc","id":"x","method":"not/allowed"}'];
+    for (const raw of malformed) {
+      await expect(hub.handleClientMessage(peer.socket, raw)).resolves.toBeUndefined();
+      expect(peer.received.at(-1)).toMatchObject({ type: 'error' });
+    }
+    expect(hub.native).not.toHaveBeenCalled();
+    await hub.send(peer.socket, { type: 'ping' });
+    expect(peer.received.at(-1)).toMatchObject({ type: 'pong' });
+  });
+  it('isolates unexpected service failures and socket delivery errors', async () => {
+    const hub = fixture(), peer = hub.peer();
+    hub.connectClient(peer.socket);
+    vi.spyOn(hub.eventJournal, 'resume').mockImplementation(() => { throw new Error('Synthetic service failure'); });
+    await expect(hub.send(peer.socket, { type: 'sync.resume', epoch: null, after: 0, threadId: null }))
+      .resolves.toBeUndefined();
+    expect(peer.received.at(-1)).toMatchObject({ type: 'error' });
+    peer.socket.send = () => { throw new Error('Synthetic closed socket'); };
+    await expect(hub.send(peer.socket, { type: 'ping' })).resolves.toBeUndefined();
+    expect(peer.socket.close).toHaveBeenCalled();
+  });
   it('filters watched events equally for both transports and replays only the subscribed journal', async () => {
     const hub = fixture(), ws = hub.peer(), http = hub.peer(), unsynced = hub.peer();
     for (const peer of [ws, http, unsynced]) hub.connectClient(peer.socket);

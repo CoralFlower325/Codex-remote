@@ -5,7 +5,7 @@ export type PreviewTarget =
 export interface PreviewFile {
   path: string;
   name: string;
-  kind: 'text' | 'markdown' | 'html' | 'image' | 'pdf' | 'binary';
+  kind: 'text' | 'markdown' | 'html' | 'image' | 'pdf' | 'office' | 'binary';
   contentUrl: string;
   previewUrl?: string;
   text?: string;

@@ -52,3 +52,15 @@ it('does not invent deleted images, retain non-image files, or archive model act
   expect(await images.resolve(`${source}.missing.png`)).toBeNull();
   expect(await images.resolve(source.replace('.png', '.txt'))).toBeNull();
 });
+
+it('isolates a damaged attachment index without overwriting it or losing access to original images', async () => {
+  const { source, directory } = await fixture();
+  await fs.mkdir(directory, { recursive: true });
+  const index = path.join(directory, 'index.json');
+  await fs.writeFile(index, '{"broken":', 'utf8');
+  const images = new LocalImages(directory);
+  expect(await images.resolve(source)).toBe(source);
+  await fs.unlink(source);
+  await expect(images.resolve(source)).rejects.toThrow('索引');
+  expect(await fs.readFile(index, 'utf8')).toBe('{"broken":');
+});

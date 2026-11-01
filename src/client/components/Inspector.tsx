@@ -216,8 +216,12 @@ export function Inspector({ open, thread, items, onClose, layout, view, remote, 
 function Review({ items, cwd }: { items: ThreadItem[]; cwd: string }) {
   const turns = useMemo(() => buildReviewTurns(items), [items]);
   const [selectedTurn, setSelectedTurn] = useState('');
-  const [mode, setMode] = useState<'unified' | 'split'>(() => localStorage.getItem('review-mode') === 'split' ? 'split' : 'unified');
-  const [wrap, setWrap] = useState(() => localStorage.getItem('review-wrap') === 'true');
+  const [mode, setMode] = useState<'unified' | 'split'>(() => {
+    try { return localStorage.getItem('review-mode') === 'split' ? 'split' : 'unified'; } catch { return 'unified'; }
+  });
+  const [wrap, setWrap] = useState(() => {
+    try { return localStorage.getItem('review-wrap') === 'true'; } catch { return false; }
+  });
   const [expanded, setExpanded] = useState(false);
   const turn = turns.find((value) => value.id === selectedTurn) ?? turns[0];
   if (!turn?.files.length) return <EmptyInspector text="暂无文件变更" />;
@@ -230,12 +234,12 @@ function Review({ items, cwd }: { items: ThreadItem[]; cwd: string }) {
         <span className="diff-stat"><span className="diff-added">+{added}</span><span className="diff-deleted">−{deleted}</span></span>
         <button type="button" className="icon-button icon-button--small" title={wrap ? '关闭自动换行' : '自动换行'}
           aria-label="自动换行" aria-pressed={wrap} onClick={() => {
-            localStorage.setItem('review-wrap', String(!wrap)); setWrap(!wrap);
+            try { localStorage.setItem('review-wrap', String(!wrap)); } catch { /* Optional preference. */ } setWrap(!wrap);
           }}><WrapText size={15} /></button>
         <button type="button" className="icon-button icon-button--small" title={mode === 'unified' ? '并排显示' : '统一显示'}
           aria-label="并排显示" aria-pressed={mode === 'split'} onClick={() => {
             const next = mode === 'unified' ? 'split' : 'unified';
-            localStorage.setItem('review-mode', next); setMode(next);
+            try { localStorage.setItem('review-mode', next); } catch { /* Optional preference. */ } setMode(next);
           }}>{mode === 'unified' ? <Columns2 size={15} /> : <AlignJustify size={15} />}</button>
         <button type="button" className="icon-button icon-button--small" title={expanded ? '全部折叠' : '全部展开'}
           aria-label={expanded ? '全部折叠' : '全部展开'} onClick={() => setExpanded(!expanded)}>

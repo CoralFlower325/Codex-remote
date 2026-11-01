@@ -200,6 +200,9 @@ export function BackendUpdateDialog({ open, onClose }: { open: boolean; onClose:
         <span>{busy ? starting ? '正在准备更新…' : '正在检查…' : refreshNeeded ? '重试刷新网页' : offer?.recoveryRequired ? '恢复旧版'
           : offer?.available ? `更新至 ${offer.latestVersion}` : '检查 Remote 更新'}</span>
       </button>}
+      {offer?.available && !running && <p className="notification-intro">
+        更新完成后将刷新页面。主会话文字草稿会保留；临时侧聊、待发图片和技能选择会清除。
+      </p>}
     </div>
   </dialog>, document.body);
 }

@@ -12,6 +12,27 @@ import type { EphemeralChats } from './ephemeral-chats.js';
 import type { PushNotifications } from './push-notifications.js';
 import type { QueueDispatcher } from './queue-dispatcher.js';
 import type { SessionConnections } from './session-connections.js';
+import { isAllowedRpcMethod } from '../shared/rpc-methods.js';
+
+function validMessage(value: unknown): value is ClientMessage {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const message = value as Record<string, unknown>;
+  const id = (entry: unknown) => typeof entry === 'string' && entry.length > 0 && entry.length <= 1024;
+  const watches = () => (message.threadId === null || id(message.threadId)) &&
+    (message.additionalThreadIds === undefined || Array.isArray(message.additionalThreadIds) &&
+      message.additionalThreadIds.length <= 100 && message.additionalThreadIds.every(id));
+  switch (message.type) {
+    case 'ping': return true;
+    case 'thread.watch': return watches();
+    case 'sync.resume': return watches() && (message.epoch === null || id(message.epoch)) &&
+      Number.isSafeInteger(message.after) && (message.after as number) >= 0;
+    case 'rpc': return id(message.id) && typeof message.method === 'string' && isAllowedRpcMethod(message.method) &&
+      (message.params === undefined || message.params !== null && typeof message.params === 'object' && !Array.isArray(message.params));
+    case 'server.request.respond': return id(message.requestId) || typeof message.requestId === 'number' &&
+      Number.isSafeInteger(message.requestId);
+    default: return false;
+  }
+}
 
 interface PeerServices {
   codexBridge: Pick<CodexBridge, 'getBinary' | 'getStatus' | 'getPendingServerRequests' | 'respondToServerRequest'>;
@@ -65,12 +86,18 @@ export function createPeerHub({ codexBridge, eventJournal, questionTracker, meta
     if (!sessionConnections.allowed(socket)) return;
     let message: ClientMessage;
     try {
-      message = JSON.parse(raw) as ClientMessage;
+      const value: unknown = JSON.parse(raw);
+      if (!validMessage(value)) throw new Error('Invalid message structure.');
+      message = value;
     } catch {
-      send(socket, { type: 'error', error: { message: 'Invalid JSON message.' } });
+      send(socket, { type: 'error', error: { message: 'Invalid client message.' } });
       return;
     }
+    try { await dispatchClientMessage(socket, message); }
+    catch { send(socket, { type: 'error', error: { message: 'Message handling failed.' } }); }
+  }
 
+  async function dispatchClientMessage(socket: RemotePeer, message: ClientMessage): Promise<void> {
     if (message.type === 'ping') {
       send(socket, { type: 'pong', at: new Date().toISOString() });
       return;
@@ -164,7 +191,10 @@ export function createPeerHub({ codexBridge, eventJournal, questionTracker, meta
 
   function send(socket: RemotePeer, message: ServerMessage): void {
     if (!sessionConnections.allowed(socket)) return;
-    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+    if (socket.readyState === WebSocket.OPEN) {
+      try { socket.send(JSON.stringify(message)); }
+      catch { disconnectClient(socket); try { socket.close(1011, 'Message delivery failed'); } catch { /* Already closed. */ } }
+    }
   }
 
   return { clients, connectClient, disconnectClient, handleClientMessage, broadcast };

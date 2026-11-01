@@ -97,8 +97,9 @@ export default function FilePreview({ target, active }: { target: PreviewTarget;
         </PreviewLinks>
         : file?.kind === 'html' && html !== null ? <iframe key={revision} title={file.name} srcDoc={html}
           sandbox="allow-scripts" referrerPolicy="no-referrer" />
-        : file?.kind === 'pdf' ? <Suspense fallback={<div className="file-preview-loading" role="status">正在加载 PDF</div>}>
-          <PdfPreview url={file.contentUrl} name={file.name} />
+        : file?.kind === 'pdf' || file?.kind === 'office' ? <Suspense fallback={<div className="file-preview-loading" role="status">正在加载文档</div>}>
+          <PdfPreview url={file.kind === 'office' ? file.previewUrl! : file.contentUrl} name={file.name}
+            office={file.kind === 'office'} />
         </Suspense>
         : file?.kind === 'image' ? <div className="file-preview-image">
           {mediaLoading && <span role="status">正在加载图片</span>}

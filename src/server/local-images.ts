@@ -9,17 +9,32 @@ export class LocalImages {
   private ready: Promise<void>;
   private pending = new Map<string, Promise<string | null>>();
   private save = Promise.resolve();
+  private unavailable = false;
 
   constructor(private readonly directory: string) {
     this.ready = fs.readFile(path.join(directory, 'index.json'), 'utf8')
-      .then(text => { this.entries = JSON.parse(text); })
-      .catch(error => { if (error.code !== 'ENOENT') throw error; });
+      .then(text => {
+        const entries: unknown = JSON.parse(text);
+        if (!entries || typeof entries !== 'object' || Array.isArray(entries) ||
+          !Object.values(entries).every(value => typeof value === 'string' &&
+            /^[\w-]+\.(?:png|jpg|jpeg|webp|gif|bmp|avif)$/i.test(value))) throw new Error('Invalid image index');
+        this.entries = entries as Record<string, string>;
+      })
+      .catch(error => {
+        if (error.code === 'ENOENT') return;
+        this.unavailable = true;
+        console.warn('[images] Attachment index unavailable; existing data was preserved.');
+      });
   }
 
   async resolve(source: string): Promise<string | null> {
     await this.ready;
     const absolute = path.resolve(source);
     if (!imageExtensions.has(path.extname(absolute).toLowerCase())) return null;
+    if (this.unavailable) {
+      if ((await fs.stat(absolute).catch(() => null))?.isFile()) return absolute;
+      throw new Error('附件索引暂不可用，请在主机检查并恢复索引后重启 Remote。');
+    }
     const existing = this.pending.get(absolute);
     if (existing) return existing;
     const request = this.retain(absolute).finally(() => this.pending.delete(absolute));
