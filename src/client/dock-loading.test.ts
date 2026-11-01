@@ -361,6 +361,222 @@ describe('cached history verification', () => {
     expect(f.remote.items.at(-1)?.id).toBe('latest-answer');
     expect(f.remote.historySnapshot).toBeNull();
   });
+  it('does not restart a pending selection or reload the already verified selected chat', async () => {
+    let finish!: (value: Response) => void;
+    let signal: AbortSignal | undefined;
+    let reads = 0;
+    const fetcher = vi.fn<typeof fetch>((path, options) => String(path).includes('/thread/open?')
+      ? ++reads === 1 ? new Promise(resolve => { finish = resolve; signal = options?.signal ?? undefined; }) : json(page)
+      : String(path).includes('/thread/timings?') ? json(page) : new Promise(() => {}));
+    const f = fixture(fetcher);
+    const opening = f.remote.openThread(thread.id); await settle();
+    await f.remote.openThread(thread.id); await settle();
+    expect(signal?.aborted).toBe(false);
+    expect(fetcher.mock.calls.filter(([path]) => String(path).includes('/thread/open?'))).toHaveLength(1);
+    finish(await json(page)); await opening; await settle();
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
+        result: message.method === 'thread/resume' ? { thread } : { data: [] } });
+    } });
+    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    await settle(); await settle();
+    const mountedItems = f.remote.items;
+    const mountedThread = f.remote.activeThread;
+    await f.remote.openThread(thread.id); await settle();
+    expect(f.remote.items).toBe(mountedItems);
+    expect(f.remote.activeThread).toBe(mountedThread);
+    expect(f.remote.loadingThread).toBe(false);
+    expect(f.remote.historySnapshot).toBeNull();
+    expect(fetcher.mock.calls.filter(([path]) => String(path).includes('/thread/open?'))).toHaveLength(2);
+  });
+  it.each([false, true])('attaches during the first download and reveals only its reconciled tail (invalidated: %s)', async invalidated => {
+    const pending: ((value: Response) => void)[] = [];
+    const fetcher = vi.fn<typeof fetch>(path => String(path).includes('/thread/open?')
+      ? new Promise(resolve => pending.push(resolve))
+      : String(path).includes('/thread/timings?') ? json(page) : new Promise(() => {}));
+    const f = fixture(fetcher);
+    const opening = f.remote.openThread(thread.id); await settle();
+    const resumes: string[] = [];
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type !== 'rpc') return;
+      if (message.method === 'thread/resume') resumes.push(message.id);
+      connection.options.onMessage({ type: 'rpc.result', id: message.id,
+        result: message.method === 'thread/resume' ? { thread: { ...thread, model: 'native-model' } } : { data: [] } });
+    } });
+    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    await settle();
+    expect(resumes).toHaveLength(1);
+    expect(f.remote.items).toEqual([]);
+    expect(f.remote.threadReady).toBe(false);
+    pending.shift()!(await json({ ...page, ...(invalidated ? { snapshot: { stale: true, savedAt: 1 } } : {}) })); await settle();
+    expect(pending).toHaveLength(1);
+    expect(f.remote.items).toEqual([]);
+    expect(f.remote.loadingThread).toBe(true);
+    pending.shift()!(await json({ ...page, result: { thread: { ...thread, model: 'native-model' } }, items: [...page.items, {
+      turnId: 'latest', item: { type: 'agentMessage', id: 'latest-answer', text: 'Latest attached answer' }
+    }] }));
+    await opening; await settle();
+    expect(f.remote.items.at(-1)?.id).toBe('latest-answer');
+    expect(f.remote.activeThread?.model).toBe('native-model');
+    expect(f.remote.threadReady).toBe(true);
+    expect(f.remote.historySnapshot).toBeNull();
+    expect(resumes).toHaveLength(1);
+    expect(fetcher.mock.calls.filter(([path]) => String(path).includes('/thread/open?'))).toHaveLength(2);
+  });
+  it('keeps readable text mounted while native timings are pending and gates sending until they arrive', async () => {
+    let finishTimings!: (value: Response) => void;
+    const fetcher = vi.fn<typeof fetch>(path => String(path).includes('/thread/open?')
+      ? json(page) : String(path).includes('/thread/timings?')
+        ? new Promise(resolve => { finishTimings = resolve; }) : new Promise(() => {}));
+    const f = fixture(fetcher);
+    await f.remote.openThread(thread.id); await settle();
+    const resumes: string[] = [];
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type !== 'rpc') return;
+      if (message.method === 'thread/resume') resumes.push(message.id);
+      connection.options.onMessage({ type: 'rpc.result', id: message.id,
+        result: message.method === 'thread/resume' ? { thread } : { data: [] } });
+    } });
+    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    await settle(); await settle();
+    expect(f.remote.loadingThread).toBe(false);
+    expect(f.remote.items.at(-1)?.id).toBe('a');
+    expect(f.remote.threadReady).toBe(false);
+    const historyReads = () => fetcher.mock.calls.filter(([path]) => /\/thread\/(?:open|timings)\?/.test(String(path))).length;
+    const reads = historyReads();
+    finishTimings(await json(page)); await settle();
+    expect(f.remote.threadReady).toBe(true);
+    expect(resumes).toHaveLength(1);
+    expect(historyReads()).toBe(reads);
+  });
+  it('retries an exhausted native resume when the user selects the same chat again', async () => {
+    const f = fixture(path => /\/thread\/(?:open|timings)\?/.test(String(path)) ? json(page) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    let fail = true;
+    let resumes = 0;
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type !== 'rpc') return;
+      if (message.method === 'thread/resume') {
+        resumes++;
+        if (fail) {
+          connection.options.onMessage({ type: 'rpc.error', id: message.id,
+            error: { message: 'Resume unavailable' } });
+          return;
+        }
+      }
+      connection.options.onMessage({ type: 'rpc.result', id: message.id,
+        result: message.method === 'thread/resume' ? { thread } : { data: [] } });
+    } });
+    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    await settle();
+    await vi.advanceTimersByTimeAsync(500); await settle();
+    await vi.advanceTimersByTimeAsync(1000); await settle();
+    expect(resumes).toBe(3);
+    expect(f.remote.threadReady).toBe(false);
+    fail = false;
+    await f.remote.openThread(thread.id); await settle(); await settle();
+    expect(resumes).toBe(4);
+    expect(f.remote.threadReady).toBe(true);
+  });
+  it.each([false, true])('keeps fresh metadata after an earlier resume snapshot (live update: %s)', async liveUpdate => {
+    const pending: ((value: Response) => void)[] = [];
+    const f = fixture(path => String(path).includes('/thread/open?')
+      ? new Promise(resolve => pending.push(resolve))
+      : String(path).includes('/thread/timings?') ? json(page) : new Promise(() => {}));
+    const opening = f.remote.openThread(thread.id); await settle();
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
+        result: message.method === 'thread/resume' ? { thread: { ...thread, model: 'old-model' } } : { data: [] } });
+    } });
+    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    await settle();
+    pending.shift()!(await json(page)); await settle();
+    if (liveUpdate) {
+      connection.options.onMessage({ type: 'event', method: 'thread/settings/updated',
+        params: { threadId: thread.id, threadSettings: { model: 'new-model' } } });
+      scope.render();
+    }
+    pending.shift()!(await json({ ...page, result: { thread: { ...thread, model: liveUpdate ? 'old-model' : 'new-model' } } }));
+    await opening; await settle();
+    expect(f.remote.activeThread?.model).toBe('new-model');
+    expect(f.remote.threadReady).toBe(true);
+  });
+  it('does not rewind a native settings event when an older resume response arrives later', async () => {
+    let reads = 0;
+    let finishHistory!: (response: Response) => void;
+    const f = fixture(path => String(path).includes('/thread/open?')
+      ? ++reads === 1 ? json(page) : new Promise(resolve => { finishHistory = resolve; })
+      : String(path).includes('/thread/timings?') ? json(page) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    let finishResume!: () => void;
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type !== 'rpc') return;
+      if (message.method === 'thread/resume') finishResume = () =>
+        connection.options.onMessage({ type: 'rpc.result', id: message.id,
+          result: { thread: { ...thread, model: 'old-model' } } });
+      else connection.options.onMessage({ type: 'rpc.result', id: message.id, result: { data: [] } });
+    } });
+    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    await settle();
+    connection.options.onMessage({ type: 'event', method: 'thread/settings/updated',
+      params: { threadId: thread.id, threadSettings: { model: 'new-model' } } });
+    scope.render();
+    expect(f.remote.activeThread?.model).toBe('new-model');
+    finishResume(); await settle();
+    expect(f.remote.activeThread?.model).toBe('new-model');
+    finishHistory(await json({ ...page, result: { thread: { ...thread, model: 'new-model' } } }));
+    await settle();
+    expect(f.remote.activeThread?.model).toBe('new-model');
+  });
+  it.each(['text', 'timings'])('does not authorize actions after a second stale %s response', async stale => {
+    const f = fixture(path => String(path).includes('/thread/open?') ? json({
+      ...page, ...(stale === 'text' ? { snapshot: { stale: true, savedAt: 1 } } : {})
+    }) : String(path).includes('/thread/timings?') ? json({
+      ...page, ...(stale === 'timings' ? { snapshot: { stale: true, savedAt: 1 } } : {})
+    }) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
+        result: message.method === 'thread/resume' ? { thread } : { data: [] } });
+    } });
+    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    await settle(); await settle();
+    expect(f.remote.historySnapshot).toBe('failed');
+    expect(f.remote.threadReady).toBe(false);
+    expect(f.remote.loadingThread).toBe(false);
+    expect(f.remote.items.length).toBeGreaterThan(0);
+  });
+  it('keeps text readable after failed timings and retries the same chat without trusting missing native state', async () => {
+    let timingsFail = true;
+    const f = fixture(path => String(path).includes('/thread/open?') ? json(page)
+      : String(path).includes('/thread/timings?') ? timingsFail
+        ? Promise.resolve({ ok: false, status: 404, text: async () => '{"error":"Timings unavailable"}' } as Response)
+        : json(page) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
+        result: message.method === 'thread/resume' ? { thread } : { data: [] } });
+    } });
+    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    await settle(); await settle();
+    expect(f.remote.loadingThread).toBe(false);
+    expect(f.remote.items.at(-1)?.id).toBe('a');
+    expect(f.remote.threadReady).toBe(false);
+    expect(f.remote.lastError).toBe('Timings unavailable');
+    timingsFail = false;
+    await f.remote.openThread(thread.id); await settle();
+    expect(f.remote.items.at(-1)?.id).toBe('a');
+    expect(f.remote.threadReady).toBe(true);
+    expect(f.remote.lastError).toBeNull();
+  });
   it('keeps a second stale native response marked incomplete', async () => {
     const fetcher = vi.fn<typeof fetch>(path => String(path).includes('/thread/open?')
       ? json({ ...page, snapshot: { stale: true, savedAt: 1 } }) : new Promise(() => {}));
@@ -415,6 +631,43 @@ describe('cached history verification', () => {
     finish(await json(page)); await settle(); await settle();
     expect(reads).toBe(3);
     expect(f.remote.items.at(-1)?.id).toBe('last-answer');
+  });
+  it('does not publish a pre-subscription initial page through a concurrent completion refresh', async () => {
+    const pending: ((response: Response) => void)[] = [];
+    const f = fixture(path => String(path).includes('/thread/open?')
+      ? new Promise(resolve => pending.push(resolve))
+      : String(path).includes('/thread/timings?') ? json(page) : new Promise(() => {}));
+    const opening = f.remote.openThread(thread.id); await settle();
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
+        result: message.method === 'thread/resume' ? { thread } : { data: [] } });
+    } });
+    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    await settle();
+    connection.options.onMessage({ type: 'event', method: 'turn/completed', params: { threadId: thread.id } });
+    await settle();
+    pending.shift()!(await json(page)); await settle();
+    const prematurelyPublished = f.remote.items;
+    const latest = { ...page, items: [...page.items, { turnId: 'latest',
+      item: { type: 'agentMessage' as const, id: 'latest-answer', text: 'Latest native answer' } }] };
+    pending.shift()!(await json(latest)); await opening; await settle(); await settle();
+    // A completion queued during the initial read gets a fresh, serialized tail.
+    while (pending.length) { pending.shift()!(await json(latest)); await settle(); }
+    expect(prematurelyPublished).toEqual([]);
+    expect(f.remote.items.at(-1)?.id).toBe('latest-answer');
+  });
+  it('does not let a stale completion refresh clear a newer live turn missing from native history', async () => {
+    const f = fixture(path => /\/thread\/(?:open|timings)\?/.test(String(path)) ? json(page) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    connection.options.onMessage({ type: 'event', method: 'turn/started',
+      params: { threadId: thread.id, turn: { id: 'new-live', status: 'inProgress', startedAt: 20 } } });
+    scope.render();
+    connection.options.onMessage({ type: 'event', method: 'turn/completed',
+      params: { threadId: thread.id, turn: timing } });
+    await settle(); await settle();
+    expect(f.remote.activeTurnId).toBe('new-live');
+    expect(f.remote.turnTimings['new-live']?.status).toBe('inProgress');
   });
   it('refreshes the selected tail on foreground return without restarting task pagination', async () => {
     let reads = 0;

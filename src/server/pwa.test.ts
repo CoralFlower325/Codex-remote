@@ -32,6 +32,22 @@ function worker(shell: Response | undefined) {
 }
 
 describe('installed static shell', () => {
+  it('loads formulas and their stylesheet on demand without adding them to installation downloads', () => {
+    const generate = pwaPlugin('0.1.8').generateBundle;
+    if (typeof generate !== 'function') throw new Error('Missing build hook');
+    const emitFile = vi.fn();
+    generate.call({ emitFile } as never, {} as never, {
+      'assets/index-main.js': { type: 'chunk', name: 'index', isEntry: true, fileName: 'assets/index-main.js' },
+      'assets/MathFormula-formula.js': { type: 'chunk', name: 'MathFormula', isEntry: false },
+      'assets/MathFormula-formula.css': { type: 'asset' },
+      'assets/KaTeX_Main-Regular-font.woff2': { type: 'asset' }
+    } as never, false);
+    const script = emitFile.mock.calls.map(([file]) => file).find(file => file.fileName === 'sw.js').source;
+    const files = JSON.parse(/const FILES = (\[[^\n]*\]);/.exec(script)![1]!);
+    expect(files).toContain('/assets/index-main.js');
+    expect(files.some((file: string) => /MathFormula|KaTeX/.test(file))).toBe(false);
+  });
+
   it('returns the installed version immediately without a network race', async () => {
     const installed = new Response('installed-shell');
     const { request, fetch, cache } = worker(installed);

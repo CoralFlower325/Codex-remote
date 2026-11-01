@@ -27,6 +27,9 @@ Remote connects to **Codex Desktop's own App Server**, so your browser and Deskt
 | Shared chats, projects, native models, reasoning levels and skills | Folded execution records, unified/split diffs and file/web previews | Per-chat permissions, supported approvals and native question forms |
 | Main-chat queues, steering, temporary side chats and subagent viewers | Conversation outline and a summary panel for PRs, outputs and sources | Reconnection without replaying uncertain actions, opt-in Web Push and version checks |
 
+Replies render inline and display LaTeX formulas, with horizontal scrolling for
+long equations. The formula renderer and fonts load only when needed.
+
 <details>
 <summary><strong>Phone workspace and change review</strong></summary>
 

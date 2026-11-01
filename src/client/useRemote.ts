@@ -13,7 +13,7 @@ import { beginForegroundRead, constrainedNetwork, prioritizeInteraction, yieldTo
 import { readDeviceWorkspace, saveDeviceWorkspace, readDeviceChat, saveDeviceChat, removeDeviceChat } from './device-snapshots';
 import { provisionalHistory, provisionalThread, type OpenThreadPage } from './loading-snapshots';
 import { RemoteConnection, type RemoteChannel } from './remote-connection';
-import { itemKey, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings, upsertItem } from './remote-state';
+import { itemKey, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings, reconcileActiveTurnId, upsertItem } from './remote-state';
 import type {
   BridgeStatus,
   ServerRequest,
@@ -78,6 +78,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const [permissionProfiles, setPermissionProfiles] = useState<PermissionProfile[]>([]);
   const [defaultPermissionProfile, setDefaultPermissionProfile] = useState<string | null>(null);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [selectionRevision, setSelectionRevision] = useState(0);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [activeGoal, setActiveGoal] = useState<ThreadGoal | null>(null);
@@ -139,6 +140,13 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     page: Pick<ThreadHistoryPage, 'items' | 'nextCursor'> & { newerCursor: string | null } }>());
   const verifiedThreadRef = useRef<string | null>(null);
   const timedThreadRef = useRef<string | null>(null);
+  const openingThreadRef = useRef<{
+    threadId: string; version: number; reconcile: boolean; settled: Promise<void>
+  } | null>(null);
+  const resumedThreadRef = useRef<{ threadId: string; version: number; socket: RemoteChannel | null } | null>(null);
+  const threadMetadataRevisionRef = useRef(0);
+  const threadMetadataFieldsRef = useRef(new Map<string, { revision: number; value: unknown }>());
+  const historySnapshotRef = useRef(historySnapshot);
   const timingErrorRef = useRef<string | null>(null);
   const lastRecoveryRef = useRef(0);
   const additionalThreadsRef = useRef<string[]>([]);
@@ -167,6 +175,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   activeTurnIdRef.current = activeTurnId;
   verifiedThreadRef.current = verifiedThreadId;
   timedThreadRef.current = timedThreadId;
+  historySnapshotRef.current = historySnapshot;
   authExpiredRef.current = onAuthExpired;
 
   const rpc = useCallback(<T,>(method: ClientRpcMethod, params: unknown = {}): Promise<T> => {
@@ -304,13 +313,27 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     [flushStreamingDeltas]
   );
 
+  const recordThreadMetadata = useCallback((threadId: string, patch: Partial<Thread>) => {
+    if (activeThreadRef.current !== threadId) return;
+    const revision = ++threadMetadataRevisionRef.current;
+    for (const [key, value] of Object.entries(patch)) threadMetadataFieldsRef.current.set(key, { revision, value });
+  }, []);
+
   const openThread = useCallback(
     async (
       threadId: string,
-      options: { silent?: boolean; preserveHistory?: boolean } = {}
+      options: { silent?: boolean; preserveHistory?: boolean; force?: boolean } = {}
     ) => {
       if (options.silent && activeThreadRef.current !== threadId) return;
       if (options.silent && viewingHistoryRef.current) return;
+      if (!options.silent && !options.force && activeThreadRef.current === threadId &&
+          (openingThreadRef.current?.threadId === threadId ||
+            verifiedThreadRef.current === threadId && timedThreadRef.current === threadId &&
+              historySnapshotRef.current === null && !viewingHistoryRef.current &&
+              resumedThreadRef.current?.threadId === threadId &&
+              resumedThreadRef.current.version === selectionVersionRef.current &&
+              resumedThreadRef.current.socket === socketRef.current &&
+              socketRef.current?.readyState === WebSocket.OPEN)) return;
       const isNew = newThreadsRef.current.has(threadId);
       const archived = threadsRef.current.find((thread) => thread.id === threadId)?.archived;
       const query = new URLSearchParams({
@@ -325,6 +348,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         prioritizeInteraction();
         earlierPageRef.current.clear();
         selectionVersionRef.current += 1;
+        setSelectionRevision(selectionVersionRef.current);
         historyRefreshNextRef.current = null;
         if (!historyRequestsRef.current.has(path)) historyRequestsRef.current.cancel();
         pendingRevealRef.current = null;
@@ -339,8 +363,12 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         watchThread(threadId);
         setActiveThreadId(threadId);
         const listed = threadsRef.current.find((thread) => thread.id === threadId);
-        setActiveThread(listed ? provisionalThread(listed) : null);
-        setThreadReady(false);
+        if (!sameThread) setActiveThread(listed ? provisionalThread(listed) : null);
+        if (!sameThread) {
+          setThreadReady(false);
+          resumedThreadRef.current = null;
+          threadMetadataFieldsRef.current.clear();
+        }
         setVerifiedThreadId(null);
         verifiedThreadRef.current = null;
         setTimedThreadId(null);
@@ -359,8 +387,13 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         if (!sameThread) { goalRevisionRef.current++; setActiveGoal(null); }
       }
       const version = selectionVersionRef.current;
+      let settleOpening = () => {};
+      const opening = !options.silent ? { threadId, version, reconcile: false,
+        settled: new Promise<void>(resolve => { settleOpening = resolve; }) } : null;
+      if (opening) openingThreadRef.current = opening;
       let baseline = options.silent || sameThread ? itemsRef.current : [];
       const timingBaseline = turnTimingsRef.current;
+      const metadataRevision = threadMetadataRevisionRef.current;
       const turnRevision = turnRevisionRef.current;
       let nativeArrived = false;
       let nativeTimingArrived = false;
@@ -418,6 +451,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         page.snapshot?.stale ? historyRequestsRef.current.get<TimingPage>(timingPath, historyConfig.readTimeoutMs, 3) : page);
       void timings.then(page => {
         if (!currentSelection()) return;
+        if (page.snapshot?.stale) throw new Error('Native turn metadata is still synchronizing. Please retry.');
         const firstTimingPage = timedThreadRef.current !== threadId;
         nativeTimingArrived = true;
         setTurnTimings(current => {
@@ -426,8 +460,9 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           return next;
         });
         if (turnRevisionRef.current === turnRevision && (firstTimingPage || options.silent)) {
-          activeTurnIdRef.current = page.activeTurnId;
-          setActiveTurnId(page.activeTurnId);
+          const active = reconcileActiveTurnId(activeTurnIdRef.current, turnTimingsRef.current, page);
+          activeTurnIdRef.current = active;
+          setActiveTurnId(active);
         }
         if (firstTimingPage) turnsCursorRef.current = page.turnsCursor;
         timedThreadRef.current = threadId;
@@ -440,6 +475,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         else if (!isAbortedRequest(error) && currentSelection() && timedThreadRef.current !== threadId) {
           const message = error instanceof Error ? error.message : String(error);
           timingErrorRef.current = message;
+          setHistorySnapshot('failed');
           setLastError(message);
         }
       });
@@ -449,14 +485,24 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         }>(path, historyConfig.readTimeoutMs, 3);
         if (response.snapshot?.stale) {
           stalePreview = { thread: response.result.thread, page: response };
+          if (opening) opening.reconcile = false;
+          response = await historyRequestsRef.current.get(path, historyConfig.readTimeoutMs, 3);
+        }
+        // Resume can attach while the first HTTP read is still in flight. Read
+        // its fresh tail before revealing either version of that selection.
+        if (opening?.reconcile && currentSelection()) {
+          opening.reconcile = false;
           response = await historyRequestsRef.current.get(path, historyConfig.readTimeoutMs, 3);
         }
         if (!currentSelection()) return;
         nativeArrived = true;
         const { result, ...page } = response;
+        const liveMetadata = Object.fromEntries([...threadMetadataFieldsRef.current]
+          .filter(([, field]) => field.revision > metadataRevision).map(([key, field]) => [key, field.value]));
         const thread = {
           ...result.thread, permissionProfile: permissionProfileId(result), archived: Boolean(archived),
-          ...(result.collaborationMode ? { collaborationMode: result.collaborationMode } : {})
+          ...(result.collaborationMode ? { collaborationMode: result.collaborationMode } : {}),
+          ...liveMetadata
         };
         const historyItems = page.items.map((entry) => ({
           ...entry.item, turnId: entry.turnId,
@@ -474,11 +520,12 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         setActiveThread(thread);
         setVerifiedThreadId(threadId);
         verifiedThreadRef.current = threadId;
-        setHistorySnapshot(page.snapshot?.stale ? 'failed' : null);
+        setHistorySnapshot(page.snapshot?.stale || timingErrorRef.current ? 'failed' : null);
         lastHistoryReadRef.current = Date.now();
         if (!page.timingsPending && turnRevisionRef.current === turnRevision) {
-          activeTurnIdRef.current = page.activeTurnId;
-          setActiveTurnId(page.activeTurnId);
+          const active = reconcileActiveTurnId(activeTurnIdRef.current, turnTimingsRef.current, page);
+          activeTurnIdRef.current = active;
+          setActiveTurnId(active);
         }
         setTurnTimings((current) => {
           const timings = mergeTurnTimings(current, page.turns, timingBaseline);
@@ -520,6 +567,8 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         throw error;
       } finally {
         endForeground();
+        if (openingThreadRef.current === opening) openingThreadRef.current = null;
+        settleOpening();
         if (version === selectionVersionRef.current) {
           if (!options.silent) setLoadingHistory(false);
           if (!options.silent) setLoadingThread(false);
@@ -530,36 +579,41 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   );
 
   useEffect(() => {
-    if (!authenticated || !connected || !verifiedThreadId || verifiedThreadId !== activeThreadId || showArchived) {
+    if (!authenticated || !connected || !activeThreadId || showArchived) {
       setThreadReady(false);
       return;
     }
-    if (newThreadsRef.current.has(verifiedThreadId)) { setThreadReady(true); return; }
+    if (newThreadsRef.current.has(activeThreadId)) { setThreadReady(true); return; }
+    const threadId = activeThreadId;
+    const version = selectionVersionRef.current;
     let stopped = false;
     let attempts = 0;
     let retryTimer: number | undefined;
     let resumeError: string | null = null;
     const socket = socketRef.current;
     const currentSelection = () => !stopped && socketRef.current === socket &&
-      activeThreadRef.current === verifiedThreadId;
+      activeThreadRef.current === threadId && selectionVersionRef.current === version;
     setThreadReady(false);
     const resume = () => {
       if (!currentSelection()) return;
       attempts++;
+      const metadataRevision = threadMetadataRevisionRef.current;
       // Only rejoin this existing subscription; never retry turn or model actions.
       void rpc<{ thread: Thread } & PermissionSettings>('thread/resume', {
-        threadId: verifiedThreadId, excludeTurns: true
+        threadId, excludeTurns: true
       }).then(result => {
         if (!currentSelection()) return;
-        setActiveThread(current => current?.id === verifiedThreadId
-          ? { ...current, ...result.thread, permissionProfile: permissionProfileId(result) } : current);
+        const liveMetadata = Object.fromEntries([...threadMetadataFieldsRef.current]
+          .filter(([, field]) => field.revision > metadataRevision).map(([key, field]) => [key, field.value]));
+        const thread = { ...result.thread, permissionProfile: permissionProfileId(result), ...liveMetadata };
+        resumedThreadRef.current = { threadId, version, socket };
+        setActiveThread(current => current?.id === threadId ? { ...current, ...thread } : current);
         setThreadReady(true);
         // The initial read can finish before the native subscription is attached.
         if (!viewingHistoryRef.current) {
-          // The initial native page is already the stable visual baseline. Rejoining
-          // the live subscription must not make the whole conversation look stale
-          // again while the silent reconciliation runs in the background.
-          void openThread(verifiedThreadId, { silent: true, preserveHistory: true }).catch(() => undefined);
+          const opening = openingThreadRef.current;
+          if (opening?.threadId === threadId && opening.version === version) opening.reconcile = true;
+          else void openThread(threadId, { silent: true, preserveHistory: true }).catch(() => undefined);
         }
         if (resumeError) setLastError(current => current === resumeError
           ? metadataErrorsRef.current.models ?? metadataErrorsRef.current.projects ?? null : current);
@@ -573,7 +627,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     };
     resume();
     return () => { stopped = true; window.clearTimeout(retryTimer); };
-  }, [authenticated, connected, verifiedThreadId, activeThreadId, showArchived, rpc, openThread]);
+  }, [authenticated, connected, activeThreadId, selectionRevision, showArchived, rpc, openThread]);
 
   const prepareEarlierHistory = useCallback(() => {
     const threadId = activeThreadRef.current;
@@ -597,8 +651,9 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           return next;
         });
         if (turnRevisionRef.current === turnRevision) {
-          activeTurnIdRef.current = initialTimings.activeTurnId;
-          setActiveTurnId(initialTimings.activeTurnId);
+          const active = reconcileActiveTurnId(activeTurnIdRef.current, turnTimingsRef.current, initialTimings);
+          activeTurnIdRef.current = active;
+          setActiveTurnId(active);
         }
         turnsCursorRef.current = initialTimings.turnsCursor;
         timedThreadRef.current = threadId;
@@ -766,7 +821,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
 
   const returnToLatest = useCallback(async () => {
     const threadId = activeThreadRef.current;
-    if (threadId) await openThread(threadId);
+    if (threadId) await openThread(threadId, { force: true });
   }, [openThread]);
 
   useEffect(() => {
@@ -916,6 +971,9 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     setVerifiedThreadId(null);
     setTimedThreadId(null);
     verifiedThreadRef.current = null;
+    timedThreadRef.current = null;
+    openingThreadRef.current = null;
+    resumedThreadRef.current = null;
   }, [clearStreamingDeltas, watchThread]);
 
   const createThread = useCallback(
@@ -1008,6 +1066,12 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         threadId, ...settings,
         ...(settings.permissions ? permissionProfileUpdate(settings.permissions) : {})
       });
+      recordThreadMetadata(threadId, {
+        ...(settings.model ? { model: settings.model } : {}),
+        ...(settings.effort ? { reasoningEffort: settings.effort } : {}),
+        ...(settings.permissions ? { permissionProfile: settings.permissions } : {}),
+        ...(settings.collaborationMode ? { collaborationMode: settings.collaborationMode } : {})
+      });
       setThreads((current) =>
         current.map((thread) =>
           thread.id === threadId
@@ -1033,14 +1097,15 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           : current
       );
     },
-    [rpc]
+    [rpc, recordThreadMetadata]
   );
 
   const renameThread = useCallback(async (threadId: string, name: string) => {
     await rpc('thread/name/set', { threadId, name });
+    recordThreadMetadata(threadId, { name });
     setThreads((current) => current.map((thread) => thread.id === threadId ? { ...thread, name } : thread));
     setActiveThread((current) => current?.id === threadId ? { ...current, name } : current);
-  }, [rpc]);
+  }, [rpc, recordThreadMetadata]);
 
   const archiveThread = useCallback(async (threadId: string, archived: boolean) => {
     await rpc(archived ? 'thread/archive' : 'thread/unarchive', { threadId });
@@ -1175,8 +1240,11 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     if (historyRefreshRef.current) return;
     historyRefreshRef.current = (async () => {
       while (historyRefreshNextRef.current) {
+        const opening = openingThreadRef.current;
+        if (opening) { await opening.settled; continue; }
         const next = historyRefreshNextRef.current;
         historyRefreshNextRef.current = null;
+        if (!next) continue;
         if (activeThreadRef.current !== next.threadId || selectionVersionRef.current !== next.version ||
             viewingHistoryRef.current || disposedRef.current) continue;
         await openThread(next.threadId, { silent: true, preserveHistory: true }).catch(() => undefined);
@@ -1376,7 +1444,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         } else recoverMetadata();
         if (listFailuresRef.current > 0) retryThreadsRef.current();
         const threadId = activeThreadRef.current;
-        if (threadId && (!message.resumed ||
+        if (threadId && openingThreadRef.current?.threadId !== threadId && (!message.resumed ||
             verifiedThreadRef.current !== threadId || timedThreadRef.current !== threadId)) {
           void openThread(threadId, { silent: true, preserveHistory: true }).catch(() => undefined);
         }
@@ -1654,6 +1722,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       const threadId = String(params.threadId ?? '');
       const status = params.status as Thread['status'] | undefined;
       if (threadId && status) {
+        recordThreadMetadata(threadId, { status });
         if (!threadsRef.current.some(thread => thread.id === threadId)) scheduleThreadRefresh(threadId);
         setThreads((current) => current.map((thread) => (thread.id === threadId ? { ...thread, status } : thread)));
         setActiveThread((current) => (current?.id === threadId ? { ...current, status } : current));
@@ -1669,6 +1738,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       const threadId = String(params.threadId ?? '');
       const name = typeof params.threadName === 'string' ? params.threadName : typeof params.name === 'string' ? params.name : null;
       if (threadId) {
+        recordThreadMetadata(threadId, { name });
         setThreads((current) => current.map((thread) => (thread.id === threadId ? { ...thread, name } : thread)));
         setActiveThread((current) => (current?.id === threadId ? { ...current, name } : current));
       }
@@ -1680,6 +1750,12 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         | ({ model?: string; effort?: string | null; collaborationMode?: CollaborationMode } & PermissionSettings)
         | undefined;
       if (threadId && settings) {
+        recordThreadMetadata(threadId, {
+          ...(settings.model ? { model: settings.model } : {}),
+          ...(settings.effort ? { reasoningEffort: settings.effort } : {}),
+          ...(settings.collaborationMode ? { collaborationMode: settings.collaborationMode } : {}),
+          permissionProfile: permissionProfileId(settings)
+        });
         setThreads((current) =>
           current.map((thread) =>
             thread.id === threadId
@@ -1712,6 +1788,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       const projectId =
         typeof params.projectId === 'string' ? params.projectId : null;
       if (threadId) {
+        recordThreadMetadata(threadId, { projectId });
         setThreads((current) => current.map((thread) => (thread.id === threadId ? { ...thread, projectId } : thread)));
         setActiveThread((current) => (current?.id === threadId ? { ...current, projectId } : current));
       }
@@ -1847,9 +1924,10 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     questionCounts,
     loadingThread,
     historySnapshot,
-    // Timings are ancillary metadata. They can arrive after the conversation page
-    // and must not keep the composer or the visible timeline in a loading state.
-    threadReady: threadReady && verifiedThreadId === activeThreadId,
+    // Render text independently; actions require fresh metadata, timings and
+    // the native subscription, including after a failed or stale read.
+    threadReady: threadReady && verifiedThreadId === activeThreadId && timedThreadId === activeThreadId &&
+      historySnapshot === null,
     showArchived,
     lastError,
     messageEditPending,

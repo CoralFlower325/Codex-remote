@@ -160,6 +160,11 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Main chats request fresh native text/timings before displaying a new selection;
   do not flash old memory/device/host previews while latest reads are pending.
   Keep already-mounted same-chat content; cached chat previews are failure fallback.
+  Repeated selection of an already-open or opening chat must not reset its reads.
+  Start existing-chat resume alongside native reads, retaining a fresh tail check
+  after attach. Merge that check before the first commit when attach precedes
+  the initial response. Keep timing readiness independent from resume effects;
+  retries and return-to-latest remain explicit actions.
   Fresh chat/timing requests bypass the host's clean two-second reuse window,
   while identical pending reads still coalesce. Reconcile again after native
   resume attaches; retain a trailing read when completion arrives during refresh.
@@ -346,6 +351,12 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   unsubscribe, and remove expired endpoints without retrying them.
 - Strip internal citation IDs from assistant prose only. Preserve user text,
   inline/fenced code and real links; do not invent missing source destinations.
+- Render chat math with bounded, untrusted KaTeX in a lazy module. Support dollar
+  and escaped-parenthesis/bracket delimiters without rewriting native content.
+  Protect code and explicit Markdown links; preserve incomplete/invalid text and
+  ordinary prices. Keep long equations scrollable inside the conversation.
+  Do not precache the math module/fonts for ordinary chats. Source transforms
+  must keep virtual-file offsets consistent with reparsed trees.
 - Main-chat queued submissions use native queue IDs and cursor pagination.
   Dispatch through native queue/start; steering uses expectedTurnId then removes
   the queued submission. Preserve image and skill inputs when editing text.
@@ -361,7 +372,7 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   An explicit user version takes precedence.
   Remote and the desktop manager have independent versions. Remote's version lives
   in the root package/lockfile; the manager's lives in desktop/package/lockfile.
-  The stable manager is 0.2.1 with Remote 0.2.14. Remote-only changes must not increment, rebuild
+  The stable manager is 0.2.1 with Remote 0.2.15. Remote-only changes must not increment, rebuild
   or install the manager. Increment the manager patch only for its own changes.
   Manager self-update is paused as 0.2.0AU on archive/manager-0.2.0AU;
   keep AU self-update out of the stable manager and formal releases. Preserve AU history,

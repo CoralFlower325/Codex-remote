@@ -21,7 +21,7 @@ import { documentReferences } from '../../shared/document-input';
 import { PreviewLink } from './PreviewLinks';
 
 export const ResponseSection = memo(function ResponseSection({
-  section, timing, finalStartedAtMs, hasTrace, showError, open, onToggleTurn, active, onInteract, onFork, onError
+  section, timing, finalStartedAtMs, hasTrace, showError, open, onToggleTurn, active, threadIdle = false, onInteract, onFork, onError
 }: {
   section: TimelineSection;
   timing: TurnTiming | undefined;
@@ -31,6 +31,7 @@ export const ResponseSection = memo(function ResponseSection({
   open: boolean;
   onToggleTurn: (turnId: string) => void;
   active: boolean;
+  threadIdle?: boolean;
   onInteract: () => void;
   onFork: ((turnId: string) => Promise<void>) | undefined;
   onError: ((error: unknown) => void) | undefined;
@@ -38,8 +39,12 @@ export const ResponseSection = memo(function ResponseSection({
   const bodyId = useId();
   const finalIndex = finalAnswerIndex(section.entries);
   const finalEntry = section.entries[finalIndex];
+  // Native final-answer records can omit completion timestamps. A verified idle
+  // thread can fold their process before timings arrive; a streaming final cannot.
   const completed = !active && (timing ? timing.status !== 'inProgress'
-    : finalEntry?.type === 'message' && finalEntry.item.completedAtMs != null);
+    : finalEntry?.type === 'message' &&
+      (finalEntry.item.completedAtMs != null ||
+        threadIdle && finalEntry.item.type === 'agentMessage' && finalEntry.item.phase === 'final_answer'));
   const agentItems = useMemo(() => section.entries.flatMap(entry =>
     entry.type === 'event' && isSubagentItem(entry.item) ? [entry.item] : []), [section.entries]);
   const firstAgentKey = section.entries.find(entry => entry.type === 'event' && isSubagentItem(entry.item))?.key;
@@ -54,7 +59,7 @@ export const ResponseSection = memo(function ResponseSection({
       : <ActivityItem item={entry.item} running={false} key={entry.key} />
     : <MessageItem item={entry.item} key={entry.key} />;
   return <section className="turn-response" data-turn-id={section.turnId} data-scroll-anchor={`response-${section.key}`}>
-    {section.showTiming && (timing || active) && <div className="worked-divider">
+    {section.showTiming && (timing || active || completed) && <div className="worked-divider">
       {completed && hasTrace && section.turnId ? <button type="button" className="turn-disclosure" aria-expanded={open} aria-controls={bodyId}
         onClick={() => { onInteract(); onToggleTurn(section.turnId!); }}>
         <TurnDuration timing={timing} active={false} finalStartedAtMs={finalStartedAtMs} />

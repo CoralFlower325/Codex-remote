@@ -1,16 +1,21 @@
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
 import type { Nodes, Root } from 'mdast';
 import { previewLabel, previewTarget } from './preview-links';
+import { normalizeMathDelimiters } from './markdown-math';
 
-const parser = unified().use(remarkParse).use(remarkGfm);
+const parser = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
 
 export function remarkAssistantSources() {
   return (tree: Root, file: { value: unknown }) => {
     const source = String(file.value);
     const linked = assistantFileLinks(source, tree);
-    if (linked !== source) tree = parser.parse(linked);
+    if (linked !== source) {
+      tree = parser.parse(linked);
+      file.value = linked;
+    }
     const visit = (node: Nodes): void => {
       if (node.type === 'text') {
         node.value = node.value.replace(/\uE200(?:cite|filecite)\uE202[^\uE200\uE201\r\n]*(?:\uE201|$)/g, '');
@@ -61,6 +66,7 @@ function assistantFileLinks(source: string, tree: Root): string {
 }
 
 export function markdownBlocks(text: string): Array<{ offset: number; text: string }> {
+  text = normalizeMathDelimiters(text);
   const tree = parser.parse(text);
   // Footnote numbering and backreferences span the whole document.
   if (tree.children.some(node => node.type === 'footnoteDefinition')) return [{ offset: 0, text }];

@@ -2,6 +2,13 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.15', changes: [
+    '会话订阅与首次读取并行，接入后的最新记录在首屏提交前合并；重复点击已打开的会话不再清空状态重载。',
+    '保留原生轮次时间就绪保护，同一会话后台核对继续保留正文、草稿和阅读位置。',
+    '聊天支持行内和独立 LaTeX 公式，兼容美元与反斜杠括号分隔符；长公式可横向滚动，代码和普通价格保留原样。',
+    '公式渲染器和字体按需加载，异常或未完成公式回退原文；不执行公式中的外部资源和 HTML 命令。',
+    '正式管理器保持 0.2.1，无变更；安装包仍在 Remote 0.2.10 发布页提供。'
+  ] },
   { version: '0.2.14', changes: [
     '修复进入会话后正文已经到达却因订阅重连和轮次时间读取反复闪动的问题，正文先稳定显示，附属时间信息后台补齐。',
     '模型、权限、项目、推理菜单增加从触发按钮方向展开的进入和退出动效，移动端底部菜单与遮罩同步过渡。',

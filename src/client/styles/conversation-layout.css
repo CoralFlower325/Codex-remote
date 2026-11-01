@@ -258,6 +258,43 @@
   line-height: 1.55;
 }
 
+.math-expression {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 2px;
+  vertical-align: middle;
+  overflow-wrap: normal;
+}
+
+.math-block {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.math-expression--display {
+  display: block;
+  vertical-align: top;
+}
+
+.math-block > .math-expression--display {
+  display: inline-block;
+  max-width: none;
+  overflow: visible;
+}
+
+.math-rendered .katex-display {
+  margin: 0.5em 0;
+}
+
+.math-literal {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
 .markdown img {
   display: block;
   max-width: 100%;

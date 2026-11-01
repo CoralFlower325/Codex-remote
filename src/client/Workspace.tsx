@@ -690,8 +690,9 @@ function ThreadScreen({
         items={remote.items}
         loading={remote.loadingThread}
         snapshotState={remote.historySnapshot}
-        onRetrySnapshot={() => { void remote.openThread(thread.id).catch(onError); }}
+        onRetrySnapshot={() => { void remote.openThread(thread.id, { force: true }).catch(onError); }}
         activeTurnId={remote.activeTurnId}
+        threadIdle={thread.status.type === 'idle'}
         turnTimings={remote.turnTimings}
         hasMoreHistory={remote.hasMoreHistory}
         loadingHistory={remote.loadingHistory}

@@ -747,6 +747,13 @@ displayed it.
 
 ## Loading and Mobile Networks
 
+Replies and Markdown previews support inline and display LaTeX formulas through
+an on-demand KaTeX renderer. Dollar and escaped-parenthesis/bracket delimiters
+work; long equations scroll horizontally. Code and ordinary prices remain text.
+Incomplete or invalid formulas fall back to readable source. Formula commands
+cannot load external resources or arbitrary HTML.
+
+- Selecting an already-open or opening chat does not restart healthy reads. Native subscription attachment starts alongside the first HTTP read; a required fresh check after attachment is combined before that first page is shown when possible. Later checks preserve mounted text and reading position. Failed attachment can be retried; sending still requires verified metadata, native timings and a successful subscription.
 - Authentication status and authenticated bootstrap requests start together. Either verified response can open the workspace, so a stalled status request does not hold up a successful bootstrap. Both reads have six-second deadlines; total failure retries after 1, 2, 4, then at most 8 seconds. Network recovery or returning to the foreground can cancel an unfinished check and start again. A successful password login enters directly without an extra status round trip.
 - Tasks, models and projects appear as HTTP bootstrap data arrives, independently of WebSocket readiness. If bootstrap stalls for 1.5 seconds after verified authentication enables task loading, tasks load through their own authenticated HTTP endpoint. Missing models and projects load through independent authenticated HTTP reads, without waiting for realtime synchronization or each other. Subsequent task pages follow native cursors over HTTP, yielding to typing and selection; all tasks remain accessible. Chat history can load while the real-time connection is still being established; sending messages and native actions require that connection.
 - The task first page contains up to 50 rows; remaining pages follow native cursors at up to 200 rows each. Bootstrap and fallback share native reads, including requests that outlive the bootstrap deadline. Selecting a chat pauses further background task pages until its initial text read completes.

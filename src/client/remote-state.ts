@@ -24,6 +24,22 @@ export function mergeTurnTimings(current: Record<string, TurnTiming>, latest: Tu
   return next;
 }
 
+export function reconcileActiveTurnId(
+  currentId: string | null,
+  currentTimings: Record<string, TurnTiming>,
+  snapshot: { activeTurnId: string | null; turns: TurnTiming[] }
+): string | null {
+  if (!currentId || snapshot.activeTurnId === currentId) return snapshot.activeTurnId;
+  const current = snapshot.turns.find(turn => turn.id === currentId);
+  if (current && current.status !== 'inProgress') return snapshot.activeTurnId;
+  const incoming = snapshot.turns.find(turn => turn.id === snapshot.activeTurnId);
+  const currentStart = currentTimings[currentId]?.startedAt;
+  // A bounded/lagging page can omit a just-started turn. Absence is not a
+  // completion, and an older active record must not rewind native live state.
+  return incoming?.status === 'inProgress' && incoming.startedAt != null && currentStart != null &&
+    incoming.startedAt > currentStart ? incoming.id : currentId;
+}
+
 export function mergeOlderTurnTimings(current: Record<string, TurnTiming>, older: TurnTiming[]): Record<string, TurnTiming> {
   return { ...Object.fromEntries(older.map(turn => [turn.id, turn])), ...current };
 }

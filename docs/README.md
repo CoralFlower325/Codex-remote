@@ -44,6 +44,7 @@ the authority for what is actually installed.
 
 - [Native summary panel / 原生会话摘要](native-summary-panel.md)
 - [Native runtime errors / 原生运行错误](native-runtime-errors.md)
+- [Chat formulas / 聊天公式](math-rendering.md)
 - [原生聊天顺序与晚到事件](native-history-order.md)
 - [Manual updates and recovery / 手动更新与恢复](manual-version-update.md)
 - [网页检查后端版本、远程更新与进度](web-backend-update.md)
@@ -72,6 +73,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 | [执行记录分组与展开](activity-groups-acceptance.md) | 0.2.11 重复 key 残留行复现、八视口展开与延迟详情验证 |
 | [PDF 附件与工作区修复](review-fixes-acceptance.md) | 0.2.12 上传与预览、任务 URL、历史校准、检查器及终端门禁 |
 | [会话最新记录与滚动](chat-loading-acceptance.md) | 0.2.14 最新页优先、订阅后核对、补读合并及八视口阅读位置 |
+| [会话首屏与公式](chat-open-math-acceptance.md) | 0.2.15 并行订阅、稳定首屏、重复选择、旧完成事件和公式懒加载 |
 | [Subagents](subagent-acceptance.md) | Discovery, history and safe viewer close / 发现、历史与关闭行为 |
 | [PR #3 · 0.1.5](pr-3-review.md) | Updates, phone controls and gestures / 更新、手机控件与手势 |
 | [PR #4 · 0.1.6](pr-4-review.md) | Sidebar and desktop/mobile sizing / 侧栏与双端尺寸 |

@@ -26,6 +26,7 @@ export function SubagentChatView({ chat, onLoadEarlier, onPrefetchEarlier, onRet
       <button type="button" className="icon-button" title="重试" aria-label="重试" onClick={() => { void onRetry(); }}><RotateCw size={14} /></button>
     </div>}
     <ThreadTimeline threadId={chat.id} items={chat.items} turnTimings={chat.timings}
+      threadIdle={chat.thread?.status.type === 'idle'}
       activeTurnId={chat.activeTurnId} loading={chat.loading} hasMoreHistory={Boolean(chat.cursor)}
       loadingHistory={chat.loadingHistory} onLoadEarlier={onLoadEarlier} onPrefetchEarlier={onPrefetchEarlier} />
     {!chat.loading && !chat.error && !chat.items.length && !Object.values(chat.timings).some(turn => turn.error) &&

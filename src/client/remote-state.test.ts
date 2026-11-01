@@ -1,10 +1,23 @@
 import { describe, expect, it } from 'vitest';
 
-import { displayThreadTitle, findActiveTurnId, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, reconcileThreadList, upsertItem } from './remote-state';
+import { displayThreadTitle, findActiveTurnId, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, reconcileActiveTurnId, reconcileThreadList, upsertItem } from './remote-state';
 import type { TurnTiming } from '../shared/turn-timing';
 import type { Thread, ThreadItem } from './types';
 
 describe('remote thread state', () => {
+  it('does not clear or rewind a known live turn omitted by a lagging timing snapshot', () => {
+    const live: TurnTiming = { id: 'live', status: 'inProgress', startedAt: 20, completedAt: null, durationMs: null };
+    const old = { ...live, id: 'old', startedAt: 10 };
+    expect(reconcileActiveTurnId('live', { live }, { activeTurnId: null, turns: [] })).toBe('live');
+    expect(reconcileActiveTurnId('live', { live }, { activeTurnId: 'old', turns: [old] })).toBe('live');
+    expect(reconcileActiveTurnId('live', { live }, { activeTurnId: null, turns: [live] })).toBe('live');
+    expect(reconcileActiveTurnId('live', { live }, {
+      activeTurnId: null, turns: [{ ...live, status: 'completed', completedAt: 25 }]
+    })).toBeNull();
+    const newer = { ...live, id: 'newer', startedAt: 30 };
+    expect(reconcileActiveTurnId('live', { live }, { activeTurnId: 'newer', turns: [newer] })).toBe('newer');
+    expect(reconcileActiveTurnId(null, {}, { activeTurnId: 'live', turns: [live] })).toBe('live');
+  });
   it('does not roll completed child timing back when an earlier speculative page is consumed', () => {
     const completed: TurnTiming = { id: 'child', status: 'completed', startedAt: 1, completedAt: 2, durationMs: 1000 };
     const prefetched: TurnTiming = { ...completed, status: 'inProgress', completedAt: null, durationMs: null };

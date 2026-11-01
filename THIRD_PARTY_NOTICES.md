@@ -66,6 +66,11 @@ Mozilla PDF.js through `pdfjs-dist` (Apache-2.0). Unmodified package license
 texts are distributed in `public/licenses/`; PDF.js's worker remains a separate
 asset. Both renderers load on demand.
 
+Conversation formulas use MIT-licensed `remark-math` and KaTeX. KaTeX and its
+fonts load only when a formula is rendered; its unmodified license is distributed
+in `public/licenses/KaTeX-LICENSE.txt`. KaTeX retains copyright (c) 2013-2020 Khan
+Academy and other contributors.
+
 Prebuilt runtime archives and the desktop updater use the BlueOak-1.0.0-licensed `tar`
 package. Runtime bundles retain dependency packages' copyright and license files.
 

@@ -22,6 +22,7 @@ interface ThreadTimelineProps {
   snapshotState?: 'loading' | 'failed' | null;
   onRetrySnapshot?: () => void;
   activeTurnId: string | null;
+  threadIdle?: boolean;
   turnTimings: Record<string, TurnTiming>;
   hasMoreHistory: boolean;
   loadingHistory: boolean;
@@ -51,6 +52,7 @@ export function ThreadTimeline({
   snapshotState = null,
   onRetrySnapshot,
   activeTurnId,
+  threadIdle = false,
   turnTimings,
   hasMoreHistory,
   loadingHistory,
@@ -515,7 +517,8 @@ export function ThreadTimeline({
             hasTrace={responses.get(section.turnId ?? '')?.hasTrace ?? false}
             showError={responses.get(section.turnId ?? '')?.lastResponseKey === section.key}
             open={expandedTurns.has(section.turnId ?? '')} onToggleTurn={toggleTurn}
-            active={section.turnId === activeTurnId} onInteract={preserveActivityPosition} key={section.key}
+            active={section.turnId === activeTurnId} threadIdle={threadIdle}
+            onInteract={preserveActivityPosition} key={section.key}
             onFork={onFork} onError={onActionError} />
       )}
       {emptyError?.error && <NativeTurnError turn={emptyError} />}

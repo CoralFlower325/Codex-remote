@@ -100,7 +100,7 @@ export function pwaPlugin(appVersion: string): Plugin {
       const entry = Object.values(bundle).find(value => value.type === 'chunk' && value.isEntry && value.name === 'index');
       if (!entry) return;
       const files = ['/', '/codex-mark.svg', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest',
-        ...Object.keys(bundle).filter(name => /\.(js|css)$/.test(name) && !/^assets\/(?:TerminalPanel|FilePreview|PdfPreview)/.test(name))
+        ...Object.keys(bundle).filter(name => /\.(js|css)$/.test(name) && !/^assets\/(?:TerminalPanel|FilePreview|PdfPreview|MathFormula)/.test(name))
           .map(name => `/${name}`)];
       this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({
         version: appVersion, buildId: entry.fileName, releases: releaseNotes
