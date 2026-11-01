@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.11', changes: [
+    '修复命令分组在历史记录更新、拆分和合并后重复残留、点击无法展开的问题。',
+    '忽略没有正文和提问的空回复占位，避免拆散连续操作或覆盖最终回复的计时锚点。',
+    '修复从设备缓存恢复后命令输出与文件差异无法按需加载的问题，同时兼容已有缓存。',
+    '正式管理器保持 0.2.1，无变更；安装包仍在 Remote 0.2.10 发布页提供。'
+  ] },
   { version: '0.2.10', changes: [
     '修复源码更新将 .env.example 误判为私密路径而中止的问题，保留本机模板、配置和私有数据。',
     '排除 macOS 系统元数据造成的源码定制误判，并说明使用源码更新的具体原因。',

@@ -22,6 +22,7 @@ export function buildTimelineEntries(
 ): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
   const activityKeys = new Map<string, string>();
+  const retainedActivityKeys = new Set<string>();
   for (const entry of previous) {
     if (entry.type === 'activity') for (const item of entry.items) activityKeys.set(itemKey(item), entry.key);
   }
@@ -34,9 +35,15 @@ export function buildTimelineEntries(
       activityItems[0]!.type !== 'imageView';
     const kinds = [...new Set(activityItems.map((item) => activityKind(item)!))];
     const kind = (['tool', 'file', 'command', 'search', 'image'] as ActivityKind[]).find((kind) => kinds.includes(kind))!;
+    const baseKey = `activity-${itemKey(activityItems[0]!)}`;
+    let key = activityItems.map(item => activityKeys.get(itemKey(item)))
+      .find(key => key && !retainedActivityKeys.has(key)) ?? baseKey;
+    let suffix = 1;
+    while (retainedActivityKeys.has(key)) key = `${baseKey}-${++suffix}`;
+    retainedActivityKeys.add(key);
     entries.push({
       type: 'activity',
-      key: activityItems.map(item => activityKeys.get(itemKey(item))).find(Boolean) ?? `activity-${itemKey(activityItems[0]!)}`,
+      key,
       kind,
       kinds,
       items: activityItems,
@@ -50,6 +57,7 @@ export function buildTimelineEntries(
   items.forEach((item) => {
     if (item.type === 'reasoning' || item.type === 'imageGeneration') return;
     if (item.type === 'webSearch' && !item.query?.trim()) return;
+    if (item.type === 'agentMessage' && !item.text.trim() && !item.questions?.length) return;
     if (activityItems.length > 0 && (item.turnId !== activityItems[0]!.turnId ||
       item.type === 'imageView' || activityItems[0]!.type === 'imageView')) flushActivity();
     if (isConversationItem(item)) {
@@ -152,7 +160,7 @@ export function finalAnswerIndex(entries: TimelineEntry[]): number {
     const entry = entries[index]!;
     if (entry.type === 'message' && entry.item.type === 'agentMessage' &&
       entry.item.phase !== 'commentary' && entry.item.phase !== 'partial_answer' &&
-      (!entry.item.questions?.length || entry.item.text.trim())) return index;
+      entry.item.text.trim()) return index;
   }
   return -1;
 }

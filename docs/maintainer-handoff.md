@@ -15,7 +15,16 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-Remote 0.2.10 pairs with stable manager 0.2.1. Release metadata and assets prefer
+Remote 0.2.11 pairs with stable manager 0.2.1. Activity groups consume each
+previous key once when native history splits or merges them, preventing duplicate
+React keys, orphan rows and dead disclosure buttons. Empty assistant placeholders
+do not split activity or replace final-answer anchors. Device snapshots retain
+lazy-detail markers while stripping output/diffs; reads reproject legacy snapshots
+without rewriting storage or issuing network requests. Eight synthetic browser
+viewports pass split/merge/reorder and nested command/detail expansion.
+See [activity acceptance](activity-groups-acceptance.md).
+
+Release metadata and assets prefer
 the project-owned download distribution with official fallback and unchanged
 checksum checks. Install manager 0.2.1 manually over 0.2.0 and retry the same host
 directory; a host update cannot change the installed app's bundled updater.
@@ -24,23 +33,28 @@ copies stay outside the installation plan. Actual custom inputs, missing baselin
 or unsupported runtime architectures still need Git/npm networks.
 See [downloads and maintenance](update-downloads.md).
 
-Typecheck, builds and source Electron smoke acceptance pass on Windows; use the
-final batch's CI for the latest test totals. The 2026-11-01 public probe confirmed
-GitHub unauthenticated API HTTP 403 / RateLimitRemaining=0 at the Cloudflare
-egress. Worker deployment `aabf3799` now returns HTTP 200 / `v0.2.9` from
-`release-snapshot` while preserving the upstream-403 diagnostic. This was checked
-with an Agent without an explicitly configured proxy, not on the user's Mac.
+Typecheck, builds and source Electron smoke acceptance passed for the update
+batch; use each exact release's CI for platform results. The 2026-11-01 public
+probe confirmed GitHub unauthenticated API HTTP 403 / RateLimitRemaining=0 at
+Cloudflare egress. The verified 0.2.10 distribution deployment returned HTTP 200 /
+`v0.2.10` from a checked release snapshot. Its internal timestamp expires cached
+metadata after 60 seconds even when platform cache headers differ. Public GET/HEAD
+headers retain `max-age=60`, without exposing the internal timestamp.
+Explicit-proxy-free probes fully checked both runtime manifests, the Windows
+runtime and Mac manager DMG against official hashes. The Mac runtime passed
+seven-range reconstruction but its whole-file requests timed out at 600 seconds;
+ZIP/EXE checks covered HEAD/Range only. These probes do not establish TUN-off
+acceptance on the user's Mac or Electron's full update path.
 The token-free public metadata snapshot lives at ignored
 `distribution/.cloudflare/release-snapshot.json`. After official assets/digests
 are complete, run `node scripts/refresh-distribution-release.mjs`, set the download
 host/zone, run `node scripts/prepare-distribution.mjs`, then `cf deploy --prebuilt`
 from `distribution`. Preparation reads that snapshot by default;
 `REMOTE_DOWNLOAD_METADATA` can select an explicitly verified public metadata file.
-See [the exact maintenance sequence](update-downloads.md#维护分发服务).
-The currently verified snapshot is the previous 0.2.9 release; refresh and redeploy
-after the full 0.2.10 asset set is published, then verify the returned version.
-Do not infer acceptance on the user's Mac network. Final CI, packaged applications,
-signed-in Mac integration and unsigned-package acceptance remain separate.
+See [the maintenance sequence](update-downloads.md#维护分发服务). Refresh and redeploy
+after each complete formal release, then verify the returned version and assets.
+Final CI, packaged applications, signed-in Mac integration and unsigned-package
+acceptance remain separate.
 
 Remote 0.2.9 fixes missing/mismatched web-update tasks, durable job lookup,
 bounded stalled downloads and worker takeover races. Query the saved job ID

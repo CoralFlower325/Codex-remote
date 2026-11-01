@@ -73,6 +73,26 @@ describe('fixed-device snapshot projection', () => {
     expect(JSON.stringify(result)).not.toContain('PRIVATE_');
   });
 
+  it.each([undefined, false, true])('keeps stripped execution details reloadable from snapshots (%s)', detailsDeferred => {
+    const marker = detailsDeferred === undefined ? {} : { detailsDeferred };
+    const source = page([
+      entry({ type: 'commandExecution', id: 'command', command: 'npm test', cwd: '/workspace',
+        status: 'completed', aggregatedOutput: 'PRIVATE_OUTPUT', exitCode: 0, durationMs: 123, ...marker }),
+      entry({ type: 'fileChange', id: 'change', status: 'completed', ...marker,
+        changes: [{ path: 'app.ts', kind: 'update', diff: 'PRIVATE_DIFF' }] })
+    ]);
+    const original = structuredClone(source);
+    const result = projectDeviceChat(thread(), source)!;
+    expect(result.page.items).toEqual([
+      entry({ type: 'commandExecution', id: 'command', command: 'npm test', cwd: '/workspace',
+        status: 'completed', aggregatedOutput: null, exitCode: 0, durationMs: 123, detailsDeferred: true }),
+      entry({ type: 'fileChange', id: 'change', status: 'completed', detailsDeferred: true,
+        changes: [{ path: 'app.ts', kind: 'update' }] })
+    ]);
+    expect(JSON.stringify(result)).not.toContain('PRIVATE_');
+    expect(source).toEqual(original);
+  });
+
   it('never restores active turns, ephemeral chats or subagent chats', () => {
     const source = {
       ...page([
@@ -132,6 +152,51 @@ describe('fixed-device storage limits', () => {
     expect(new TextEncoder().encode(JSON.stringify(result)).byteLength).toBeLessThanOrEqual(1024 * 1024);
     expect(result.chats[0]?.value.page.items).toHaveLength(0);
     expect(huge.value.page.items).toHaveLength(1);
+  });
+
+  it('restores lazy detail reads for an existing snapshot without writing it back or fetching bodies', async () => {
+    vi.resetModules();
+    const { readDeviceChat: readLegacyDeviceChat } = await import('./device-snapshots');
+    const legacy: DeviceSnapshots = {
+      workspace: null, chats: [{ savedAt: Date.now(), value: {
+        thread: projectDeviceThread(thread()),
+        page: { ...page([
+          entry({ type: 'commandExecution', id: 'command', command: 'npm test', cwd: '/workspace',
+            status: 'completed', aggregatedOutput: null, exitCode: 0, durationMs: 123 }),
+          entry({ type: 'fileChange', id: 'change', status: 'completed',
+            changes: [{ path: 'app.ts', kind: 'update' }] })
+        ]), nextCursor: null, turnsCursor: null }
+      } }]
+    };
+    const original = structuredClone(legacy);
+    const put = vi.fn();
+    const store = {
+      get: vi.fn(() => {
+        const request = { result: legacy, onsuccess: null as (() => void) | null };
+        queueMicrotask(() => request.onsuccess?.());
+        return request;
+      }),
+      put
+    };
+    const db = { close: vi.fn(), transaction: vi.fn(() => ({ objectStore: () => store })) };
+    vi.stubGlobal('indexedDB', { open: vi.fn(() => {
+      const request = { result: db, onsuccess: null as (() => void) | null };
+      queueMicrotask(() => request.onsuccess?.());
+      return request;
+    }) });
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
+
+    const result = await readLegacyDeviceChat('chat');
+    expect(result?.page.items).toEqual([
+      entry({ type: 'commandExecution', id: 'command', command: 'npm test', cwd: '/workspace',
+        status: 'completed', aggregatedOutput: null, exitCode: 0, durationMs: 123, detailsDeferred: true }),
+      entry({ type: 'fileChange', id: 'change', status: 'completed', detailsDeferred: true,
+        changes: [{ path: 'app.ts', kind: 'update' }] })
+    ]);
+    expect(put).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(legacy).toEqual(original);
   });
 
   it('degrades cleanly when IndexedDB is unavailable', async () => {

@@ -10,7 +10,7 @@ See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
-Remote 0.2.10 pairs with stable manager 0.2.1, using manual installer upgrades.
+Remote 0.2.11 pairs with stable manager 0.2.1, using manual installer upgrades.
 Install 0.2.1 over the old 0.2.0 app, select the same host root and retry the update.
 Updating Remote cannot change the old manager's bundled updater.
 Manager self-update is preserved on the paused 0.2.0AU development line;
@@ -435,6 +435,11 @@ even when their types alternate. Viewed images and progress messages retain thei
 places in the conversation. Raw reasoning does not produce separate timeline rows,
 matching Desktop; stored history is preserved. Expand a summary to inspect
 commands, output, paths, and available file diffs.
+
+Activity groups retain unique identities when native history splits or merges
+them. Empty assistant placeholders do not split consecutive activity. Command
+output and file diffs omitted from device snapshots, including older snapshots,
+are loaded through the authenticated detail API when expanded.
 
 Active replies show elapsed work time. Completed turns fold their earlier activity
 and progress under a duration disclosure, leaving the final reply visible.

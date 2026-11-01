@@ -97,13 +97,13 @@ function projectItem(item: ThreadItem): ThreadItem | null {
     case 'commandExecution':
       return item.status === 'inProgress' ? null : {
         type: item.type, id: item.id, command: item.command, cwd: item.cwd, status: item.status,
-        aggregatedOutput: null, exitCode: item.exitCode, durationMs: item.durationMs, ...timing
+        aggregatedOutput: null, exitCode: item.exitCode, durationMs: item.durationMs, detailsDeferred: true, ...timing
       };
     case 'fileChange':
       return item.status === 'inProgress' ? null : {
         type: item.type, id: item.id, status: item.status,
         changes: item.changes.map(change => ({ path: change.path, ...(change.kind ? { kind: change.kind } : {}) })),
-        ...timing
+        detailsDeferred: true, ...timing
       };
     case 'webSearch':
       return { type: item.type, id: item.id, ...timing,
@@ -237,7 +237,8 @@ export function saveDeviceWorkspace(threads: Thread[], projects: ProjectInfo[]):
 }
 
 export async function readDeviceChat(threadId: string): Promise<DeviceChat | null> {
-  return (await read())?.chats.find(saved => saved.value.thread.id === threadId)?.value ?? null;
+  const value = (await read())?.chats.find(saved => saved.value.thread.id === threadId)?.value;
+  return value ? projectDeviceChat(value.thread, value.page) : null;
 }
 
 export function saveDeviceChat(thread: Thread, page: ThreadHistoryPage): Promise<void> {

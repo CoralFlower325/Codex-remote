@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildTimelineEntries, buildTimelineSections, isActivityIssue, timelineTurnResponses } from './timeline-model';
+import { buildTimelineEntries, buildTimelineSections, finalAnswerIndex, isActivityIssue, timelineTurnResponses } from './timeline-model';
 import { elapsedTurnMs } from '../shared/turn-timing';
 import type { ThreadItem } from './types';
 
@@ -74,6 +74,65 @@ describe('timeline model', () => {
     const initial = buildTimelineEntries([first]);
     const updated = buildTimelineEntries([first, command('two'), agent('final')]);
     expect(initial[0]?.key).toBe(updated[0]?.key);
+  });
+
+  it('retains each activity key once when native messages split and reorder a group', () => {
+    const a = { ...command('a'), turnId: 't' };
+    const b = { ...command('b'), turnId: 't' };
+    const c = { ...command('c'), turnId: 't' };
+    const progress = { ...agent('progress'), phase: 'commentary' as const, turnId: 't' };
+    const later = { ...agent('later'), phase: 'commentary' as const, turnId: 't' };
+    const initial = buildTimelineEntries([a, b, c]);
+    const split = buildTimelineEntries([b, progress, a, later, c], null, initial);
+    const groups = split.filter(entry => entry.type === 'activity');
+    expect(groups).toHaveLength(3);
+    expect(new Set(split.map(entry => entry.key)).size).toBe(split.length);
+    expect(groups[0]!.key).toBe(initial[0]!.key);
+    const reordered = buildTimelineEntries([c, progress, b, later, a], null, split);
+    expect(new Set(reordered.map(entry => entry.key)).size).toBe(reordered.length);
+    const keysByItem = new Map(groups.map(entry => [entry.items[0]!.id, entry.key]));
+    expect(reordered.filter(entry => entry.type === 'activity').map(entry => entry.key))
+      .toEqual(['c', 'b', 'a'].map(id => keysByItem.get(id)));
+    const merged = buildTimelineEntries([c, b, a], null, reordered);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.key).toBe(keysByItem.get('c'));
+    const splitAgain = buildTimelineEntries([a, progress, c, later, b], null, merged);
+    expect(new Set(splitAgain.map(entry => entry.key)).size).toBe(splitAgain.length);
+    const stable = buildTimelineEntries([a, progress, c, later, b], null, splitAgain);
+    expect(stable).toEqual(splitAgain);
+    expect(stable.every((entry, index) => entry === splitAgain[index])).toBe(true);
+  });
+
+  it('ignores empty assistant placeholders without splitting activity or replacing the final answer', () => {
+    const answer = { ...agent('answer'), phase: 'final_answer' as const, turnId: 't' };
+    const entries = buildTimelineEntries([
+      { ...command('a'), turnId: 't' },
+      { ...agent('empty'), text: ' \n ', phase: 'commentary', turnId: 't' },
+      { ...command('b'), turnId: 't' },
+      answer,
+      { ...agent('empty-final'), text: '', phase: 'final_answer', turnId: 't' }
+    ]);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({ type: 'activity', items: [{ id: 'a' }, { id: 'b' }] });
+    expect(entries[finalAnswerIndex(entries)]).toMatchObject({ type: 'message', item: answer });
+    expect(finalAnswerIndex([{ type: 'message', key: 'empty', item: { ...agent('empty'), text: ' ' } }])).toBe(-1);
+  });
+
+  it('preserves question-only assistant messages and real activity boundaries', () => {
+    const question: ThreadItem = {
+      ...agent('question'), text: '', turnId: 't',
+      questions: [{ title: 'Choose one', options: [] }]
+    };
+    const entries = buildTimelineEntries([
+      { ...command('a'), turnId: 't' },
+      question,
+      { ...command('b'), turnId: 't' },
+      { type: 'imageView', id: 'image', path: 'C:/example.png', turnId: 't' },
+      { ...command('c'), turnId: 'other' }
+    ]);
+    expect(entries.map(entry => entry.type)).toEqual(['activity', 'message', 'activity', 'activity', 'activity']);
+    expect(entries[1]).toMatchObject({ type: 'message', item: question });
+    expect(finalAnswerIndex(entries)).toBe(-1);
   });
 
   it('counts declined operations separately from tool failures', () => {
