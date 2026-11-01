@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { _electron } from '../desktop/node_modules/playwright/index.mjs';
 import { manageAuthentication } from '../desktop/security.mjs';
 import { run } from '../desktop/process.mjs';
+import { releaseEndpoints } from '../desktop/release-source.mjs';
 
 const require = createRequire(import.meta.url);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -224,11 +225,11 @@ try {
   }, `http://127.0.0.1:${server.address().port}/health`);
   if (!nativeNetwork) throw new Error('Native manager network probe failed.');
   results.nativeNetwork = true;
-  await application.evaluate(({ net }) => {
+  await application.evaluate(({ net }, endpoints) => {
     const original = net.fetch.bind(net);
-    net.fetch = (url, options) => String(url).startsWith('https://api.github.com/repos/CoralFlower325/')
+    net.fetch = (url, options) => endpoints.includes(String(url))
       ? Promise.reject(new Error('Synthetic release network failure')) : original(url, options);
-  });
+  }, releaseEndpoints);
   const failed = await page.evaluate(() => window.manager.check());
   if (failed.ok) throw new Error('Synthetic network failure was ignored');
   await page.evaluate(() => window.manager.refresh());
@@ -258,12 +259,12 @@ try {
     throw new Error('Recovery guard did not clear after a completed retry.');
   }
   results.recoveryGuardAndRetry = true;
-  await application.evaluate(({ net }, currentVersion) => {
+  await application.evaluate(({ net }, { currentVersion, endpoints }) => {
     const original = net.fetch.bind(net);
-    net.fetch = (url, options) => String(url).startsWith('https://api.github.com/repos/CoralFlower325/')
+    net.fetch = (url, options) => endpoints.includes(String(url))
       ? Promise.resolve(new Response(JSON.stringify({ tag_name: `v${currentVersion}`, body: 'Synthetic release notes' })))
       : original(url, options);
-  }, version);
+  }, { currentVersion: version, endpoints: releaseEndpoints });
   await page.evaluate(() => { window.__managerMarker = 'retained'; });
   const checked = await page.evaluate(() => window.manager.check());
   if (!checked.ok) throw new Error(checked.error);
