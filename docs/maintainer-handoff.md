@@ -36,14 +36,15 @@ See [downloads and maintenance](update-downloads.md).
 Typecheck, builds and source Electron smoke acceptance passed for the update
 batch; use each exact release's CI for platform results. The 2026-11-01 public
 probe confirmed GitHub unauthenticated API HTTP 403 / RateLimitRemaining=0 at
-Cloudflare egress. The verified 0.2.10 distribution deployment returned HTTP 200 /
-`v0.2.10` from a checked release snapshot. Its internal timestamp expires cached
+Cloudflare egress. The verified 0.2.11 distribution deployment returned HTTP 200 /
+`v0.2.11` from a checked release snapshot. Its internal timestamp expires cached
 metadata after 60 seconds even when platform cache headers differ. Public GET/HEAD
 headers retain `max-age=60`, without exposing the internal timestamp.
-Explicit-proxy-free probes fully checked both runtime manifests, the Windows
-runtime and Mac manager DMG against official hashes. The Mac runtime passed
-seven-range reconstruction but its whole-file requests timed out at 600 seconds;
-ZIP/EXE checks covered HEAD/Range only. These probes do not establish TUN-off
+Explicit-proxy-free 0.2.11 probes fully checked both runtime manifests and archives
+against official hashes; Mac/Windows archives took about 7/11 seconds on that
+HTTP/2 route. Earlier 0.2.10 Mac runtime whole-file probes timed out at 600 seconds,
+then range reconstruction passed. The 0.2.10 manager DMG passed a full hash check;
+ZIP/EXE distribution checks covered HEAD/Range only. These probes do not establish TUN-off
 acceptance on the user's Mac or Electron's full update path.
 The token-free public metadata snapshot lives at ignored
 `distribution/.cloudflare/release-snapshot.json`. After official assets/digests
