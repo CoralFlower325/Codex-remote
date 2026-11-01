@@ -371,6 +371,11 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   summaries. Explicitly mark an unchanged component as having no changes.
   Manager packaging runs only when desktop/package.json's version changes;
   unchanged manager installers remain available in their original Release.
+  Keep release bodies under Chinese sections 版本、本版变更、下载、验证与边界.
+  Historical pages point to the latest stable release while retaining their own
+  versions and evidence. Preserve tags, assets and draft/prerelease states when
+  editing metadata. See docs/release-organization.md for same-number historical
+  manager builds and draft tag/URL handling.
 - The conversation summary panel reads native PR attachments and projected
   artifacts/sources on demand. Keep its history cursor independent of chat
   history; routine native events refresh the head until known items, never

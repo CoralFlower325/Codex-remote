@@ -29,6 +29,19 @@ Inspectors keep opened built-in tabs; hidden descendants must not capture input.
 Terminal input waits for its native snapshot. See
 [batch acceptance and limits](review-fixes-acceptance.md).
 
+The exact 0.2.12 source is `2818ae1dd53ec61068db8ad72e510baf3510bbf8`.
+Three-platform CI and both packaged-runtime installation/recovery jobs passed;
+the unchanged-manager packaging job was skipped. Both official runtime pairs
+were downloaded in full and matched their release digests and manifest commit.
+The download distribution was refreshed to 0.2.12; four complete downloads and
+six route/range boundary checks passed. Origin and canonical public shell,
+modules and styles agree, health is ready/desktop, and anonymous private reads
+and PDF uploads return 401. These are Windows deployment observations, not
+signed-in Mac, physical iPhone or model PDF-reading acceptance.
+The 24 historical releases now share Chinese structure, with 108 original
+assets and their states preserved. See [release organization](release-organization.md)
+for the historical/current manager version distinction and draft URL behavior.
+
 The preceding 0.2.11 activity groups consume each
 previous key once when native history splits or merges them, preventing duplicate
 React keys, orphan rows and dead disclosure buttons. Empty assistant placeholders
