@@ -16,7 +16,7 @@ describe('scoped native connection repair', () => {
     await repairControl(info, 'Server', execute, 'win32');
     expect(execute.mock.calls[1][1]).toContain('Server');
     execute.mockResolvedValue('{"running":true,"enabled":true,"tunnelManaged":false}');
-    await expect(repairControl(info, 'Tunnel', execute, 'darwin')).rejects.toThrow('外部');
+    await expect(repairControl(info, 'Tunnel', execute, 'darwin')).rejects.toThrow('确认');
     execute.mockResolvedValue('{"running":false,"enabled":false,"tunnelManaged":true}');
     await expect(repairControl(info, 'Server', execute, 'win32')).rejects.toThrow('开启');
     await expect(repairControl(info, '../Desktop', execute, 'win32')).rejects.toThrow('未知');

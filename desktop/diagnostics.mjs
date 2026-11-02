@@ -5,12 +5,18 @@ import { fileURLToPath } from 'node:url';
 import { commandEnvironment, control, serviceStatus, portListening } from './controller.mjs';
 import { cleanOutput } from './update-progress.mjs';
 import { run } from './process.mjs';
+import { repairMacTunnel } from './macos-tunnel.mjs';
 
-export async function repairControl(info, target, execute = run, platform = process.platform) {
+export async function repairControl(info, target, execute = run, platform = process.platform, selectedTunnel) {
   if (!['Server', 'Tunnel'].includes(target)) throw new Error('未知修复目标。');
   const status = await serviceStatus(info, execute, platform);
   if (status.conflict || !status.running || !status.enabled) throw new Error('请先确认服务归属并开启 Remote。');
-  if (target === 'Tunnel' && (!status.tunnelManaged || platform !== 'win32')) {
+  if (target === 'Tunnel' && platform === 'darwin') {
+    if (!selectedTunnel) throw new Error('请先选择并确认要修复的 Cloudflare 服务。');
+    await repairMacTunnel(selectedTunnel, execute);
+    return;
+  }
+  if (target === 'Tunnel' && !status.tunnelManaged) {
     throw new Error('此隧道由外部工具管理，请在原管理工具中处理。');
   }
   if (platform === 'win32') {

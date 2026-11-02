@@ -7,6 +7,7 @@ import { updateError, createUpdateProgress } from './update-progress.mjs';
 import { pendingUpdate, recoverPendingUpdate } from './update-transaction.mjs';
 import { manageAuthentication } from './security.mjs';
 import { repairControl } from './diagnostics.mjs';
+import { discoverMacTunnels } from './macos-tunnel.mjs';
 // Installation state and serialized operations; the Electron shell owns windows.
 export function createManagerSession({ app, dialog, shell, fetchRelease, getWindow, publish, here }) {
   const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
@@ -110,24 +111,51 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
   async function repair(target) {
     if (!['Server', 'Tunnel'].includes(target)) throw new Error('未知修复目标。');
     const selectedRoot = settings.root;
-    const { response } = await dialog.showMessageBox(getWindow(), {
-      type: 'question', title: target === 'Tunnel' ? '修复受管隧道' : '修复 Remote 服务',
-      message: target === 'Tunnel' ? '重启当前安装的受管隧道？' : '重启当前安装的 Remote 服务？',
-      detail: target === 'Tunnel' ? '公网连接会短暂中断，Remote 和 Codex Desktop 保持运行。'
-        : 'Remote 会短暂离线，Codex Desktop 和独立隧道保持运行。',
-      buttons: ['取消', '开始修复'], defaultId: 0, cancelId: 0
-    });
-    if (response !== 1) return;
     return exclusive('正在修复连接', async () => {
-      if (settings.root !== selectedRoot) throw new Error('安装目录已改变，请重新确认修复。');
       await requireCompletedUpdate();
       const status = await health(settings.root, undefined, process.platform, fetchRelease);
       if (['conflict', 'unowned'].includes(status.state)) throw new Error('请先解决服务归属或端口冲突。');
-      await repairControl(status, target);
+      let selectedTunnel;
+      if (target === 'Tunnel' && process.platform === 'darwin') {
+        const tunnels = await discoverMacTunnels();
+        if (!tunnels.length) throw new Error('未找到可修复的 Cloudflare 系统服务。请先使用 cloudflared service install 或 Homebrew 注册已有隧道，再重试。');
+        if (tunnels.length > 1) {
+          const { response } = await dialog.showMessageBox(getWindow(), {
+            type: 'question', title: '选择 Cloudflare 服务', message: '要修复哪个隧道服务？',
+            buttons: ['取消', ...tunnels.map(service => `${service.label}（${service.domain === 'system' ? '系统' : '当前用户'}）`)],
+            defaultId: 0, cancelId: 0
+          });
+          if (response === 0) return;
+          selectedTunnel = tunnels[response - 1];
+          if (!selectedTunnel) throw new Error('请选择有效的 Cloudflare 服务。');
+        } else selectedTunnel = tunnels[0];
+      }
+      const { response } = await dialog.showMessageBox(getWindow(), {
+        type: 'question', title: target === 'Tunnel' ? '修复公网连接' : '修复 Remote 服务',
+        message: selectedTunnel ? `启用并启动或重启 ${selectedTunnel.label}？`
+          : target === 'Tunnel' ? '重启当前安装的受管隧道？' : '重启当前安装的 Remote 服务？',
+        detail: selectedTunnel?.domain === 'system' ? '系统将请求管理员授权，随后自动复检公网入口。'
+          : target === 'Tunnel' ? '随后自动复检公网入口。' : 'Remote 会短暂离线，Codex Desktop 保持运行。',
+        buttons: ['取消', '开始修复'], defaultId: 0, cancelId: 0
+      });
+      if (response !== 1) return;
+      if (settings.root !== selectedRoot) throw new Error('安装目录已改变，请重新确认修复。');
+      state.connectionReport = null;
+      await repairControl(status, target, undefined, process.platform, selectedTunnel);
       if (target === 'Server') await verify({ requireDesktop: false });
-      const checked = await health(settings.root, undefined, process.platform, fetchRelease, { publicTimeout: 12_000 });
+      let checked;
+      for (let attempt = 0; attempt < (target === 'Tunnel' ? 4 : 1); attempt++) {
+        checked = await health(settings.root, undefined, process.platform, fetchRelease, { publicTimeout: 5000 });
+        if (checked.publicEntry.reachable) break;
+        if (target === 'Tunnel' && attempt < 3) await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      state.status = checked;
       state.connectionReport = { checkedAt: checked.checkedAt, ...checked.publicEntry };
-      state.result = target === 'Tunnel' ? '受管隧道已重新启动，请查看连接复检结果。' : 'Remote 已重新启动，请查看健康状态。';
+      state.result = target === 'Tunnel' ? checked.publicEntry.reachable
+        ? 'Cloudflare 已重新启动，公网入口复检通过。'
+        : `Cloudflare 已重新启动，公网入口尚未确认恢复：${checked.publicEntry.detail}`
+        : 'Remote 已重新启动，请查看健康状态。';
+      event(state.result);
     });
   }
   async function security(request) {

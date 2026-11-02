@@ -270,7 +270,11 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Keep locally modified Markdown documentation/rules during updates and retain
   incoming copies for reconciliation; source/configuration conflicts still block.
   Windows tasks use the windowless host with logs and owned-process shutdown.
-  External macOS tunnels are not adopted; public health is a separate observation.
+  External macOS tunnels retain their original configuration and management.
+  Explicit confirmed repair may enable/bootstrap/kickstart a selected existing
+  cloudflared LaunchAgent/Daemon after fresh definition and loaded-job checks;
+  system jobs require native administrator authorization. Never create/adopt
+  a tunnel or include it in ordinary Remote Start/Stop. Public health is a separate observation.
   Installation discovery is read-only. Preserve a valid saved selection; prefer
   registered services over guessed paths, and let users choose ambiguous roots.
   Serialize directory changes with service actions and preserve manual browsing.
@@ -372,7 +376,7 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   An explicit user version takes precedence.
   Remote and the desktop manager have independent versions. Remote's version lives
   in the root package/lockfile; the manager's lives in desktop/package/lockfile.
-  The stable manager is 0.2.2 with Remote 0.2.16. Remote-only changes must not increment, rebuild
+  The stable manager is 0.2.3 with Remote 0.2.17. Remote-only changes must not increment, rebuild
   or install the manager. Increment the manager patch only for its own changes.
   Manager self-update is paused as 0.2.0AU on archive/manager-0.2.0AU;
   keep AU self-update out of the stable manager and formal releases. Preserve AU history,
@@ -426,7 +430,7 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Cache public metadata for 60 seconds; stream assets with no-store.
   Prepare it with scripts/prepare-distribution.mjs and deploy cf deploy --prebuilt
   from distribution. See docs/update-downloads.md.
-  Installed managers load their bundled updater: install manager 0.2.2 manually
+  Installed managers load their bundled updater: install manager 0.2.3 manually
   over 0.2.0 and retry the same host root; a Remote update cannot patch the old app.
 - Restart the local Remote service after every application update, including
   frontend-only updates. Verify its old listener and owned process exited before

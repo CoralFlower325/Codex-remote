@@ -1,9 +1,27 @@
 # Desktop Manager Acceptance
 
 Current batch and historical acceptance records, reconciled 2026-11-02.
-Stable manager 0.2.2 pairs with Remote 0.2.16; self-update work remains paused
+Stable manager 0.2.3 pairs with Remote 0.2.17; self-update work remains paused
 as [0.2.0AU](manager-self-update-checkpoints.md). Historical records below retain
 their original scope and counts.
+
+## Manager 0.2.3 Existing macOS Tunnel Repair
+
+Adds repair controls beside external macOS tunnels and abnormal/unknown public
+entries. Unit coverage includes official/Homebrew default jobs, selected-service
+restart, unloaded bootstrap, changed definitions, duplicate labels, loaded-path
+conflicts, native administrator authorization/cancellation and exited jobs.
+Session checks cover cancellation, multiple-service selection, missing-service
+instructions and failed public probes without claiming recovery.
+
+`scripts/check-macos-tunnel.mjs` exercises a uniquely named temporary launchd
+job on macOS, with real plist conversion, bootstrap and restart, then removes
+only that job. The source and packaged Electron harness checks repair controls
+at 400/480 widths. Local Windows validation passes 839 tests in 101 files,
+typecheck, both builds and source Electron smoke. CI results are authoritative for macOS; these checks do not
+establish recovery of the user's actual public domain, interactive administrator
+authorization or signed-in Mac integration. External configuration and ordinary
+Remote Start/Stop behavior remain unchanged.
 
 ## Manager 0.2.2 Confirmation And Update Repairs
 

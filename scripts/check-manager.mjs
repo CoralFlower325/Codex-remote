@@ -332,9 +332,16 @@ try {
   await page.getByRole('button', { name: '诊断公网连接' }).click();
   await until(() => page.evaluate(async () => (await window.manager.get()).value.connectionReport?.state), 'unknown', 'uncertain public diagnosis');
   await page.getByRole('region', { name: '连接诊断' }).getByText(/尚不能确认公网入口故障/).waitFor();
-  const externalRepair = await page.evaluate(() => window.manager.repair('Tunnel'));
-  if (externalRepair.ok || !externalRepair.error.includes('外部工具')) throw new Error('External tunnel was incorrectly adopted');
-  await page.getByRole('button', { name: '清除操作提示' }).click();
+  if (process.platform === 'darwin') {
+    // Actual launchd repair uses a separate, isolated synthetic job acceptance.
+    await page.getByRole('button', { name: '一键修复公网连接', exact: true }).waitFor();
+    await page.getByRole('button', { name: '一键修复', exact: true }).waitFor();
+    results.externalMacRepairVisible = true;
+  } else {
+    const externalRepair = await page.evaluate(() => window.manager.repair('Tunnel'));
+    if (externalRepair.ok || !externalRepair.error.includes('外部工具')) throw new Error('External tunnel was incorrectly adopted');
+    await page.getByRole('button', { name: '清除操作提示' }).click();
+  }
   await page.getByRole('button', { name: '收起连接诊断' }).click();
   await fs.writeFile(path.join(fixture, 'data/server.err.log'), 'password=synthetic-log-secret\nSynthetic service log');
   await page.locator('.log-view summary').click();
@@ -346,6 +353,19 @@ try {
   await page.locator('.content').evaluate(element => { element.scrollTop = 0; });
   await page.evaluate(() => window.manager.dismiss());
   const actual = await page.evaluate(async () => (await window.manager.get()).value);
+  await application.evaluate(({ BrowserWindow }, value) => {
+    BrowserWindow.getAllWindows()[0].webContents.send('manager:state', value);
+  }, { ...actual, platform: 'darwin', status: { ...actual.status, checkedAt: Date.now(),
+    tunnel: { managed: false, ready: false },
+    publicEntry: { configured: true, reachable: false, state: 'http-error', detail: '公网入口返回 HTTP 530。' } } });
+  await page.getByRole('button', { name: '一键修复公网连接', exact: true }).waitFor();
+  for (const [width, height] of [[400, 550], [480, 690]]) {
+    await application.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setSize(...size), [width, height]);
+    const overflow = await page.locator('.health').evaluate(element => element.scrollWidth > element.clientWidth);
+    if (overflow) throw new Error('External tunnel repair controls overflow');
+    await page.screenshot({ path: path.join(root, `output/manager-smoke/${process.platform}-${packaged ? 'packaged' : 'source'}-external-repair-${width}.png`) });
+  }
+  results.externalTunnelRepairLayout = true;
   await application.evaluate(({ BrowserWindow }, value) => {
     const contents = BrowserWindow.getAllWindows()[0].webContents;
     globalThis.__managerOriginalSend = contents.send.bind(contents);

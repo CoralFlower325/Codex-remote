@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.17', changes: [
+    '正式管理器更新至 0.2.3，macOS 外部 Cloudflare 服务及异常公网入口新增一键修复。',
+    '识别官方安装与 Homebrew 的现有 LaunchAgent/LaunchDaemon，简短确认后启用并启动或重启；多个服务先选择目标，系统服务使用原生管理员授权。',
+    '修复前重新核对配置与已加载服务身份，修复后检查服务运行并有限复检公网；未恢复时保留实际诊断，不误报成功。',
+    '保留外部隧道配置与管理归属；Remote 本轮仅同步版本和发布信息，聊天与后端运行逻辑无变更。'
+  ] },
   { version: '0.2.16', changes: [
     '修复子智能体重复状态事件将连续命令切成大量折叠块的问题，同轮完成证据在引导消息前后的回复片段间共享。',
     '远程更新状态写入增加有限重试，临时文件占用恢复后可继续保存进度和最终结果。',

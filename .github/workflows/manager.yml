@@ -50,6 +50,9 @@ jobs:
       - run: npm run build
       - run: npm run manager:install
       - run: npm run manager:build
+      - name: Validate existing macOS tunnel repair
+        if: runner.os == 'macOS'
+        run: node scripts/check-macos-tunnel.mjs
       - run: npm --prefix desktop run smoke
       - run: npm --prefix desktop run dist -- ${{ matrix.flags }} --publish never
         env:

@@ -29,4 +29,6 @@ jobs:
       - run: npm run manager:build
       - name: Validate macOS controls
         if: runner.os == 'macOS'
-        run: bash scripts/check-macos.sh
+        run: |
+          bash scripts/check-macos.sh
+          node scripts/check-macos-tunnel.mjs
