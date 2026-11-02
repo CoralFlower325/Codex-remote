@@ -23,6 +23,7 @@ export default function FilePreview({ target, active }: { target: PreviewTarget;
   const [mediaLoading, setMediaLoading] = useState(true);
   const bodyRef = useRef<HTMLDivElement>(null);
   const path = target.kind === 'file' ? target.path : '';
+  const targetKey = target.kind === 'file' ? `file:${target.path}:${target.line ?? ''}` : `url:${target.url}`;
   useEffect(() => {
     if (!active) return;
     if (!path) { setLoading(false); return; }
@@ -45,6 +46,7 @@ export default function FilePreview({ target, active }: { target: PreviewTarget;
       });
     return () => controller.abort();
   }, [active, path, revision, target]);
+  useEffect(() => { setSource(false); }, [targetKey]);
   useEffect(() => {
     if (target.kind !== 'file' || !target.line || !file) return;
     setSource(true);
@@ -93,7 +95,7 @@ export default function FilePreview({ target, active }: { target: PreviewTarget;
         : file && (source || file.kind === 'text') && text !== undefined ? <SourceText
           name={file.name} text={text} line={target.kind === 'file' ? target.line : undefined} />
         : file?.kind === 'markdown' ? <PreviewLinks cwd={file.path.replace(/[\\/][^\\/]+$/, '')}>
-          <div className="file-preview-markdown markdown"><MarkdownText text={text ?? ''} /></div>
+          <div className="file-preview-markdown markdown"><MarkdownText text={text ?? ''} preserveDocument /></div>
         </PreviewLinks>
         : file?.kind === 'html' && html !== null ? <iframe key={revision} title={file.name} srcDoc={html}
           sandbox="allow-scripts" referrerPolicy="no-referrer" />

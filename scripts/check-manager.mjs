@@ -270,6 +270,28 @@ try {
   if (!checked.ok) throw new Error(checked.error);
   if (await page.evaluate(() => window.__managerMarker) !== 'retained') throw new Error('Current-version check reloaded');
   results.currentCheckPreservesWindow = true;
+  await application.evaluate(({ net }, endpoints) => {
+    const original = net.fetch.bind(net);
+    net.fetch = (url, options) => endpoints.includes(String(url))
+      ? Promise.resolve(new Response(JSON.stringify({ tag_name: 'v99.0.0', body: 'Synthetic long release notes that belong on the update page.' })))
+      : original(url, options);
+  }, releaseEndpoints);
+  const available = await page.evaluate(() => window.manager.check());
+  if (!available.ok) throw new Error(available.error);
+  await page.getByRole('button', { name: '版本更新', exact: true }).click();
+  await page.getByRole('button', { name: '更新到 99.0.0' }).waitFor();
+  await application.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async (_window, options) => {
+      globalThis.__updateDialog = options;
+      return { response: 0 };
+    };
+  });
+  await page.getByRole('button', { name: '更新到 99.0.0' }).click();
+  const updateDialog = await application.evaluate(() => globalThis.__updateDialog);
+  if (!updateDialog || updateDialog.detail.includes('Synthetic long release notes')) {
+    throw new Error('Remote update confirmation duplicated release notes');
+  }
+  results.conciseUpdateConfirmation = updateDialog.detail;
   await page.getByRole('button', { name: '设备与密码', exact: true }).click();
   await until(() => page.evaluate(async () => (await window.manager.get()).value.security?.devices.length), 2, 'registered devices');
   await page.getByText('iPhone · Safari', { exact: true }).waitFor();

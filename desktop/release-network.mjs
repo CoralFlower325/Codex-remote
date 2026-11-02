@@ -14,6 +14,8 @@ export function createReleaseFetch({ fetcher = fetch,
   let dispatcher;
   return async (url, options = {}) => {
     const signal = options.signal ?? (typeof url === 'object' ? url.signal : undefined);
+    const method = String(options.method ?? (typeof url === 'object' ? url.method : undefined) ?? 'GET').toUpperCase();
+    const allowDirectFallback = method === 'GET' || method === 'HEAD';
     signal?.throwIfAborted();
     const controller = new AbortController();
     let timer, reader, stream, rejectHeaders, ended = false;
@@ -48,16 +50,32 @@ export function createReleaseFetch({ fetcher = fetch,
     signal?.addEventListener('abort', aborted, { once: true });
     const cancelled = new Promise((_, reject) => { rejectHeaders = reject; });
     deadline(headersTimeout, 'response headers');
-    try {
+    const issue = (withDispatcher) => {
+      let abandoned = false;
       const pending = Promise.resolve().then(() => fetcher(url, {
         ...options, signal: controller.signal,
-        ...(createDispatcher ? { dispatcher: dispatcher ||= createDispatcher() } : {})
+        ...(withDispatcher && createDispatcher ? { dispatcher: dispatcher ||= createDispatcher() } : {})
       }));
-      // A test double or late transport response may resolve after cancellation.
+      // A test double or late transport response may resolve after cancellation
+      // or after the direct fallback has already won the race.
       pending.then((response) => {
-        if (ended) Promise.resolve(response.body?.cancel(controller.signal.reason)).catch(() => {});
+        if (ended || abandoned) Promise.resolve(response.body?.cancel(controller.signal.reason)).catch(() => {});
       }, () => {});
-      const response = await Promise.race([pending, cancelled]);
+      return { pending, abandon: () => { abandoned = true; } };
+    };
+    try {
+      let attempt = issue(true);
+      let response;
+      try {
+        response = await Promise.race([attempt.pending, cancelled]);
+      } catch (error) {
+        // A failed explicit proxy must not hide a directly reachable release
+        // source. Keep this retry within the original headers/caller deadlines.
+        if (ended || signal?.aborted || !createDispatcher || !allowDirectFallback) throw error;
+        attempt.abandon();
+        attempt = issue(false);
+        response = await Promise.race([attempt.pending, cancelled]);
+      }
       rejectHeaders = null;
       clearTimeout(timer);
       if (!response.body) {

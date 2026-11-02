@@ -6,14 +6,14 @@ turns and exposes no network control API.
 
 ## Install And Open
 
-Remote 0.2.10 pairs with manager 0.2.1. Download the Windows installer or macOS
+Remote 0.2.16 pairs with manager 0.2.2. Download the Windows installer or macOS
 DMG/ZIP from the [project distribution or official fallback](update-downloads.md).
 Windows packages target x64; macOS packages target Apple Silicon (arm64).
 Initial packages are unsigned; normal Windows reputation/Gatekeeper approval may
 be required. Signing, notarization and live macOS GUI acceptance remain pending.
 
-To replace manager 0.2.0, quit the manager from its tray/menu-bar menu, install
-0.2.1 over the existing app, reopen it and select the same Remote installation
+To replace an older manager, quit the manager from its tray/menu-bar menu, install
+0.2.2 over the existing app, reopen it and select the same Remote installation
 directory. Quitting the manager preserves the service. Retry the host update, or
 recover a recorded interrupted install first. Host updates cannot patch the old
 manager's bundled updater; checking for a Remote release does not upgrade the app.
@@ -41,6 +41,9 @@ Older platform scripts without JSON status use the manager's bundled read-only
 probe; they do not need to be edited before opening the manager.
 
 ## Everyday Operation
+
+Remote update summaries remain on the version page. The native confirmation
+shows only the target version and a short downtime/data-preservation notice.
 
 - Start, stop and restart reuse existing platform controls and preserve Desktop.
 - Windows runs server/tunnel tasks without persistent console windows. Start
@@ -198,7 +201,7 @@ clean HEAD. Backups and older frontend chunks for open tabs remain available.
 This updates **the selected host installation**, not the manager executable.
 The manager and Remote display their own versions and may differ. Update checks
 compare the selected Remote installation with the release. Install a newer manager
-separately when its controls or updater need a fix. Stable manager 0.2.1 does not
+separately when its controls or updater need a fix. Stable manager 0.2.2 does not
 include manager self-update. Its paused 0.2.0AU development line and signing
 prerequisites are preserved in [the resume checkpoint](manager-self-update-checkpoints.md).
 The manager uses an independent version starting at 0.2.0. Remote-only updates

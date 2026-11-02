@@ -11,6 +11,7 @@ import { filePreviewRouter } from '../dist-server/server/file-preview.js';
 
 // Synthetic workspace plus real document conversion. No Desktop connection.
 const directory = path.resolve('output/playwright/documents-028');
+const markdownOnly = process.argv.includes('--markdown-only');
 await fs.mkdir(directory, { recursive: true });
 const fixtures = path.join(directory, 'fixtures');
 const app = express(), server = http.createServer(app), sockets = new WebSocketServer({ server });
@@ -23,7 +24,7 @@ const thread = { id: 'preview', name: 'Document acceptance', cwd: fixtures,
   preview: 'Synthetic files', model: 'demo', createdAt: 1, updatedAt: 2, status: { type: 'idle' } };
 const model = { id: 'demo', model: 'demo', displayName: 'Demo', isDefault: true,
   defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'high' }] };
-const files = ['report.docx', 'workbook.xlsx', 'slides.pptx', 'external.docx', 'broken.docx'];
+const files = markdownOnly ? ['report.md'] : ['report.docx', 'workbook.xlsx', 'slides.pptx', 'external.docx', 'broken.docx', 'report.md'];
 const answer = files.map(name => `[${name}](${path.join(fixtures, name).replaceAll('\\', '/')})`).join('\n\n');
 const turn = { id: 'done', status: 'completed', startedAt: 1, completedAt: 2, durationMs: 1000 };
 const items = [{ turnId: 'done', item: { id: 'reply', type: 'agentMessage', phase: 'final_answer', text: answer } }];
@@ -70,7 +71,7 @@ const results = [];
 let currentPage;
 try {
   // All three modern Office formats and disabled external Writer links.
-  for (const name of files.slice(0, 4)) {
+  for (const name of markdownOnly ? [] : files.slice(0, 4)) {
     const response = await fetch(`${origin}/api/file-preview/document?${new URLSearchParams({ path: path.join(fixtures, name) })}`);
     assert.equal(response.status, 200, `${name}: ${await response.clone().text()}`);
     assert.equal(response.headers.get('cache-control'), 'no-store');
@@ -87,6 +88,30 @@ try {
     currentPage = page;
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(origin + '/?thread=preview');
+    await page.locator('.message-stream').getByRole('link', { name: 'report.md', exact: true }).click();
+    const markdown = page.locator('.file-preview-markdown');
+    await markdown.getByRole('heading', { name: 'Markdown acceptance', exact: true }).waitFor();
+    assert.equal(await markdown.locator('strong').innerText(), 'strong text');
+    assert.match(await markdown.locator('table').innerText(), /Synthetic\s+Passed/);
+    assert.match(await markdown.locator('pre code').innerText(), /const ready = true/);
+    const relativeLink = markdown.getByRole('link', { name: 'the status link', exact: true });
+    assert.match(await relativeLink.getAttribute('href'), /file-preview\/content\/.*status\.json$/);
+    await page.getByRole('button', { name: '\u6e90\u7801', exact: true }).click();
+    await page.locator('.file-source').waitFor();
+    assert.match(await page.locator('.file-source').innerText(), /# Markdown acceptance/);
+    await page.getByRole('button', { name: '\u9884\u89c8', exact: true }).click();
+    await markdown.getByRole('heading', { name: 'Markdown acceptance', exact: true }).waitFor();
+    await page.getByRole('button', { name: '\u5237\u65b0\u9884\u89c8', exact: true }).click();
+    await markdown.getByRole('heading', { name: 'Markdown acceptance', exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `${directory}/${size.name}-markdown.png` });
+    if (markdownOnly) {
+      assert.deepEqual(errors, []);
+      results.push({ viewport: size.name, markdownCompiled: true, table: true, code: true,
+        relativeLink: true, sourceToggle: true, refresh: true, errors });
+      await context.close();
+      continue;
+    }
     const open = async name => {
       await page.locator('.message-stream').getByRole('link', { name, exact: true }).click();
       await page.locator('.pdf-preview canvas[data-rendered=true]').waitFor({ timeout: 60_000 });
@@ -139,8 +164,10 @@ try {
     await context.close();
   }
   for (const [index, name] of files.entries()) assert.equal(hash(await fs.readFile(path.join(fixtures, name))), hashes[index]);
-  const broken = await fetch(`${origin}/api/file-preview/document?${new URLSearchParams({ path: path.join(fixtures, 'broken.docx') })}`);
-  assert.equal(broken.status, 422);
+  if (!markdownOnly) {
+    const broken = await fetch(`${origin}/api/file-preview/document?${new URLSearchParams({ path: path.join(fixtures, 'broken.docx') })}`);
+    assert.equal(broken.status, 422);
+  }
   const result = { results, externalReads, documentRequests, originalFilesUnchanged: true };
   await fs.writeFile(path.join(directory, 'results.json'), JSON.stringify(result, null, 2), 'utf8');
   console.log(JSON.stringify(result));

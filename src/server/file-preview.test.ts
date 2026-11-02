@@ -28,7 +28,8 @@ describe('authenticated local previews', () => {
   let origin: string;
   beforeAll(async () => {
     directory = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-preview-'));
-    await fs.writeFile(path.join(directory, 'report.md'), '# Result\n\n[State](./status.json)', 'utf8');
+    await fs.writeFile(path.join(directory, 'report.md'),
+      '# Result\n\n**Compiled** [State](./status.json)\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n```ts\nconst ready = true;\n```\n', 'utf8');
     await fs.writeFile(path.join(directory, 'status.json'), '{"ready":true}', 'utf8');
     await fs.writeFile(path.join(directory, 'page.html'), '<!doctype html><h1>Preview</h1>', 'utf8');
     await fs.writeFile(path.join(directory, 'large.txt'), 'x'.repeat(1024 * 1024 + 10), 'utf8');
@@ -51,7 +52,9 @@ describe('authenticated local previews', () => {
     await fs.rm(directory, { recursive: true, force: true });
   });
   it('reads bounded text and distinguishes renderable documents from binary downloads', async () => {
-    expect(await readPreviewFile(path.join(directory, 'report.md'))).toMatchObject({ kind: 'markdown', truncated: false });
+    expect(await readPreviewFile(path.join(directory, 'report.md'))).toMatchObject({
+      kind: 'markdown', truncated: false, text: expect.stringContaining('| 1 | 2 |')
+    });
     expect(await readPreviewFile(path.join(directory, 'large.txt'))).toMatchObject({ kind: 'text', truncated: true });
     expect(await readPreviewFile(path.join(directory, 'document.docx'))).toMatchObject({ kind: 'office',
       previewUrl: expect.stringContaining('/api/file-preview/document?') });

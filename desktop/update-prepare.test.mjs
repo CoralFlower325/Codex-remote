@@ -17,15 +17,17 @@ async function write(root, name, text) {
   await fs.mkdir(path.dirname(path.join(root, name)), { recursive: true });
   await fs.writeFile(path.join(root, name), text);
 }
-async function fixture({ baseline = true } = {}) {
+async function fixture({ baseline = true, baseFiles = {}, targetFiles = {} } = {}) {
   const root = await directory(), payload = await directory(), output = await directory();
   const base = {
     'package.json': JSON.stringify({ name: 'codex-remote', version: '0.2.7' }),
     'src/main.ts': 'export const value = 1;',
     'scripts/remote-control-windows.ps1': 'controls',
-    'scripts/remote-control-macos.sh': 'controls'
+    'scripts/remote-control-macos.sh': 'controls',
+    ...baseFiles
   };
-  const sources = { ...base, 'package.json': JSON.stringify({ name: 'codex-remote', version: '0.2.9' }) };
+  const sources = { ...base, 'package.json': JSON.stringify({ name: 'codex-remote', version: '0.2.9' }),
+    ...targetFiles };
   const bytes = { ...sources, 'dist/client/index.html': 'page',
     'dist-server/server/index.js': 'server', 'node_modules/node-pty/package.json': '{}' };
   for (const [name, text] of Object.entries(base)) await write(root, name, text);
@@ -64,6 +66,36 @@ afterEach(async () => {
 });
 
 describe('runtime preparation input classification', () => {
+  it.each(['src/main.ts', 'scripts/update.mjs', 'package-lock.json', 'tsconfig.client.json', 'vite.config.ts'])(
+    'accepts an already applied target %s without source fallback', async relative => {
+      const item = await fixture({ baseFiles: { [relative]: 'old official\n' },
+        targetFiles: { [relative]: 'new official\n' } });
+      await write(item.root, relative, 'new official\r\n');
+      const prepared = await prepareUpdate(item.root, item.release, item.progress, item.execute, { fetcher: item.fetcher });
+      temporary.push(prepared.stage);
+      expect(prepared.mode).toBe('runtime');
+      expect(prepared.plan.some((entry) => entry.relative === relative)).toBe(false);
+      expect(prepared.inputs.some((entry) => entry.relative === relative)).toBe(true);
+      expect(item.execute.mock.calls.some(([command]) => command === 'git')).toBe(false);
+    });
+
+  it.each(['package.json', 'package-lock.json', 'tsconfig.client.json', 'vite.config.ts'])(
+    'retains genuinely customized %s instead of replacing it with a runtime package', async relative => {
+      const item = await fixture(relative === 'package.json' ? {} : {
+        baseFiles: { [relative]: 'old official configuration' },
+        targetFiles: { [relative]: 'new official configuration' }
+      });
+      const local = relative === 'package.json'
+        ? JSON.stringify({ name: 'codex-remote', version: '0.2.7', scripts: { private: 'private command' } })
+        : 'private build configuration';
+      await write(item.root, relative, local);
+      await expect(prepareUpdate(item.root, item.release, item.progress, item.execute, { fetcher: item.fetcher }))
+        .rejects.toMatchObject({ cause: { message: 'Synthetic source preparation stop.' } });
+      expect(await fs.readFile(path.join(item.root, relative), 'utf8')).toBe(local);
+      expect(item.states.map((state) => state.detail).join('\n')).toContain(relative);
+      expect(item.fetcher).toHaveBeenCalledOnce();
+    });
+
   it('keeps a standard installation on runtime despite Finder and AppleDouble metadata', async () => {
     const item = await fixture();
     const metadata = ['scripts/.DS_Store', 'src/nested/._main.ts',

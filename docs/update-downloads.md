@@ -5,16 +5,16 @@
 失败后尝试官方 GitHub。分发由项目的 Cloudflare Worker 提供，不要求更新主机配置
 Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 
-## 安装管理器 0.2.1
+## 安装管理器 0.2.2
 
 | 系统 | 项目分发 | 官方备用 |
 | --- | --- | --- |
-| macOS Apple Silicon | [DMG](https://downloads.73916482.xyz/releases/download/v0.2.10/Codex-Remote-Manager-0.2.1-mac-arm64.dmg) · [ZIP](https://downloads.73916482.xyz/releases/download/v0.2.10/Codex-Remote-Manager-0.2.1-mac-arm64.zip) | [DMG](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.10/Codex-Remote-Manager-0.2.1-mac-arm64.dmg) · [ZIP](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.10/Codex-Remote-Manager-0.2.1-mac-arm64.zip) |
-| Windows x64 | [安装程序](https://downloads.73916482.xyz/releases/download/v0.2.10/Codex-Remote-Manager-0.2.1-win-x64.exe) | [安装程序](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.10/Codex-Remote-Manager-0.2.1-win-x64.exe) |
+| macOS Apple Silicon | [DMG](https://downloads.73916482.xyz/releases/download/v0.2.16/Codex-Remote-Manager-0.2.2-mac-arm64.dmg) · [ZIP](https://downloads.73916482.xyz/releases/download/v0.2.16/Codex-Remote-Manager-0.2.2-mac-arm64.zip) | [DMG](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.16/Codex-Remote-Manager-0.2.2-mac-arm64.dmg) · [ZIP](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.16/Codex-Remote-Manager-0.2.2-mac-arm64.zip) |
+| Windows x64 | [安装程序](https://downloads.73916482.xyz/releases/download/v0.2.16/Codex-Remote-Manager-0.2.2-win-x64.exe) | [安装程序](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.16/Codex-Remote-Manager-0.2.2-win-x64.exe) |
 
 1. 从菜单栏／托盘菜单退出旧管理器。退出管理器不停止 Remote。
-2. 下载并安装 0.2.1，覆盖旧 0.2.0 应用。macOS 将新应用替换到原应用位置。
-3. 重新打开管理器，确认显示 0.2.1，选择原 Remote 安装目录。
+2. 下载并安装 0.2.2，覆盖旧应用。macOS 将新应用替换到原应用位置。
+3. 重新打开管理器，确认显示 0.2.2，选择原 Remote 安装目录。
 4. 有中断事务时先恢复；否则重新检查并执行主机更新。保留事务记录和备份，
    不要为重试删除本机数据、文档或更新锁。
 
@@ -24,7 +24,7 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 本次不恢复 AU 功能；签名、公证和真实 Mac 登录环境验收仍是独立断点。
 未签名安装包可能需要按系统下载信誉或 Gatekeeper 流程确认。
 
-English: install manager 0.2.1 manually over 0.2.0, reopen it and select the same
+English: install manager 0.2.2 manually over the old app, reopen it and select the same
 Remote directory before retrying. Host updates cannot patch the old manager's
 bundled updater. Manager self-update, signing and notarization remain paused.
 
@@ -54,6 +54,12 @@ Authorization 或任意客户端请求头，不接收私有安装配置。它不
 Cloudflare 令牌或任何运行数据。
 
 ## 网络与安装边界
+
+Remote 0.2.16 与管理器 0.2.2 不再将已等于目标版本的文件误判为定制，
+避免无故退回 Git/npm 构建。真正的私有源码及配置仍阻止运行包直接覆盖。
+网页更新的代理连接明确失败时，公开 GET/HEAD 可在原超时预算内尝试一次直连；
+取消、到期及非只读请求不参与回退。不会更改系统代理设置，也不保证 TUN 关闭后的
+任意地区网络可达，仍需在用户实际网络上验收。
 
 当分发可达、平台运行包完整且已安装版本有兼容基线时，标准安装无需直连 GitHub，
 也不执行 Git 克隆、npm 安装、本机测试或构建。仍需本机 Node.js 22.19+。

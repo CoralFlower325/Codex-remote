@@ -177,7 +177,7 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
     const { response } = await dialog.showMessageBox(getWindow(), {
       type: 'question', title: '更新本机 Codex Remote',
       message: `更新到 ${release.version}？`,
-      detail: '标准安装优先使用预构建运行包；源码定制安装使用隔离构建。将检查冲突并保留恢复备份，安装时 Remote 会短暂离线。外部静态托管需另行同步。\n\n' + release.notes,
+      detail: '更新时 Remote 会短暂离线，现有配置和数据会保留。',
       buttons: ['取消', '更新本机'], defaultId: 0, cancelId: 0
     });
     if (response !== 1) return;

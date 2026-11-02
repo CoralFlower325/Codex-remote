@@ -1,5 +1,6 @@
 import type { ThreadItem } from './types';
 import { itemKey } from './remote-state';
+import { isSubagentItem } from './subagents';
 
 export type TimelineEntry =
   | { type: 'message'; key: string; item: ThreadItem }
@@ -27,6 +28,8 @@ export function buildTimelineEntries(
     if (entry.type === 'activity') for (const item of entry.items) activityKeys.set(itemKey(item), entry.key);
   }
   let activityItems: ThreadItem[] = [];
+  let responseTurnId: string | undefined;
+  let hasSubagentEntrance = false;
   const flushActivity = (isLast = false) => {
     if (activityItems.length === 0) return;
     const failedCount = activityItems.filter((item) => 'status' in item && item.status === 'failed').length;
@@ -55,6 +58,10 @@ export function buildTimelineEntries(
   };
 
   items.forEach((item) => {
+    if (item.turnId !== responseTurnId || item.type === 'userMessage') {
+      responseTurnId = item.turnId;
+      hasSubagentEntrance = false;
+    }
     if (item.type === 'reasoning' || item.type === 'imageGeneration') return;
     if (item.type === 'webSearch' && !item.query?.trim()) return;
     if (item.type === 'agentMessage' && !item.text.trim() && !item.questions?.length) return;
@@ -67,6 +74,14 @@ export function buildTimelineEntries(
         key: `message-${itemKey(item)}`,
         item
       });
+      return;
+    }
+    if (isSubagentItem(item)) {
+      // ResponseSection renders all child updates at the first entrance. Later
+      // updates keep their order for state projection but have no separate row.
+      if (!hasSubagentEntrance) flushActivity();
+      hasSubagentEntrance = true;
+      entries.push({ type: 'event', key: `event-${itemKey(item)}`, item });
       return;
     }
     if (activityKind(item)) activityItems.push(item);
@@ -166,13 +181,17 @@ export function finalAnswerIndex(entries: TimelineEntry[]): number {
 }
 
 export function timelineTurnResponses(sections: TimelineSection[]) {
-  const turns = new Map<string, { finalStartedAtMs: number | null; hasTrace: boolean; lastResponseKey: string }>();
+  const turns = new Map<string, { finalStartedAtMs: number | null; hasTrace: boolean; lastResponseKey: string;
+    finalAnswer?: ThreadItem }>();
   for (const section of sections) {
     if (section.user || !section.turnId) continue;
     const turn = turns.get(section.turnId) ?? { finalStartedAtMs: null, hasTrace: false, lastResponseKey: section.key };
     const finalIndex = finalAnswerIndex(section.entries);
     const final = section.entries[finalIndex];
-    if (final?.type === 'message') turn.finalStartedAtMs = final.item.startedAtMs ?? null;
+    if (final?.type === 'message') {
+      turn.finalStartedAtMs = final.item.startedAtMs ?? null;
+      turn.finalAnswer = final.item;
+    }
     turn.hasTrace ||= (finalIndex < 0 ? section.entries.length : finalIndex) > 0;
     turn.lastResponseKey = section.key;
     turns.set(section.turnId, turn);

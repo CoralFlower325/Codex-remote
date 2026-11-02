@@ -4,15 +4,19 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import { localImageSource } from '../markdown-media';
 import { markdownBlocks, remarkAssistantSources } from '../markdown-blocks';
-import { remarkMathText } from '../markdown-math';
+import { normalizeMathDelimiters, remarkMathText } from '../markdown-math';
 import { PreviewImage, PreviewLink } from './PreviewLinks';
 
 const MathFormula = lazy(() => import('./MathFormula'));
 const regularPlugins = [remarkGfm, remarkMath, remarkMathText];
 const assistantPlugins = [remarkGfm, remarkMath, remarkAssistantSources, remarkMathText];
 
-export const MarkdownText = memo(function MarkdownText({ text, assistant = false }: { text: string; assistant?: boolean }) {
-  const blocks = useMemo(() => markdownBlocks(text), [text]);
+export const MarkdownText = memo(function MarkdownText({ text, assistant = false, preserveDocument = false }: {
+  text: string; assistant?: boolean; preserveDocument?: boolean;
+}) {
+  const blocks = useMemo(() => preserveDocument
+    ? [{ offset: 0, text: normalizeMathDelimiters(text) }]
+    : markdownBlocks(text), [preserveDocument, text]);
   return <>{blocks.map(block => <MarkdownBlock key={block.offset} text={block.text} assistant={assistant} />)}</>;
 });
 

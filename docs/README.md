@@ -74,6 +74,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 | [PDF 附件与工作区修复](review-fixes-acceptance.md) | 0.2.12 上传与预览、任务 URL、历史校准、检查器及终端门禁 |
 | [会话最新记录与滚动](chat-loading-acceptance.md) | 0.2.14 最新页优先、订阅后核对、补读合并及八视口阅读位置 |
 | [会话首屏与公式](chat-open-math-acceptance.md) | 0.2.15 并行订阅、稳定首屏、重复选择、旧完成事件和公式懒加载 |
+| [更新、Markdown 与活动分组](update-preview-activity-acceptance.md) | 0.2.16 更新恢复、管理器 0.2.2 简短确认、整篇 Markdown 与子代理状态分组 |
 | [Subagents](subagent-acceptance.md) | Discovery, history and safe viewer close / 发现、历史与关闭行为 |
 | [PR #3 · 0.1.5](pr-3-review.md) | Updates, phone controls and gestures / 更新、手机控件与手势 |
 | [PR #4 · 0.1.6](pr-4-review.md) | Sidebar and desktop/mobile sizing / 侧栏与双端尺寸 |

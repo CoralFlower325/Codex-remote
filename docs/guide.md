@@ -10,8 +10,8 @@ See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
-Remote 0.2.14 pairs with stable manager 0.2.1, using manual installer upgrades.
-Install 0.2.1 over the old 0.2.0 app, select the same host root and retry the update.
+Remote 0.2.16 pairs with stable manager 0.2.2, using manual installer upgrades.
+Install 0.2.2 over the old app, select the same host root and retry the update.
 Updating Remote cannot change the old manager's bundled updater.
 Manager self-update is preserved on the paused 0.2.0AU development line;
 see [the checkpoint](manager-self-update-checkpoints.md).
@@ -583,6 +583,8 @@ Relative file links resolve against that chat's host directory, including on a
 phone. Reopening a file reuses its tab. Code and JSON have syntax highlighting,
 line numbers, wrapping, copy and download controls; native `:42` and `#L42` links
 select the referenced line. Markdown and HTML offer preview/source switching.
+Markdown files compile as complete documents, preserving headings, tables, code,
+footnotes and relative file links. Opening another target resets the source view.
 Native `codex-file-citation` references in assistant replies appear as compact
 blue filename links and open the same inspector. Literal examples in code and
 user messages remain unchanged.

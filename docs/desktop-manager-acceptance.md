@@ -1,9 +1,25 @@
 # Desktop Manager Acceptance
 
-Current batch and historical acceptance records, reconciled 2026-11-01.
-Stable manager 0.2.1 pairs with Remote 0.2.10; self-update work remains paused
+Current batch and historical acceptance records, reconciled 2026-11-02.
+Stable manager 0.2.2 pairs with Remote 0.2.16; self-update work remains paused
 as [0.2.0AU](manager-self-update-checkpoints.md). Historical records below retain
 their original scope and counts.
+
+## Manager 0.2.2 Confirmation And Update Repairs
+
+Windows source and packaged Electron smoke checks pass. The version page retains
+the full summary; clicking update opens a native confirmation with only the target
+version and a short interruption/data-preservation note. Cancelling performs no
+installation. Existing discovery, security administration, progress and tray
+checks remain in the smoke harness.
+
+The bundled updater no longer classifies files already equal to the target as
+custom build inputs. Input hashes still block edits made after preparation.
+Explicit proxy failures on release GET/HEAD can try direct access once within
+the same deadline. This does not establish TUN-off acceptance or remove genuine
+custom-source conflicts. Use the exact tag's CI for macOS and final package
+evidence; physical signed-in Mac acceptance remains separate.
+See [the batch record](update-preview-activity-acceptance.md).
 
 ## Manager 0.2.1 Download Repairs
 

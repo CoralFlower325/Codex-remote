@@ -63,6 +63,26 @@ describe('native subagent presentation', () => {
       loading: false, hasMoreHistory: false, loadingHistory: false, onLoadEarlier: async () => {} }));
     expect(html.match(/class="subagent-row"/g)).toHaveLength(1);
   });
+  it('keeps one visible entrance and continuous native operations across repeated child updates in an active turn', () => {
+    const command = (id: string): ThreadItem => ({ type: 'commandExecution', id, turnId: 't',
+      command: 'echo synthetic', cwd: '/project', status: 'completed',
+      aggregatedOutput: null, exitCode: 0, durationMs: 1 });
+    const html = renderToStaticMarkup(createElement(SubagentsContext.Provider, { value: { threads: [child], open: () => {} } },
+      createElement(ThreadTimeline, { threadId: 'parent', items: [
+        spawn, command('a'), { ...spawn, id: 'wait', tool: 'wait' }, command('b'),
+        { type: 'subAgentActivity', id: 'done', turnId: 't', kind: 'completed',
+          agentThreadId: 'child', agentPath: '/root/loading', model: null, reasoningEffort: null },
+        command('c'),
+        { type: 'agentMessage', id: 'commentary', turnId: 't', phase: 'commentary', text: 'VISIBLE_PROGRESS' },
+        command('d')
+      ], activeTurnId: 't', turnTimings: {}, loading: false, hasMoreHistory: false,
+      loadingHistory: false, onLoadEarlier: async () => {} })));
+    expect(html.match(/class="subagent-row"/g)).toHaveLength(1);
+    expect(html.match(/class="activity-group-toggle"/g)).toHaveLength(2);
+    expect(html.indexOf('class="subagent-row"')).toBeLessThan(html.indexOf('class="activity-group"'));
+    expect(html).toContain('VISIBLE_PROGRESS');
+    expect(html).toContain('已完成');
+  });
   it('shows native startup and failure before an agent has a thread ID', () => {
     const render = (status: 'inProgress' | 'failed') => renderToStaticMarkup(createElement(ThreadTimeline, {
       threadId: 'parent', items: [{ ...spawn, status, receiverThreadIds: [], agentsStates: {} }],

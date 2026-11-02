@@ -514,6 +514,7 @@ export function ThreadTimeline({
         </Fragment>
         : <ResponseSection section={section} timing={section.turnId ? turnTimings[section.turnId] : undefined}
             finalStartedAtMs={responses.get(section.turnId ?? '')?.finalStartedAtMs ?? null}
+            finalAnswer={responses.get(section.turnId ?? '')?.finalAnswer}
             hasTrace={responses.get(section.turnId ?? '')?.hasTrace ?? false}
             showError={responses.get(section.turnId ?? '')?.lastResponseKey === section.key}
             open={expandedTurns.has(section.turnId ?? '')} onToggleTurn={toggleTurn}

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildTimelineEntries, buildTimelineSections, finalAnswerIndex, isActivityIssue, timelineTurnResponses } from './timeline-model';
 import { elapsedTurnMs } from '../shared/turn-timing';
 import type { ThreadItem } from './types';
+import { collectSubagents, isSubagentItem } from './subagents';
 
 function command(id: string, status: 'inProgress' | 'completed' | 'failed' | 'declined' = 'completed'): ThreadItem {
   return {
@@ -201,6 +202,33 @@ describe('timeline model', () => {
     expect(entries.map(entry => entry.type)).toEqual(['activity', 'activity', 'message', 'activity']);
   });
 
+  it('keeps merged subagent state updates from fragmenting commands while retaining real boundaries', () => {
+    const childEvent = (id: string, kind: 'started' | 'completed'): ThreadItem => ({
+      type: 'subAgentActivity', id, turnId: 't', kind, agentThreadId: 'child',
+      agentPath: '/root/check', model: null, reasoningEffort: null
+    });
+    const entries = buildTimelineEntries([
+      { ...command('before-entrance'), turnId: 't' },
+      childEvent('started', 'started'),
+      { ...command('a'), turnId: 't' },
+      childEvent('done', 'completed'),
+      { ...command('b'), turnId: 't' },
+      { ...agent('progress'), phase: 'commentary', turnId: 't' },
+      { ...command('c'), turnId: 't' },
+      childEvent('restart', 'started'),
+      { ...command('d'), turnId: 't' },
+      { type: 'userMessage', id: 'steer', turnId: 't', content: [] },
+      { ...command('after-steer'), turnId: 't' },
+      childEvent('next-entrance', 'completed'),
+      { ...command('after-next-entrance'), turnId: 't' }
+    ], 't');
+    expect(entries.filter(entry => entry.type === 'activity').map(entry => entry.items.map(item => item.id)))
+      .toEqual([['before-entrance'], ['a', 'b'], ['c', 'd'], ['after-steer'], ['after-next-entrance']]);
+    const events = entries.flatMap(entry => entry.type === 'event' && isSubagentItem(entry.item) ? [entry.item] : []);
+    expect(events.map(item => item.id)).toEqual(['started', 'done', 'restart', 'next-entrance']);
+    expect(collectSubagents(events)).toMatchObject([{ threadId: 'child', status: 'completed' }]);
+  });
+
   it('keeps user steering visible and assigns a single duration to the first response slice', () => {
     const sections = buildTimelineSections(buildTimelineEntries([
       { type: 'userMessage', id: 'u', content: [], turnId: 't' },
@@ -228,7 +256,8 @@ describe('timeline model', () => {
     expect(sections.filter(section => section.showTiming).map(section => section.turnId)).toEqual(['t', 'new']);
     expect(sections[1]?.showTiming).toBe(true);
     expect(turns.get('t')).toEqual({
-      finalStartedAtMs: 147_250, hasTrace: true, lastResponseKey: sections[3]!.key
+      finalStartedAtMs: 147_250, hasTrace: true, lastResponseKey: sections[3]!.key,
+      finalAnswer: items[4]
     });
     const timing = { id: 't', status: 'inProgress' as const, startedAt: 100, completedAt: null, durationMs: null };
     expect(elapsedTurnMs(timing, 999_000, turns.get('t')!.finalStartedAtMs)).toBe(47_250);

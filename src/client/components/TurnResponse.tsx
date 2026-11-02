@@ -21,11 +21,12 @@ import { documentReferences } from '../../shared/document-input';
 import { PreviewLink } from './PreviewLinks';
 
 export const ResponseSection = memo(function ResponseSection({
-  section, timing, finalStartedAtMs, hasTrace, showError, open, onToggleTurn, active, threadIdle = false, onInteract, onFork, onError
+  section, timing, finalStartedAtMs, finalAnswer, hasTrace, showError, open, onToggleTurn, active, threadIdle = false, onInteract, onFork, onError
 }: {
   section: TimelineSection;
   timing: TurnTiming | undefined;
   finalStartedAtMs: number | null;
+  finalAnswer?: ThreadItem | undefined;
   hasTrace: boolean;
   showError: boolean;
   open: boolean;
@@ -39,12 +40,12 @@ export const ResponseSection = memo(function ResponseSection({
   const bodyId = useId();
   const finalIndex = finalAnswerIndex(section.entries);
   const finalEntry = section.entries[finalIndex];
+  const turnFinal = finalAnswer ?? (finalEntry?.type === 'message' ? finalEntry.item : undefined);
   // Native final-answer records can omit completion timestamps. A verified idle
   // thread can fold their process before timings arrive; a streaming final cannot.
   const completed = !active && (timing ? timing.status !== 'inProgress'
-    : finalEntry?.type === 'message' &&
-      (finalEntry.item.completedAtMs != null ||
-        threadIdle && finalEntry.item.type === 'agentMessage' && finalEntry.item.phase === 'final_answer'));
+    : turnFinal && (turnFinal.completedAtMs != null ||
+        threadIdle && turnFinal.type === 'agentMessage' && turnFinal.phase === 'final_answer'));
   const agentItems = useMemo(() => section.entries.flatMap(entry =>
     entry.type === 'event' && isSubagentItem(entry.item) ? [entry.item] : []), [section.entries]);
   const firstAgentKey = section.entries.find(entry => entry.type === 'event' && isSubagentItem(entry.item))?.key;

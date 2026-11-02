@@ -11,6 +11,14 @@ from pptx import Presentation
 root = Path(sys.argv[1] if len(sys.argv) > 1 else "output/preview-fixtures")
 root.mkdir(parents=True, exist_ok=True)
 external = sys.argv[2] if len(sys.argv) > 2 else "http://127.0.0.1:9/external"
+(root / "report.md").write_text(
+    "# Markdown acceptance\n\n"
+    "A compiled preview keeps **strong text**, `inline code`, and [the status link](./status.json).\n\n"
+    "| Item | Result |\n| --- | --- |\n| Synthetic | Passed |\n\n"
+    "```ts\nconst ready = true;\n```\n",
+    encoding="utf-8",
+)
+(root / "status.json").write_text('{"ready": true}\n', encoding="utf-8")
 doc = Document()
 section = doc.sections[0]
 section.top_margin = section.bottom_margin = Inches(1)

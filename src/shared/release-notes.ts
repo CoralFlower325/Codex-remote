@@ -2,6 +2,14 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.16', changes: [
+    '修复子智能体重复状态事件将连续命令切成大量折叠块的问题，同轮完成证据在引导消息前后的回复片段间共享。',
+    '远程更新状态写入增加有限重试，临时文件占用恢复后可继续保存进度和最终结果。',
+    '已与目标版本一致的文件不再误判为本机定制，避免无故退回源码构建；真实私有修改仍受保护。',
+    '公开更新下载在代理连接明确失败后尝试一次直连，保留来源、摘要、取消和超时校验。',
+    'Markdown 文件按完整文档编译预览，保留标题、表格、代码和相对链接；切换目标时重置源码视图。',
+    '正式管理器更新至 0.2.2，安装确认仅保留版本和简短提示，完整更新摘要继续在版本页展示。'
+  ] },
   { version: '0.2.15', changes: [
     '会话订阅与首次读取并行，接入后的最新记录在首屏提交前合并；重复点击已打开的会话不再清空状态重载。',
     '保留原生轮次时间就绪保护，同一会话后台核对继续保留正文、草稿和阅读位置。',

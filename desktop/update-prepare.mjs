@@ -56,10 +56,13 @@ export async function prepareUpdate(directory, release, progress, execute = run,
           const before = baseline[relative] || null;
           const after = manifest.sources[relative] || null;
           inputs.push({ relative, before: hash(local) });
+          // Already applied target files are not local customizations. Keep
+          // their input hashes so edits during preparation still block install.
+          if (localHash === after) continue;
           if (localHash !== before && /^(?:src\/|public\/|scripts\/|package(?:-lock)?\.json$|tsconfig|vite)/.test(relative)) {
             custom.add(relative);
           }
-          if (before === after || localHash === after) continue;
+          if (before === after) continue;
           const preserve = localHash !== before;
           if (preserve && !/^(?:AGENTS\.md|CLAUDE\.md|README(?:\.[\w-]+)?\.md|docs\/.+\.md)$/.test(relative)) {
             custom.add(relative);

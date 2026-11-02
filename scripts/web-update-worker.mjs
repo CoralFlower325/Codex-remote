@@ -9,6 +9,24 @@ import { serviceControls, requireService } from './web-update-service.mjs';
 import { alive, readState, writeState, validId } from './web-update-state.mjs';
 import { fetchRelease } from './web-update-network.mjs';
 
+const stateWriteRetries = 3;
+const stateWriteDelay = 50;
+
+const retryStateWrite = async (root, value) => {
+  let failure;
+  for (let attempt = 0; attempt < stateWriteRetries; attempt++) {
+    try {
+      await writeState(root, value);
+      return;
+    } catch (error) {
+      failure = error;
+      if (attempt + 1 === stateWriteRetries) break;
+      await new Promise((resolve) => setTimeout(resolve, stateWriteDelay * (attempt + 1)));
+    }
+  }
+  throw failure;
+};
+
 export async function runUpdate(request, dependencies = {}) {
   const { prepare = prepareUpdate, install = installUpdate, owned = requireService,
     controls = serviceControls, recover = recoverPendingUpdate } = dependencies;
@@ -20,9 +38,10 @@ export async function runUpdate(request, dependencies = {}) {
   const save = () => {
     const value = structuredClone(state);
     queue = queue.then(() => {
-      if (writeFailure) throw writeFailure;
-      return writeState(info.root, value);
-    }).catch(error => { writeFailure = error; });
+      return retryStateWrite(info.root, value)
+        .then(() => { writeFailure = null; })
+        .catch(error => { writeFailure = error; });
+    });
     return queue;
   };
   const flush = async () => { await queue; if (writeFailure) throw writeFailure; };

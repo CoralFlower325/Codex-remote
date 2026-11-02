@@ -92,6 +92,33 @@ describe('prebuilt runtime packages', () => {
     expect(fetcher).toHaveBeenCalledOnce();
     expect(await fs.readFile(path.join(root, 'src/custom.ts'), 'utf8')).toBe('local customization');
   });
+  it('installs a runtime after a source file was already synchronized to the target', async () => {
+    const { root, payload, release, fetcher, execute } = await fixture();
+    const relative = 'scripts/remote-control-windows.ps1';
+    await fs.copyFile(path.join(payload, relative), path.join(root, relative));
+    const item = await prepareUpdate(root, release, () => {}, execute, { fetcher });
+    expect(item.mode).toBe('runtime');
+    expect(item.plan.some((entry) => entry.relative === relative)).toBe(false);
+    const result = await installUpdate(item, {
+      stop: vi.fn(), start: vi.fn(), verify: vi.fn(), isRunning: async () => false
+    });
+    expect(result.mode).toBe('runtime');
+    expect(JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8')).version).toBe(release.version);
+    expect(await fs.readFile(path.join(root, 'data/auth.json'), 'utf8')).toBe('private');
+  });
+  it('still blocks edits to an already applied target after preparation', async () => {
+    const { root, payload, release, fetcher, execute } = await fixture();
+    const relative = 'scripts/remote-control-windows.ps1';
+    await fs.copyFile(path.join(payload, relative), path.join(root, relative));
+    const item = await prepareUpdate(root, release, () => {}, execute, { fetcher });
+    await write(root, relative, 'new private edit during download');
+    const stop = vi.fn();
+    await expect(installUpdate(item, {
+      stop, start: vi.fn(), verify: vi.fn(), isRunning: async () => false
+    })).rejects.toThrow('尚未替换');
+    expect(stop).not.toHaveBeenCalled();
+    expect(await fs.readFile(path.join(root, relative), 'utf8')).toBe('new private edit during download');
+  });
   it('blocks an added build input during download before stopping service', async () => {
     const { root, release, fetcher, execute } = await fixture();
     const item = await prepareUpdate(root, release, () => {}, execute, { fetcher });

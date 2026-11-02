@@ -41,6 +41,43 @@ describe('conversation presentation', () => {
     expect(html).not.toContain('HIDDEN_PROGRESS');
     expect(html).not.toContain('echo detail');
   });
+  it('shares a final answer completion across steering slices before old timing metadata arrives', () => {
+    const items: ThreadItem[] = [
+      { type: 'userMessage', id: 'original', turnId: 't', content: [{ type: 'text', text: 'ORIGINAL_REQUEST' }] },
+      command,
+      { type: 'agentMessage', id: 'progress', turnId: 't', phase: 'commentary', text: 'HIDDEN_PROGRESS' },
+      { type: 'userMessage', id: 'steer', turnId: 't', content: [{ type: 'text', text: 'STEERING_REQUEST' }] },
+      { ...command, id: 'later-command' },
+      { type: 'agentMessage', id: 'final', turnId: 't', phase: 'final_answer', text: 'VISIBLE_FINAL' }
+    ];
+    const html = renderToStaticMarkup(createElement(ThreadTimeline, {
+      threadId: 'thread', items, threadIdle: true, activeTurnId: null, turnTimings: {}, loading: false,
+      hasMoreHistory: true, loadingHistory: false, onLoadEarlier: async () => {}
+    }));
+    expect(html).toContain('ORIGINAL_REQUEST');
+    expect(html).toContain('STEERING_REQUEST');
+    expect(html).toContain('VISIBLE_FINAL');
+    expect(html.match(/class="turn-disclosure"/g)).toHaveLength(1);
+    expect(html).not.toContain('HIDDEN_PROGRESS');
+    expect(html).not.toContain('class="activity-group-toggle"');
+  });
+
+  it('folds a completed old turn across steering while a later turn remains active', () => {
+    const items: ThreadItem[] = [
+      command,
+      { type: 'userMessage', id: 'steer', turnId: 't', content: [{ type: 'text', text: 'STEER' }] },
+      { type: 'agentMessage', id: 'final', turnId: 't', phase: 'final_answer',
+        text: 'OLD_FINAL', completedAtMs: 1234 },
+      { ...command, id: 'active-command', turnId: 'new', status: 'inProgress' }
+    ];
+    const html = renderToStaticMarkup(createElement(ThreadTimeline, {
+      threadId: 'thread', items, activeTurnId: 'new', turnTimings: {}, loading: false,
+      hasMoreHistory: true, loadingHistory: false, onLoadEarlier: async () => {}
+    }));
+    expect(html).toContain('OLD_FINAL');
+    expect(html.match(/class="activity-group-toggle"/g)).toHaveLength(1);
+    expect(html).toContain('正在运行命令');
+  });
 
   it('shows timing when the latest history page does not contain the original user message', () => {
     const html = render([{ type: 'agentMessage', id: 'a', turnId: 't', phase: 'final_answer', text: 'ANSWER' }], { t: complete });

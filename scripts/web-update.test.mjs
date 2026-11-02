@@ -177,6 +177,53 @@ describe('independent worker transaction', () => {
     const release = await acquireUpdateLock(f.root);
     await release();
   });
+  it('recovers from a transient state write failure before continuing the worker', async () => {
+    const f = await fixture(), id = crypto.randomUUID(), rename = fs.rename.bind(fs);
+    let failures = 0;
+    vi.spyOn(fs, 'rename').mockImplementation((from, to) => {
+      if (to.endsWith(`${id}.json`) && failures === 0) {
+        failures++;
+        return Promise.reject(Object.assign(new Error('transient state write failure'), { code: 'EBUSY' }));
+      }
+      return rename(from, to);
+    });
+    const result = await runUpdate({ id, root: f.root, version: '0.2.6', fromVersion: '0.2.5',
+      backendPid: process.pid, release: {} }, {
+      owned: async () => {}, controls: () => ({}),
+      prepare: async () => ({}), install: async () => {}
+    });
+    expect(result.status).toBe('completed');
+    expect(failures).toBe(1);
+    expect((await readState(f.root, id)).status).toBe('completed');
+  });
+  it('lets a later progress snapshot recover after one snapshot exhausts its write retries', async () => {
+    const f = await fixture(), id = crypto.randomUUID(), rename = fs.rename.bind(fs);
+    let failWrites = false, failures = 0;
+    vi.spyOn(fs, 'rename').mockImplementation((from, to) => {
+      if (failWrites && to.endsWith(`${id}.json`)) {
+        failures++;
+        return Promise.reject(Object.assign(new Error('temporary state write failure'), { code: 'EBUSY' }));
+      }
+      return rename(from, to);
+    });
+    const result = await runUpdate({ id, root: f.root, version: '0.2.6', fromVersion: '0.2.5',
+      backendPid: process.pid, release: {} }, {
+      owned: async () => {}, controls: () => ({}),
+      prepare: async (_root, _release, progress) => {
+        failWrites = true;
+        progress('first snapshot', { step: 'runtime', percent: 10 });
+        await vi.waitFor(() => expect(failures).toBe(3));
+        failWrites = false;
+        progress('next snapshot', { step: 'unpack', percent: 20 });
+        return {};
+      },
+      install: async () => {}
+    });
+    expect(result.status).toBe('completed');
+    expect((await readState(f.root, id))).toMatchObject({
+      status: 'completed', progress: { step: 'unpack', percent: 20 }
+    });
+  });
   it('refuses a late or superseded worker before ownership checks or mutations', async () => {
     const f = await fixture(), id = crypto.randomUUID(), owned = vi.fn(), prepare = vi.fn();
     const request = { id, root: f.root, version: '0.2.6', backendPid: process.pid };

@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-11-01.
+Last reconciled: 2026-11-02.
 
 ## Authority
 
@@ -15,7 +15,27 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-Remote 0.2.14 pairs with stable manager 0.2.1, unchanged in this batch.
+Remote 0.2.16 pairs with stable manager 0.2.2. Repeated child-agent status
+records retain state without splitting consecutive activity at invisible rows.
+Final-answer completion evidence is shared across steering slices, while active
+turns remain visible. Full-document Markdown previews preserve cross-block
+formatting and reset source mode when changing targets.
+Web-update state writes retry transient failures and can recover on later writes;
+persistent failures still block service mutations. Files already equal to the
+target are not custom build inputs, but their hashes still protect later edits.
+Explicit proxy connection failures on GET/HEAD allow one direct attempt inside
+the original deadline; stalled proxies and custom-source networks remain limits.
+The manager keeps the release summary on its version page and asks only for the
+version and a short interruption/data-preservation confirmation.
+See [batch acceptance](update-preview-activity-acceptance.md).
+
+The preceding 0.2.15 batch starts existing-chat resume alongside fresh reads,
+merges the post-attach tail before the first commit when needed and preserves
+mounted content on repeated selection. Native idle final answers fold before
+late timings; stale completed turns cannot clear newer running turns. Chat
+formulas load lazily. See [chat-open acceptance](chat-open-math-acceptance.md).
+
+The preceding 0.2.14 batch improved chat freshness and motion.
 New main-chat selections wait for fresh native text/timings instead of flashing
 old memory/device/host previews; caches are failure fallback. Fresh host reads
 bypass clean two-second reuse while sharing pending reads. Reconcile after
@@ -65,7 +85,7 @@ See [activity acceptance](activity-groups-acceptance.md).
 
 Release metadata and assets prefer
 the project-owned download distribution with official fallback and unchanged
-checksum checks. Install manager 0.2.1 manually over 0.2.0 and retry the same host
+checksum checks. Install manager 0.2.2 over an older manager and retry the same host
 directory; a host update cannot change the installed app's bundled updater.
 Known macOS metadata no longer forces a source build, and local `.env.example`
 copies stay outside the installation plan. Actual custom inputs, missing baselines
@@ -125,7 +145,7 @@ from service shutdown. Only the selected backend restarts. Keep the existing
 transaction/rollback protocol, do not replay uncertain install POSTs, and expose
 only projected progress over HTTP. Success refreshes the matching public client
 through `/remote-client/`, bypassing independently deployed static edge assets.
-This updates Remote separately from stable manager 0.2.1.
+This updates Remote separately from stable manager 0.2.2.
 See [web updates](web-backend-update.md).
 
 Remote 0.2.5 keeps image/skill drafts with their main chat across Composer

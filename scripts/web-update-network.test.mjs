@@ -13,6 +13,37 @@ function fixture(fetcher, options = {}) {
 }
 
 describe('web update download deadlines', () => {
+  it('falls back to a direct request when the proxy dispatcher rejects before headers', async () => {
+    const fetcher = vi.fn()
+      .mockRejectedValueOnce(new Error('proxy dispatcher unavailable'))
+      .mockResolvedValueOnce(new Response('direct result'));
+    const f = fixture(fetcher);
+    const response = await f.fetch('https://example.test/release');
+    expect(await response.text()).toBe('direct result');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0][1].dispatcher).toBe(f.dispatcher);
+    expect(fetcher.mock.calls[1][1]).not.toHaveProperty('dispatcher');
+    expect(f.createDispatcher).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the original headers deadline while a direct fallback stalls', async () => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn()
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => {
+        setTimeout(() => reject(new Error('proxy failed')), 20_000);
+      }))
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const f = fixture(fetcher);
+    const failure = f.fetch(new URL('https://example.test/release')).catch(error => error);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[1][1]).not.toHaveProperty('dispatcher');
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await failure).toMatchObject({ code: 'ETIMEDOUT' });
+    expect(fetcher.mock.calls[1][1].signal.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('bounds missing headers, aborts the transport and classifies the timeout for existing retries', async () => {
     vi.useFakeTimers();
     let transportSignal;

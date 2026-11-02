@@ -85,6 +85,18 @@ describe('release metadata fallback', () => {
     await expect(latestRelease('0.2.7', fetcher)).rejects.toThrow('Invalid stable release');
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
+  it('releases a malformed metadata body before trying the official source', async () => {
+    const cancelled = vi.fn();
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true, bodyUsed: false,
+        body: { cancel: cancelled },
+        json: vi.fn().mockRejectedValue(new Error('invalid metadata'))
+      })
+      .mockResolvedValueOnce(Response.json(metadata()));
+    expect((await latestRelease('0.2.7', fetcher)).version).toBe('0.2.9');
+    expect(cancelled).toHaveBeenCalledOnce();
+  });
   it('keeps numeric version comparison and bounded notes on mirrored metadata', async () => {
     const fetcher = vi.fn(async () => Response.json({ ...metadata(), body: 'x'.repeat(20_000) }));
     const result = await latestRelease('0.2.9', fetcher);

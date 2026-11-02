@@ -79,6 +79,13 @@ describe('update file plan', () => {
     expect(plan).toEqual([{ relative: 'src/a.ts', remove: false }]);
     expect(await fs.readFile(path.join(root, 'data/auth.json'), 'utf8')).toBe('private');
   });
+  it.each(['src/a.ts', 'package.json', 'package-lock.json', 'tsconfig.client.json', 'vite.config.ts'])(
+    'accepts already applied %s before comparing the old source baseline', async relative => {
+      const root = await directory(), stage = await directory();
+      await write(root, relative, 'new official\r\n');
+      await write(stage, relative, 'new official\n');
+      expect(await planFiles(root, stage, [relative], async () => Buffer.from('old official\n'))).toEqual([]);
+    });
   it('blocks local edits, unexpected additions and local deletions', async () => {
     const root = await directory(); const stage = await directory();
     await write(root, 'a', 'private'); await write(stage, 'a', 'new');
