@@ -85,12 +85,22 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const [newTaskMode, setNewTaskMode] = useState<'default' | 'plan'>('default');
   const [commandDialog, setCommandDialog] = useState<CommandDialogState | null>(null);
   const [commandNotice, setCommandNotice] = useState<string | null>(null);
+  const [archiveNotice, setArchiveNotice] = useState<{ threadId: string; archived: boolean; busy: boolean } | null>(null);
   const [sideChatRequest, setSideChatRequest] = useState<{ id: number; input?: ChatInput; chatId?: string } | null>(null);
   const sideChats = useSideChats(remote.chatTransport, remote.connected);
   const [summaryPinned, setSummaryPinned] = useState(() => {
     try { return localStorage.getItem('summary-panel-pinned') === 'true'; } catch { return false; }
   });
   const [summaryOverlayOpen, setSummaryOverlayOpen] = useState(false);
+  useEffect(() => {
+    if (!sideChats.adoptionRequest) return;
+    setSideChatRequest({
+      id: sideChats.adoptionRequest.id,
+      chatId: sideChats.adoptionRequest.chatId
+    });
+    setInspectorOpen(true);
+    setSummaryOverlayOpen(false);
+  }, [sideChats.adoptionRequest]);
   const mainRef = useRef<HTMLElement>(null);
   const [mainWidth, setMainWidth] = useState(0);
   const summaryInline = layout === 'desktop' && mainWidth >= 1096;
@@ -165,6 +175,30 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     const timer = window.setTimeout(() => setCommandNotice(null), 5000);
     return () => window.clearTimeout(timer);
   }, [commandNotice]);
+
+  useEffect(() => {
+    if (!archiveNotice || archiveNotice.busy) return;
+    const timer = window.setTimeout(() => setArchiveNotice(null), 10000);
+    return () => window.clearTimeout(timer);
+  }, [archiveNotice]);
+
+  const archiveThread = useCallback(async (threadId: string, archived: boolean) => {
+    await remote.archiveThread(threadId, archived);
+    setArchiveNotice({ threadId, archived, busy: false });
+  }, [remote.archiveThread]);
+
+  async function undoArchive() {
+    if (!archiveNotice || archiveNotice.busy) return;
+    const notice = archiveNotice;
+    setArchiveNotice({ ...notice, busy: true });
+    try {
+      await remote.archiveThread(notice.threadId, !notice.archived);
+      setArchiveNotice(current => current?.threadId === notice.threadId ? null : current);
+    } catch (error) {
+      showError(error);
+      setArchiveNotice(current => current?.threadId === notice.threadId ? { ...notice, busy: false } : current);
+    }
+  }
 
   useEffect(() => {
     if (remote.connected) {
@@ -356,6 +390,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         onToggleCollapse={() => setSidebarCollapsed((value) => !value)}
         onNewTask={beginNewTask}
         onSelectThread={(threadId) => void selectThread(threadId)}
+        onArchiveThread={archiveThread}
         onLogout={() => void logout()}
       />
 
@@ -418,7 +453,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
                       )}
                       <button type="button" onClick={() => {
                         setTaskMenuOpen(false);
-                        void remote.archiveThread(activeThread.id, !remote.showArchived).catch(showError);
+                        void archiveThread(activeThread.id, !remote.showArchived).catch(showError);
                       }}>
                         {remote.showArchived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
                         {remote.showArchived ? '取消归档' : '归档任务'}
@@ -482,6 +517,14 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           </div>
         )}
         {commandNotice && <div className="command-notice" role="status">{commandNotice}</div>}
+        {archiveNotice && <div className="command-notice archive-notice" role="status">
+          <span>{archiveNotice.archived ? '聊天已归档' : '聊天已恢复'}</span>
+          <button type="button" disabled={archiveNotice.busy} onClick={() => void undoArchive()}>
+            <ArchiveRestore size={14} aria-hidden="true" />{archiveNotice.busy ? '正在撤销' : '撤销'}
+          </button>
+          <button type="button" className="icon-button" title="关闭提示" aria-label="关闭归档提示"
+            disabled={archiveNotice.busy} onClick={() => setArchiveNotice(null)}><X size={14} /></button>
+        </div>}
 
         {activeThread ? (
           <ThreadScreen

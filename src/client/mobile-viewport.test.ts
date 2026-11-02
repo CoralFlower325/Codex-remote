@@ -16,6 +16,11 @@ describe('mobile visible viewport', () => {
     expect(mobileViewportGeometry({ ...base, visibleHeight: 400, scale: 2, editing: true }).keyboardOpen).toBe(false);
     expect(mobileViewportGeometry({ ...base, visibleHeight: 520 }).keyboardOpen).toBe(false);
   });
+  it('never locks a transient visual viewport height while the keyboard is closed', () => {
+    expect(mobileViewportGeometry({ ...base, visibleHeight: 610 })).toEqual({
+      height: 874, top: 0, keyboardOpen: false
+    });
+  });
   it('restores normal safe area spacing after closing the keyboard', () => {
     expect(mobileViewportGeometry({ ...base, editing: true })).toEqual({ height: 874, top: 0, keyboardOpen: false });
   });

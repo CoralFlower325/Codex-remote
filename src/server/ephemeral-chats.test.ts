@@ -3,6 +3,33 @@ import { EphemeralChats } from './ephemeral-chats.js';
 
 afterEach(() => vi.useRealTimers());
 describe('temporary chat ownership', () => {
+  it('does not revive a completed turn from a delayed read or clear a newer active turn', () => {
+    const chats = new EphemeralChats<string>(async () => {});
+    chats.add('side', 'socket');
+    chats.record('turn/completed', { threadId: 'side', turn: { id: 'old', status: 'completed' } });
+    chats.recordThread('side', [{ id: 'old', status: 'inProgress' }]);
+    expect(chats.snapshot('side')?.activeTurnId).toBeNull();
+    chats.record('turn/started', { threadId: 'side', turn: { id: 'new', status: 'inProgress' } });
+    chats.record('turn/completed', { threadId: 'side', turn: { id: 'old', status: 'completed' } });
+    expect(chats.snapshot('side')?.activeTurnId).toBe('new');
+    chats.recordThread('side', [{ id: 'new', status: 'completed' }]);
+    expect(chats.snapshot('side')).toMatchObject({ activeTurnId: null,
+      turns: [{ id: 'old', status: 'completed' }, { id: 'new', status: 'completed' }] });
+  });
+  it('adopts a loaded Desktop side conversation and snapshots its native turns', () => {
+    const chats = new EphemeralChats<string>(async () => {});
+    chats.adopt('desktop-side', 'socket');
+    chats.recordThread('desktop-side', [{
+      id: 'turn', status: 'inProgress', startedAt: 10, completedAt: null, durationMs: null,
+      items: [{ id: 'question', type: 'userMessage', content: [{ type: 'text', text: 'Question' }] }]
+    }]);
+    expect(chats.snapshot('desktop-side')).toMatchObject({
+      activeTurnId: 'turn',
+      turns: [{ id: 'turn', status: 'inProgress', startedAt: 10 }],
+      items: [{ id: 'question', turnId: 'turn', type: 'userMessage' }]
+    });
+  });
+
   it('keeps native retry errors in reconnect memory and clears them on resumed output', () => {
     const chats = new EphemeralChats<string>(async () => {});
     chats.add('side', 'socket');

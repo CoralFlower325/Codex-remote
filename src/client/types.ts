@@ -20,6 +20,10 @@ export interface ThreadGoal {
 
 export interface Thread {
   id: string;
+  sessionId?: string;
+  forkedFromId?: string | null;
+  parentThreadId?: string | null;
+  threadSource?: string | null;
   name: string | null;
   preview: string;
   cwd: string;
@@ -157,6 +161,7 @@ export interface ThreadHistoryItemEntry {
 }
 
 export interface ThreadHistoryPage {
+  continuationError?: string;
   items: ThreadHistoryItemEntry[];
   nextCursor: string | null;
   activeTurnId: string | null;

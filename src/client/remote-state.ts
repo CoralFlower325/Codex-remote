@@ -52,6 +52,13 @@ export function displayThreadTitle(thread: Thread): string {
   return thread.name || thread.preview?.split('\n')[0]?.slice(0, 80) || '未命名任务';
 }
 
+export function isUnusableThreadError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /\bthread\s+not\s+found\b/i.test(message) ||
+    /failed to load configuration/i.test(message) ||
+    /model provider .+ not found/i.test(message);
+}
+
 export function titlesMatch(left: string, right: string): boolean {
   const normalize = (value: string) => value.replace(/[\u2026\s]+/g, '').trim();
   const a = normalize(left);

@@ -11,7 +11,12 @@ interface ConnectionOptions<Message> {
   onOpen: () => void;
   onMessage: (message: Message) => void;
   onDisconnect: (error: Error) => void;
+  heartbeatIntervalMs?: number;
+  pongTimeoutMs?: number;
 }
+
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 5_000;
+const DEFAULT_PONG_TIMEOUT_MS = 12_000;
 
 export class RemoteConnection<Message extends { type: string } = ServerMessage> {
   private socket: RemoteChannel | null = null;
@@ -31,8 +36,12 @@ export class RemoteConnection<Message extends { type: string } = ServerMessage> 
   private suspended = false;
   private synchronized = false;
   private readonly networkInfo = (navigator as Navigator & { connection?: EventTarget }).connection;
+  private readonly heartbeatIntervalMs: number;
+  private readonly pongTimeoutMs: number;
 
   constructor(private readonly options: ConnectionOptions<Message>) {
+    this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
+    this.pongTimeoutMs = options.pongTimeoutMs ?? DEFAULT_PONG_TIMEOUT_MS;
     if (options.httpFallback) {
       try { this.http = sessionStorage.getItem('remote-http-transport') === '1'; } catch { /* Optional route preference. */ }
     }
@@ -127,6 +136,7 @@ export class RemoteConnection<Message extends { type: string } = ServerMessage> 
       } catch {
         return;
       }
+      if (message.type === 'pong') this.markAlive();
       if (message.type === this.options.readyType) {
         window.clearTimeout(this.connectTimer);
         this.connectTimer = undefined;
@@ -137,16 +147,11 @@ export class RemoteConnection<Message extends { type: string } = ServerMessage> 
         }
       }
       if (message.type === 'pong') {
-        this.clearProbe();
         if (this.pingSentAtMs !== undefined && 'at' in message && typeof message.at === 'string') {
           const serverTimeMs = Date.parse(message.at);
           if (Number.isFinite(serverTimeMs)) synchronizeHostClock(serverTimeMs, this.pingSentAtMs, Date.now());
         }
         this.pingSentAtMs = undefined;
-        window.clearTimeout(this.pongTimer);
-        this.pongTimer = undefined;
-        window.clearTimeout(this.heartbeatTimer);
-        this.heartbeatTimer = window.setTimeout(this.ping, 5000);
       }
       this.options.onMessage(message);
     });
@@ -246,7 +251,7 @@ export class RemoteConnection<Message extends { type: string } = ServerMessage> 
     probe?.close();
   }
 
-  private probe = (): void => {
+  private probeHttpRoute = (): void => {
     this.probeTimer = undefined;
     const original = this.socket;
     if (!this.options.httpFallback || !this.synchronized || this.probeSocket ||
@@ -279,18 +284,19 @@ export class RemoteConnection<Message extends { type: string } = ServerMessage> 
     const socket = this.socket;
     if (!socket || socket.readyState !== WebSocket.OPEN || this.pongTimer !== undefined ||
         document.visibilityState !== 'visible') return;
+    this.clearProbe();
     window.clearTimeout(this.heartbeatTimer);
-    this.probeTimer = window.setTimeout(this.probe, 2000);
+    this.probeTimer = window.setTimeout(this.probeHttpRoute, 2000);
     this.pongTimer = window.setTimeout(() => {
       if (document.visibilityState !== 'visible') { this.clearHeartbeat(); return; }
       // A suspended event loop must get a fresh probe instead of an expired timeout.
-      if (this.pingSentAtMs !== undefined && Date.now() - this.pingSentAtMs > 20_000) {
+      if (this.pingSentAtMs !== undefined && Date.now() - this.pingSentAtMs > this.pongTimeoutMs + 5000) {
         this.clearHeartbeat();
         this.ping();
         return;
       }
       this.disconnect(socket, 'Remote heartbeat timed out. Reconnecting...');
-    }, 12_000);
+    }, this.pongTimeoutMs);
     try {
       this.pingSentAtMs = Date.now();
       socket.send(JSON.stringify({ type: 'ping' }));
@@ -298,6 +304,16 @@ export class RemoteConnection<Message extends { type: string } = ServerMessage> 
       this.disconnect(socket, 'Remote connection lost. Reconnecting...');
     }
   };
+
+  private markAlive(): void {
+    window.clearTimeout(this.pongTimer);
+    this.pongTimer = undefined;
+    window.clearTimeout(this.heartbeatTimer);
+    this.clearProbe();
+    if (document.visibilityState === 'visible' && this.socket?.readyState === WebSocket.OPEN) {
+      this.heartbeatTimer = window.setTimeout(() => this.ping(), this.heartbeatIntervalMs);
+    }
+  }
 
   private online = (): void => {
     this.failures = 0;

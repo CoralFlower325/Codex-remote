@@ -49,10 +49,13 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   into native-style summaries across types. Ordinary reasoning is hidden; viewed
   images and commentary keep their positions. Completed turns fold their process
   under the duration disclosure, leaving the final reply visible.
-  Mobile attachment/dictation and conversation-index buttons use 36px controls
-  to fit small screens, matching the model selector. Apply this exception only
-  to the mobile layout, including side chats; preserve desktop sizes and
-  desktop goal/queued-message corners. Other touch targets remain at least 44px.
+  Mobile dictation and model controls use 36px controls; attachment and
+  composer conversation-index buttons use two thirds of that size (24px).
+  Desktop attachment and composer conversation-index buttons also use two
+  thirds of their previous size: 28px becomes about 18.67px. Desktop standalone
+  conversation-index and coarse-pointer side-chat attachment/index controls shrink
+  from 44px to about 29.33px. Preserve desktop model/dictation sizing and
+  goal/queued-message corners. Other touch targets remain at least 44px.
   Conversation text follows native 14px/22.75px, weight 430; activity headers use
   14px/21px, weight 430. Keep the system font stack and lazy detail bodies.
 - Use native turn timing, including metadata cursors for older history. Never
@@ -196,8 +199,11 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Handover rejects uncertain actions without replay. Redundant focus/online
   probes healthy connections without resetting deadlines; pongs are not sync.ready.
   Manual reconnect preserves the workspace, drafts and reading state while
-  cancelling stale reads. Preload Workspace; serve the installed public shell
+  cancelling stale reads. Serve the installed public shell
   immediately with its matching modules and install newer shells through SW.
+  Workspace prewarming starts only for a returning-device shell or after verified
+  authentication/login. Do not inject its modulepreload into anonymous HTML.
+  The service worker may still cache the complete public shell in the background.
   Local remote:shell/auth/bootstrap/tasks/chat/connected marks contain timings
   only; never export private content or add background telemetry.
 - Abort abandoned HTTP history and permission reads when their selection changes;
@@ -320,8 +326,16 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Subscribe to all open side threads, batch their events separately from main
   history, and keep temporary drafts and recovery snapshots in memory only.
   Native ephemeral chats do not support persisted history or queues; steer active
-  side turns directly. Closing a side tab interrupts and unsubscribes; hiding
-  the inspector preserves tabs. Allow 30 seconds for socket reconnection.
+  side turns directly. Adopt loaded Desktop side conversations from
+  `thread/loaded/list` plus `thread/read`, and detect live `thread/started`
+  copies by explicit `side_chat` / `queued_side_chat` metadata. Never treat an
+  ordinary fork or subagent as a side chat. Open the adopted conversation in the
+  inspector, merge its native turns before live events, and continue watching it
+  across main-chat changes. Closing a Desktop-managed Remote tab removes only its
+  viewer; unlike a Remote-created tab, it must not interrupt or unsubscribe the
+  Desktop side chat. Closing a Remote-created side tab interrupts and
+  unsubscribes; hiding the inspector preserves tabs. Allow 30 seconds for socket
+  reconnection.
   Ingest embedded items in native turn notifications as well as item events:
   live Desktop can send ephemeral replies only in turn/completed. Retain
   successfully submitted user input in the temporary snapshot with its
@@ -376,7 +390,7 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   An explicit user version takes precedence.
   Remote and the desktop manager have independent versions. Remote's version lives
   in the root package/lockfile; the manager's lives in desktop/package/lockfile.
-  The stable manager is 0.2.3 with Remote 0.2.17. Remote-only changes must not increment, rebuild
+  The stable manager is 0.2.3 with Remote 0.2.18; installers remain in v0.2.17. Remote-only changes must not increment, rebuild
   or install the manager. Increment the manager patch only for its own changes.
   Manager self-update is paused as 0.2.0AU on archive/manager-0.2.0AU;
   keep AU self-update out of the stable manager and formal releases. Preserve AU history,

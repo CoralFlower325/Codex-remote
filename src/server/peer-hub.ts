@@ -1,7 +1,8 @@
 import { WebSocket } from 'ws';
 import type { ClientMessage, ServerMessage } from '../shared/protocol.js';
 import { nativeRpcFailure } from '../shared/native-error.js';
-import { isTaskThread } from '../shared/thread-source.js';
+import { isSideConversationThread, isTaskThread } from '../shared/thread-source.js';
+import type { TurnTiming } from '../shared/turn-timing.js';
 import type { CodexBridge } from './codex-bridge.js';
 import type { RemotePeer } from './http-connections.js';
 import type { EventJournal } from './event-journal.js';
@@ -133,13 +134,20 @@ export function createPeerHub({ codexBridge, eventJournal, questionTracker, meta
         if (message.method === 'project/create') metadataReader.clear('project/list');
         const params = message.params as { ephemeral?: boolean; threadId?: string;
           clientUserMessageId?: string; input?: unknown[]; expectedTurnId?: string } | undefined;
-        if ((message.method === 'thread/start' || message.method === 'thread/fork') && params?.ephemeral) {
-          const id = (result as { thread: { id: string } }).thread.id;
-          ephemeralChats.add(id, socket);
-          if (socket.readyState !== WebSocket.OPEN) ephemeralChats.disconnect(socket);
-        }
-        if (/^thread\/(?:start|fork|resume|read)$/.test(message.method) && !params?.ephemeral) {
-          const thread = (result as { thread?: { id: string; source?: unknown; ephemeral?: boolean } }).thread;
+        if (/^thread\/(?:start|fork|resume|read)$/.test(message.method)) {
+          const thread = (result as { thread?: {
+            id: string; source?: unknown; ephemeral?: boolean;
+            turns?: Array<{ id: string; status?: TurnTiming['status']; items?: Array<Record<string, unknown>> }>;
+          } }).thread;
+          const startsRemoteEphemeral = /^(?:thread\/start|thread\/fork)$/.test(message.method) &&
+            params?.ephemeral === true;
+          const alreadyTracked = thread?.id ? ephemeralChats.snapshot(thread.id) !== null : false;
+          if (thread?.ephemeral && !isSideConversationThread(thread) &&
+              (startsRemoteEphemeral || alreadyTracked)) {
+            if (startsRemoteEphemeral) ephemeralChats.add(thread.id, socket);
+            ephemeralChats.recordThread(thread.id, thread.turns ?? []);
+            if (startsRemoteEphemeral && socket.readyState !== WebSocket.OPEN) ephemeralChats.disconnect(socket);
+          }
           if (thread && isTaskThread(thread)) pushNotifications.watch(thread.id);
         }
         if (message.method === 'thread/unsubscribe' && params?.threadId) ephemeralChats.remove(params.threadId);

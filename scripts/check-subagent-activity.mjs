@@ -3,7 +3,8 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { WebSocketServer } from 'ws';
-import { chromium } from '../desktop/node_modules/playwright/index.mjs';
+const { chromium } = await import(process.env.REMOTE_PLAYWRIGHT_MODULE ??
+  '../desktop/node_modules/playwright/index.mjs');
 import { compactHistoryEntries } from '../dist-server/server/history-payload.js';
 
 // Production client with isolated synthetic native data. Never connect to Desktop.

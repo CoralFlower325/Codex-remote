@@ -26,12 +26,13 @@ interface SidebarProps {
   onToggleCollapse: () => void;
   onNewTask: (projectId?: string) => void;
   onSelectThread: (threadId: string) => void;
+  onArchiveThread: (threadId: string, archived: boolean) => Promise<void>;
   onLogout: () => void;
 }
 
 export function Sidebar({
   remote, activeThreadId, layout, open, collapsed, search, onSearchChange,
-  onClose, onNewTask, onSelectThread, onLogout
+  onClose, onNewTask, onSelectThread, onArchiveThread, onLogout
 }: SidebarProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -158,7 +159,7 @@ export function Sidebar({
                       request.params.threadId === thread.id && request.method === 'item/tool/requestUserInput').length}
                     needsAttention={remote.serverRequests.some((request) => request.params.threadId === thread.id &&
                       request.method !== 'item/tool/requestUserInput')}
-                    onArchive={() => remote.archiveThread(thread.id, !remote.showArchived)}
+                    onArchive={() => onArchiveThread(thread.id, !remote.showArchived)}
                     onError={error => remote.setLastError(error instanceof Error ? error.message : String(error))}
                     onClick={() => onSelectThread(thread.id)} />
                 ))}

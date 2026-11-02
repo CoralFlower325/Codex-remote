@@ -363,7 +363,7 @@ The mobile layout activates below 720 CSS pixels wide, or below 980 pixels when 
 
 Phones use compact header and composer spacing. Mobile layout follows the visible viewport when the keyboard opens and removes the duplicate bottom safe-area gap. Physical display safe areas remain protected. Desktop appearance is unchanged. Keyboard geometry has unit coverage; real iOS keyboard acceptance is separate.
 
-Mobile attachment and conversation-index buttons remain 36px in main and side chats. Desktop control sizes are preserved. Both layouts show a plain Codex sidebar title and omit the help shortcut; the bottom Settings button remains the menu entry.
+Mobile attachment and conversation-index buttons use 24px; model and dictation remain 36px. Desktop composer attachment/index controls use about 18.67px, and standalone/coarse-pointer side-chat index controls about 29.33px. Other controls retain their existing sizes. The mobile shell follows the visual viewport and suppresses duplicate bottom spacing while the keyboard is open; real Safari keyboard acceptance remains separate. Both layouts show a plain Codex sidebar title and omit the help shortcut; the bottom Settings button remains the menu entry.
 
 On phones, the conversation-index sheet uses the composer corner radius and a smaller close glyph within a 44px touch target. Opening focuses the sheet rather than highlighting its close button; keyboard navigation remains available. The phone composer index button keeps the input background and omits its touch/focus ring, using a darker glyph for keyboard focus. Desktop trigger backgrounds and focus outlines are preserved. The sidebar running indicator rotates an independent HTML layer instead of the SVG. Physical iOS Home Screen animation acceptance is still required.
 
@@ -477,7 +477,7 @@ The marks at the left of the conversation follow native turn summaries. Hover
 or focus a mark to preview the request and final reply; click or press Enter to
 jump. Up/Down and Home/End move keyboard focus, and Escape closes the preview.
 The current reading position is highlighted. Narrow conversation panels and
-touch devices use a list button beside the model selector (36px in the mobile layout; desktop sizes are preserved) and a selectable sheet.
+touch devices use a compact list button beside the model selector (24px in the mobile layout) and a selectable sheet.
 
 The outline follows all native summary cursors independently of the latest
 40-record history page. A jump reads up to 100 target-turn records in one native request when a reversible cursor is available. Nearby context continues automatically as you scroll, without a show-more button; user text in the navigation window is expanded. Up to five windows are reused in memory for 30 seconds and invalidated by native changes. Older/newer paging remains bounded, with a return-to-latest button. New activity does not interrupt an older window. Native summaries can omit follow-up user messages within the
@@ -495,8 +495,9 @@ In the right inspector, choose **New tab (+) > Side chat**. Each tab has its own
 draft, model, supported reasoning levels, permissions, and send/stop controls.
 The native temporary chat is created on first send and inherits the main chat's
 context at that moment. Later messages remain independent. Hiding the inspector
-preserves its tabs; closing a side-chat tab interrupts its active turn and
-releases the temporary chat.
+preserves its tabs; closing a Remote-created side-chat tab interrupts its active
+turn and releases the temporary chat. Closing a Desktop-managed viewer only
+removes the Remote tab and watch; Desktop keeps ownership and continues running.
 
 Model and reasoning choices use the native catalog and apply to the next new
 turn. Steering an already running turn retains that turn's existing model.
@@ -507,9 +508,13 @@ Side-chat tabs and drafts live in memory, not browser storage. A short socket
 disconnect has a 30-second recovery grace; Remote keeps an in-memory event
 snapshot to recover missed streaming output. Reloading/closing the page or
 restarting Remote loses the temporary UI. These are Remote-managed tabs backed
-by native ephemeral chats, not Desktop's existing side-chat UI. Native ephemeral
-chats cannot use persisted-history commands or submission queues: follow-ups
-while running use direct steering.
+by native ephemeral chats. Remote follows every loaded-thread cursor and detects
+explicit Desktop side-chat metadata or a fork's native side-conversation boundary.
+Ordinary forks and subagents are excluded. Adopted tabs retain their native parent
+when known, messages and settings across main-chat navigation and reconnects.
+Closing a Desktop viewer keeps it closed for this page lifetime; reopening the
+page can rediscover it. Native ephemeral chats cannot use persisted-history commands
+or submission queues: follow-ups while running use direct steering.
 Some Desktop transports deliver ephemeral reply items only on turn completion.
 Remote shows the submitted request and native elapsed progress, then renders the
 completed reply; it uses incremental item events when the host supplies them.
@@ -524,7 +529,8 @@ Moving one to a side chat opens an editable draft and removes it from the queue.
 Use the folder-plus button beside **Projects**, or the project picker, to browse
 host directories, create a folder, and add it as a workspace. These are manual
 host filesystem actions, independent of a model's chat permission profile.
-Hover or focus a sidebar chat to archive it; the archived view offers restore.
+Hover or focus a sidebar chat to archive it; a ten-second notice offers Undo,
+and the archived view offers restore.
 Completed replies expose copy and a menu with **Branch to new chat**. That branch
 includes the selected reply's turn and excludes later turns.
 
@@ -776,7 +782,7 @@ cannot load external resources or arbitrary HTML.
 - Ordinary HTTP responses and supported WebSocket messages use compression. HTTP event streams flush uncompressed with `no-store, no-transform` to avoid buffered delivery. Fingerprinted assets have immutable caching; authenticated bootstrap and history responses use `no-store`.
 - Native events update individual task rows; completion refreshes only the latest outline page. Full task-list calibration keeps its five-minute cooldown. Foreground return can recheck the selected chat tail after a 15-second cooldown since the last read or foreground check, preserving history-navigation windows and pending reads. Background pagination pauses in hidden tabs and yields on constrained connections. Streaming updates batch at 60ms, 100ms on constrained networks, and 250ms in hidden tabs. Reading-anchor capture and navigation measurements coalesce per animation frame; ordered anchor searches avoid measuring every preceding message. Markdown reuses completed blocks and unchanged responses retain their components. Conversation blocks use their actual layout heights; image thumbnails reserve a stable area. Tall images show a marked top crop and open as vertically scrollable originals.
 - Short WebSocket outages replay subscribed events from a host-memory journal bounded to 90 seconds and 2 MiB. Healthy chat history stays mounted even while background task pagination is unfinished. Expired cursors or a host restart restore native snapshots. Replayed events are deduplicated, approvals use a fresh pending snapshot, and interrupted model requests are never automatically resubmitted.
-- The production service worker caches only the public application shell and static assets. Repeat navigation returns the installed shell immediately; its document and modules stay on the same version while new versions install in the background. Close all open Remote windows and reopen to activate a waiting update. The Workspace module is preloaded on cold entry. API responses, chats, approvals, images, and terminal data are not stored in its cache. Offline shell availability does not make chats available offline. Install the site from a supporting HTTPS browser, or use Safari's Add to Home Screen.
+- The production service worker caches only the public application shell and static assets. Repeat navigation returns the installed shell immediately; its document and modules stay on the same version while new versions install in the background. Close all open Remote windows and reopen to activate a waiting update. Workspace prewarming starts for returning-device shells or after authentication/login; anonymous HTML no longer forces a Workspace module preload. The service worker still downloads the public shell in the background, so this does not promise a halved total first-visit transfer. API responses, chats, approvals, images, and terminal data are not stored in its cache. Offline shell availability does not make chats available offline. Install the site from a supporting HTTPS browser, or use Safari's Add to Home Screen.
 - After a successful login, a boolean device hint allows repeat entry to display the empty workspace immediately while authentication runs in the background. The hint contains no credentials or chat data and never grants access. Tasks and the socket still wait for server verification; expiry and logout clear the hint. This shortens the full-screen wait, not the network authentication round trip.
 - Local browser User Timing marks (`remote:shell`, `remote:auth`, `remote:bootstrap`, `remote:tasks`, `remote:chat`, `remote:connected`) record the latest completion of each phase without message content or automatic telemetry. Controlled before/after measurements and real-device limits are documented in [startup acceptance](startup-acceptance.md).
 - For a fixed trusted device, sign in once in the browser or installed app you will use, then pin that entry to the home screen or taskbar. The HTTP-only session lasts 30 days by default (`SESSION_DAYS`); expiry, signing out, clearing site data, or resetting the server session secret requires signing in again. Keep the same HTTPS origin and browser profile. A home-screen installation may have separate browser storage.

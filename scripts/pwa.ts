@@ -87,15 +87,6 @@ export function pwaPlugin(appVersion: string): Plugin {
   return {
     name: 'remote-static-cache',
     apply: 'build',
-    transformIndexHtml(_html, context) {
-      if (context.path === '/update.html') return [];
-      const workspace = Object.values(context.bundle ?? {}).find(
-        value => value.type === 'chunk' && value.name === 'Workspace'
-      );
-      return workspace ? [{ tag: 'link', attrs: {
-        rel: 'modulepreload', crossorigin: '', href: `/${workspace.fileName}`
-      }, injectTo: 'head' }] : [];
-    },
     generateBundle(_options, bundle) {
       const entry = Object.values(bundle).find(value => value.type === 'chunk' && value.isEntry && value.name === 'index');
       if (!entry) return;

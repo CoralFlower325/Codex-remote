@@ -42,7 +42,8 @@ export async function readThreadOutline(request: Request, threadId: string, curs
 }
 
 export async function readConversationHistoryPage(request: Request, threadId: string, cursor: string, limit = 100) {
-  const page = await readThreadHistoryPage(request, threadId, cursor, limit);
+  const page: Awaited<ReturnType<typeof readThreadHistoryPage>> & { continuationError?: string } =
+    await readThreadHistoryPage(request, threadId, cursor, limit);
   const cursors = new Set([cursor]);
   // Coalesce folded activity on the host instead of paying a mobile round trip
   // for every invisible page. Retain every record and its native cursor.
@@ -52,7 +53,10 @@ export async function readConversationHistoryPage(request: Request, threadId: st
     let older: Awaited<ReturnType<typeof readThreadHistoryPage>>;
     try {
       older = await readThreadHistoryPage(request, threadId, page.nextCursor, limit);
-    } catch { break; }
+    } catch {
+      page.continuationError = '较早会话记录读取失败，请再次向上滚动重试。';
+      break;
+    }
     page.items.unshift(...older.items);
     page.nextCursor = older.nextCursor;
   }

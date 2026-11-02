@@ -3,6 +3,7 @@
   --mobile-header-height: 44px;
   --mobile-input-font-size: 16px;
   --mobile-composer-control-size: 36px;
+  --mobile-composer-compact-control-size: calc(var(--mobile-composer-control-size) * 2 / 3);
   --mobile-edge: 8px;
   --mobile-header-top: env(safe-area-inset-top, 0px);
   --mobile-bottom-inset: env(safe-area-inset-bottom, 0px);
@@ -92,9 +93,12 @@
   flex-basis: var(--mobile-composer-control-size);
 }
 
+.app-shell[data-layout="mobile"] .composer-add,
 .app-shell[data-layout="mobile"] .composer-turn-slot .thread-navigation-mobile--composer {
-  width: var(--mobile-composer-control-size);
-  height: var(--mobile-composer-control-size);
+  width: var(--mobile-composer-compact-control-size);
+  height: var(--mobile-composer-compact-control-size);
+  min-height: var(--mobile-composer-compact-control-size);
+  flex-basis: var(--mobile-composer-compact-control-size);
 }
 
 .app-shell[data-layout="mobile"] .goal-status,
@@ -117,18 +121,6 @@
 .app-shell[data-layout="mobile"] .navigation-dialog-close > svg {
   width: 14px;
   height: 14px;
-}
-
-/* Keep phone index triggers part of their composer without changing desktop. */
-.app-shell[data-layout="mobile"] .thread-navigation-mobile {
-  -webkit-tap-highlight-color: transparent;
-}
-.app-shell[data-layout="mobile"] .thread-navigation-mobile:focus-visible {
-  outline: none;
-  color: var(--ink);
-}
-.app-shell[data-layout="mobile"] .composer-turn-slot .thread-navigation-mobile--composer {
-  background: transparent;
 }
 
 /* Keep native question/approval answers readable without iOS focus zoom. */

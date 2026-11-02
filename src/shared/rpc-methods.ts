@@ -1,6 +1,7 @@
 /** Classification is native policy, not permission to retry actions. */
 export const rpcMethods = {
   'thread/list': 'read',
+  'thread/loaded/list': 'read',
   'thread/read': 'read',
   'thread/start': 'write',
   'thread/unsubscribe': 'write',

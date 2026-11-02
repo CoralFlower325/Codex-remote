@@ -49,7 +49,7 @@ export function App() {
     let failures = 0;
     let pending = false;
     let verified = false;
-    void loadWorkspace().catch(() => undefined);
+    if (isReturningDevice() || establishedRef.current) void loadWorkspace().catch(() => undefined);
     const check = async () => {
       if (pending || controller.signal.aborted) return;
       clearTimeout(timer);
@@ -59,6 +59,7 @@ export function App() {
         const state = await session.auth;
         if (controller.signal.aborted) return;
         verified = true;
+        if (state.authenticated) void loadWorkspace().catch(() => undefined);
         if (!state.authenticated) void clearDeviceSnapshots();
         rememberDevice(state.authenticated);
         setReturningDevice(state.authenticated);
@@ -185,6 +186,7 @@ function LoginPage({ onDone }: { onDone: () => void }) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   return (
     <AuthShell
@@ -193,8 +195,15 @@ function LoginPage({ onDone }: { onDone: () => void }) {
     >
       <form
         className="auth-form"
+        noValidate
         onSubmit={(event) => {
           event.preventDefault();
+          if (!password) {
+            setError('请先输入访问密码。');
+            passwordRef.current?.focus();
+            return;
+          }
+          if (working) return;
           setWorking(true);
           setError(null);
           void api('/api/auth/login', {
@@ -212,6 +221,7 @@ function LoginPage({ onDone }: { onDone: () => void }) {
           <span className="auth-password">
             <input
               id="login-password"
+              ref={passwordRef}
               placeholder="访问密码"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -230,7 +240,7 @@ function LoginPage({ onDone }: { onDone: () => void }) {
           </span>
         </div>
         {error && <div className="form-error" id="login-error" role="alert">{error}</div>}
-        <button type="submit" className="primary-button primary-button--wide" disabled={working || !password}>
+        <button type="submit" className="primary-button primary-button--wide" disabled={working}>
           {working ? <LoaderCircle size={16} className="spin" aria-hidden="true" /> : null}
           登录
         </button>

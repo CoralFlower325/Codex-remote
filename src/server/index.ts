@@ -43,6 +43,7 @@ import { historyItemRouter } from './history-item-router.js';
 import { SessionConnections } from './session-connections.js';
 import { backendUpdateRouter } from './backend-update-router.js';
 import { updateClientRouter } from './update-client-router.js';
+import { publicClientRouter } from './public-client-router.js';
 import { localSetupRequest, LoginBudget } from './request-security.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -430,21 +431,7 @@ codexBridge.on('stderr', (message: string) => {
 const productionClientDir = path.resolve(__dirname, '../../dist/client');
 if (fs.existsSync(productionClientDir)) {
   app.use('/remote-client', updateClientRouter(productionClientDir));
-  app.use(
-    express.static(productionClientDir, {
-      setHeaders: (res, filePath) => {
-        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
-          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        } else {
-          res.setHeader('Cache-Control', 'no-cache');
-        }
-      }
-    })
-  );
-  app.get('/{*splat}', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path === '/ws' || req.path === '/health') return next();
-    res.sendFile(path.join(productionClientDir, 'index.html'));
-  });
+  app.use(publicClientRouter(productionClientDir));
 }
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {

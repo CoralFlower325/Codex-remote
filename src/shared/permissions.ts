@@ -43,3 +43,12 @@ export function permissionProfileUpdate(id: string) {
       : {})
   };
 }
+
+export function permissionDescription(id: string | null | undefined): string {
+  switch (id) {
+    case ':read-only': return '仅允许读取文件；写入、命令和网络操作受原生权限限制。';
+    case ':workspace': return '允许在工作区内修改文件，工作区外的受限操作需要批准。';
+    case ':danger-full-access': return '允许访问主机文件和执行命令，不再逐次请求批准。';
+    default: return '此聊天使用主机提供的权限配置。';
+  }
+}
