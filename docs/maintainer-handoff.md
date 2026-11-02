@@ -25,6 +25,13 @@ Native settings events must win over older reads. Keep five-second foreground
 heartbeats and twelve-second pong deadlines. Unknown actions are never replayed.
 See [Muse audit and PR acceptance](pr-7-review.md) for the corrected findings,
 synthetic checks and outstanding terminal/physical-device boundaries.
+Tag `v0.2.18` is merge source `faacc5ae214219635bf1512255b0463aecaa835d`.
+PR/main three-platform CI and runtime installation/recovery CI pass; four official
+assets match digests and manifest source. Origin/public report 0.2.18 with matching
+modules, ready Desktop transport, anonymous API 401 and unknown-path 404.
+Both Workers are deployed and the checked download snapshot is v0.2.18.
+Distribution full downloads passed through the existing Windows system proxy;
+this is not TUN-off or actual Mac acceptance.
 
 The preceding Remote 0.2.17 pairs with stable manager 0.2.3. External macOS Cloudflare jobs
 now have explicit repair controls: discover existing official/Homebrew
