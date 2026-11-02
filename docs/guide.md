@@ -507,9 +507,11 @@ Side-chat tabs and drafts live in memory, not browser storage. A short socket
 disconnect has a 30-second recovery grace; Remote keeps an in-memory event
 snapshot to recover missed streaming output. Reloading/closing the page or
 restarting Remote loses the temporary UI. These are Remote-managed tabs backed
-by native ephemeral chats, not Desktop's existing side-chat UI. Native ephemeral
-chats cannot use persisted-history commands or submission queues: follow-ups
-while running use direct steering.
+by native ephemeral chats. Remote also detects side chats already loaded in
+Desktop and opens them in the inspector, then keeps their messages synchronized
+in both directions. Closing that Remote viewer does not interrupt or close the
+Desktop side chat. Native ephemeral chats cannot use persisted-history commands
+or submission queues: follow-ups while running use direct steering.
 Some Desktop transports deliver ephemeral reply items only on turn completion.
 Remote shows the submitted request and native elapsed progress, then renders the
 completed reply; it uses incremental item events when the host supplies them.

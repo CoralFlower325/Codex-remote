@@ -78,9 +78,9 @@ describe('Remote connection recovery', () => {
     const first = FakeSocket.instances[0]!;
     first.open();
     first.message({ type: 'pong', at: 'now' });
-    vi.advanceTimersByTime(5000);
+    vi.advanceTimersByTime(25_000);
     expect(first.sent).toHaveLength(2);
-    vi.advanceTimersByTime(12_000);
+    vi.advanceTimersByTime(30_000);
     expect(onDisconnect).toHaveBeenCalledOnce();
     expect(current).toBeNull();
     vi.advanceTimersByTime(250);
@@ -120,7 +120,7 @@ describe('Remote connection recovery', () => {
     expect(onDisconnect).toHaveBeenCalledOnce();
   });
 
-  it('probes on foreground return without postponing a pending heartbeat timeout', () => {
+  it('refreshes the heartbeat deadline when returning to the foreground', () => {
     const first = FakeSocket.instances[0]!;
     first.open();
     first.message({ type: 'pong', at: 'now' });
@@ -129,11 +129,23 @@ describe('Remote connection recovery', () => {
     expect(first.sent).toHaveLength(1);
     documentTarget.visibilityState = 'visible';
     documentTarget.dispatchEvent(new Event('visibilitychange'));
-    vi.advanceTimersByTime(9500);
-    browser.dispatchEvent(new Event('focus'));
     expect(first.sent).toHaveLength(2);
-    vi.advanceTimersByTime(2500);
+    vi.advanceTimersByTime(29_999);
+    expect(onDisconnect).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
     expect(onDisconnect).toHaveBeenCalledOnce();
+  });
+
+  it('treats regular server messages as heartbeat liveness', () => {
+    const first = FakeSocket.instances[0]!;
+    first.open();
+    first.message({ type: 'pong', at: 'now' });
+    vi.advanceTimersByTime(20_000);
+    first.message({ type: 'event', method: 'thread/list/updated', params: {} });
+    vi.advanceTimersByTime(20_000);
+    expect(onDisconnect).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(5_000);
+    expect(first.sent).toHaveLength(2);
   });
 
   it('waits while offline and reconnects immediately when the network returns', () => {
@@ -185,7 +197,7 @@ describe('Remote connection recovery', () => {
   it('bounds synchronization separately from the browser opening the socket', () => {
     connection.dispose();
     connection = new RemoteConnection({
-      url: 'wss://remote.test/ws', readyType: 'sync.ready',
+      url: 'wss://remote.test/ws', readyType: 'sync.ready', heartbeatIntervalMs: 5000, pongTimeoutMs: 12_000,
       onSocket: socket => { current = socket; }, onOpen, onMessage, onDisconnect
     });
     connection.start();
@@ -336,6 +348,7 @@ describe('Remote connection recovery', () => {
     connection.dispose();
     connection = new RemoteConnection({
       url: 'wss://remote.test/ws', httpFallback: '/api/connection', readyType: 'sync.ready',
+      heartbeatIntervalMs: 5000, pongTimeoutMs: 12_000,
       onSocket: socket => { current = socket; },
       onOpen: () => current!.send('{"type":"sync.resume"}'), onMessage, onDisconnect
     });
@@ -382,6 +395,7 @@ describe('Remote connection recovery', () => {
     connection.dispose();
     connection = new RemoteConnection({
       url: 'wss://remote.test/ws', httpFallback: '/api/connection', readyType: 'sync.ready',
+      heartbeatIntervalMs: 5000, pongTimeoutMs: 12_000,
       onSocket: socket => { current = socket; },
       onOpen: () => current!.send('{"type":"sync.resume"}'), onMessage, onDisconnect
     });
@@ -467,6 +481,7 @@ describe('Remote connection recovery', () => {
     connection.dispose();
     connection = new RemoteConnection({
       url: 'wss://remote.test/ws', httpFallback: '/api/connection', readyType: 'sync.ready',
+      heartbeatIntervalMs: 5000, pongTimeoutMs: 12_000,
       onSocket: socket => { current = socket; },
       onOpen: () => current!.send('{"type":"sync.resume"}'), onMessage, onDisconnect
     });

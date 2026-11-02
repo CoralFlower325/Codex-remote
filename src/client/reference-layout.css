@@ -270,6 +270,23 @@ svg { stroke-width: 1.8; }
 .composer-circle-button:hover { background: var(--surface-hover); color: var(--ink); }
 .composer-add { border: 1px solid var(--line-strong); }
 .composer-circle-button.is-listening { color: var(--danger); background: var(--danger-soft); }
+.app-shell[data-layout="desktop"] {
+  --desktop-compact-composer-size: calc(28px * 2 / 3);
+  --desktop-compact-navigation-size: calc(44px * 2 / 3);
+}
+.app-shell[data-layout="desktop"] .composer-circle-button.composer-add,
+.app-shell[data-layout="desktop"] .composer-turn-slot .thread-navigation-mobile--composer {
+  width: var(--desktop-compact-composer-size);
+  height: var(--desktop-compact-composer-size);
+  min-height: var(--desktop-compact-composer-size);
+  flex-basis: var(--desktop-compact-composer-size);
+}
+.app-shell[data-layout="desktop"] .thread-navigation-mobile:not(.thread-navigation-mobile--composer) {
+  width: var(--desktop-compact-navigation-size);
+  height: var(--desktop-compact-navigation-size);
+  min-height: var(--desktop-compact-navigation-size);
+  flex-basis: var(--desktop-compact-navigation-size);
+}
 .context-usage { display: inline-grid; width: 18px; height: 28px; flex: 0 0 18px; place-items: center; color: var(--muted); }
 .context-usage svg { fill: none; stroke: currentColor; stroke-width: 2; }
 .context-usage-track { opacity: .16; }
@@ -464,3 +481,8 @@ svg { stroke-width: 1.8; }
     border: 0; border-radius: 50%; box-shadow: none;
   }
 }
+
+/* Keep the index trigger visually part of the composer after touch/focus. */
+.thread-navigation-mobile { -webkit-tap-highlight-color: transparent; }
+.thread-navigation-mobile:focus-visible { outline: none; color: var(--ink); }
+.composer-turn-slot .thread-navigation-mobile--composer { background: transparent; }

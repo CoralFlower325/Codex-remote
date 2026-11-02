@@ -86,11 +86,20 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const [commandDialog, setCommandDialog] = useState<CommandDialogState | null>(null);
   const [commandNotice, setCommandNotice] = useState<string | null>(null);
   const [sideChatRequest, setSideChatRequest] = useState<{ id: number; input?: ChatInput; chatId?: string } | null>(null);
-  const sideChats = useSideChats(remote.chatTransport, remote.connected);
+  const sideChats = useSideChats(remote.chatTransport, remote.connected, remote.activeThreadId);
   const [summaryPinned, setSummaryPinned] = useState(() => {
     try { return localStorage.getItem('summary-panel-pinned') === 'true'; } catch { return false; }
   });
   const [summaryOverlayOpen, setSummaryOverlayOpen] = useState(false);
+  useEffect(() => {
+    if (!sideChats.adoptionRequest) return;
+    setSideChatRequest({
+      id: sideChats.adoptionRequest.id,
+      chatId: sideChats.adoptionRequest.chatId
+    });
+    setInspectorOpen(true);
+    setSummaryOverlayOpen(false);
+  }, [sideChats.adoptionRequest]);
   const mainRef = useRef<HTMLElement>(null);
   const [mainWidth, setMainWidth] = useState(0);
   const summaryInline = layout === 'desktop' && mainWidth >= 1096;

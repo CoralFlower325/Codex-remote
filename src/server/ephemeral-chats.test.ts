@@ -3,6 +3,20 @@ import { EphemeralChats } from './ephemeral-chats.js';
 
 afterEach(() => vi.useRealTimers());
 describe('temporary chat ownership', () => {
+  it('adopts a loaded Desktop side conversation and snapshots its native turns', () => {
+    const chats = new EphemeralChats<string>(async () => {});
+    chats.adopt('desktop-side', 'socket');
+    chats.recordThread('desktop-side', [{
+      id: 'turn', status: 'inProgress', startedAt: 10, completedAt: null, durationMs: null,
+      items: [{ id: 'question', type: 'userMessage', content: [{ type: 'text', text: 'Question' }] }]
+    }]);
+    expect(chats.snapshot('desktop-side')).toMatchObject({
+      activeTurnId: 'turn',
+      turns: [{ id: 'turn', status: 'inProgress', startedAt: 10 }],
+      items: [{ id: 'question', turnId: 'turn', type: 'userMessage' }]
+    });
+  });
+
   it('keeps native retry errors in reconnect memory and clears them on resumed output', () => {
     const chats = new EphemeralChats<string>(async () => {});
     chats.add('side', 'socket');

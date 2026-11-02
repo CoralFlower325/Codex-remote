@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import { displayThreadTitle, findActiveTurnId, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, reconcileActiveTurnId, reconcileThreadList, upsertItem } from './remote-state';
+import {
+  displayThreadTitle,
+  findActiveTurnId,
+  isUnusableThreadError,
+  mergeEmbeddedTurnItems,
+  mergeLatestHistoryItems,
+  mergeOlderHistoryItems,
+  mergeOlderTurnTimings,
+  reconcileActiveTurnId,
+  reconcileThreadList,
+  upsertItem
+} from './remote-state';
 import type { TurnTiming } from '../shared/turn-timing';
 import type { Thread, ThreadItem } from './types';
 
@@ -162,6 +173,13 @@ describe('remote thread state', () => {
       status: { type: 'idle' }
     };
     expect(displayThreadTitle(thread)).toBe('未命名任务');
+  });
+
+  it('recognizes threads that can no longer be opened', () => {
+    expect(isUnusableThreadError(new Error('thread not found: 01a0710f'))).toBe(true);
+    expect(isUnusableThreadError('Thread Not Found')).toBe(true);
+    expect(isUnusableThreadError('failed to load configuration: Model provider `cm` not found')).toBe(true);
+    expect(isUnusableThreadError('thread is busy')).toBe(false);
   });
 });
 

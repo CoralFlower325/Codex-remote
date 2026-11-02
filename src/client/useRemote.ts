@@ -13,7 +13,7 @@ import { beginForegroundRead, constrainedNetwork, prioritizeInteraction, yieldTo
 import { readDeviceWorkspace, saveDeviceWorkspace, readDeviceChat, saveDeviceChat, removeDeviceChat } from './device-snapshots';
 import { provisionalHistory, provisionalThread, type OpenThreadPage } from './loading-snapshots';
 import { RemoteConnection, type RemoteChannel } from './remote-connection';
-import { itemKey, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings, reconcileActiveTurnId, upsertItem } from './remote-state';
+import { isUnusableThreadError, itemKey, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings, reconcileActiveTurnId, upsertItem } from './remote-state';
 import type {
   BridgeStatus,
   ServerRequest,
@@ -562,7 +562,19 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
             fallback();
             setHistorySnapshot('failed');
           }
-          setLastError(error instanceof Error ? error.message : String(error));
+          const message = error instanceof Error ? error.message : String(error);
+          setLastError(message);
+          if (isUnusableThreadError(error)) {
+            activeThreadRef.current = null;
+            watchThread(null);
+            setActiveThreadId(null);
+            setActiveThread(null);
+            setActiveTurnId(null);
+            activeTurnIdRef.current = null;
+            setItems([]);
+            olderHistoryCursorRef.current = null;
+            setHasMoreHistory(false);
+          }
         }
         throw error;
       } finally {

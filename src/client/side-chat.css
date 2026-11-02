@@ -40,6 +40,7 @@
   .side-chat-view .composer-permission > span, .side-chat-view .composer-permission > svg:last-child { display: none; }
 }
 @media (pointer: coarse) {
+  .app-shell[data-layout="desktop"] .side-chat-view { --desktop-compact-composer-size: calc(44px * 2 / 3); }
   .inspector-head, .inspector-tabs button, .inspector-head-tools .icon-button { min-height: 44px; }
   .inspector-tabs .inspector-tab-close, .inspector-head-tools .icon-button { width: 44px; min-height: 44px; }
   .queued-message { min-height: 44px; gap: 4px; }

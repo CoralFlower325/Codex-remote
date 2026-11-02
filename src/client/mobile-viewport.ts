@@ -15,10 +15,10 @@ export function mobileViewportGeometry(input: {
   const layoutHeight = positive(input.layoutHeight, 1);
   const height = positive(input.visibleHeight, layoutHeight);
   const top = Number.isFinite(input.offsetTop) ? Math.max(0, input.offsetTop) : 0;
-  return {
-    height,
-    top,
-    keyboardOpen: input.editing && Math.abs(input.scale - 1) < mobileViewportConfig.scaleTolerance &&
-      positive(input.baselineHeight, layoutHeight) - height > mobileViewportConfig.keyboardThreshold
-  };
+  const keyboardOpen = input.editing &&
+    Math.abs(input.scale - 1) < mobileViewportConfig.scaleTolerance &&
+    positive(input.baselineHeight, layoutHeight) - height > mobileViewportConfig.keyboardThreshold;
+  return keyboardOpen
+    ? { height, top, keyboardOpen: true }
+    : { height: layoutHeight, top: 0, keyboardOpen: false };
 }

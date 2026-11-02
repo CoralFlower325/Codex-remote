@@ -1,12 +1,31 @@
 import { describe, expect, it } from 'vitest';
-import { sideChatEvent, type SideChat } from './useSideChats';
+import { desktopSideChatParent, sideChatEvent, type SideChat } from './useSideChats';
 import { queuedDraft, replaceQueuedText } from './queued-messages';
 import { turnInput } from './slash-commands';
+import type { Thread } from './types';
 
 const chat: SideChat = { id: 'tab', threadId: 'side', title: 'Side chat', model: 'model', effort: 'high',
   permissions: ':read-only', mode: 'default', items: [], timings: {}, activeTurnId: null, error: null };
 
 describe('independent temporary chat state', () => {
+  it('recognizes Desktop side conversations without adopting normal forks or subagents', () => {
+    const side = { id: 'side', threadSource: 'side_chat', forkedFromId: 'main' } as Thread;
+    expect(desktopSideChatParent(side, 'main')).toBe('main');
+    expect(desktopSideChatParent({ ...side, threadSource: 'queued_side_chat', forkedFromId: null }, 'main')).toBe('main');
+    expect(desktopSideChatParent({ ...side, threadSource: null,
+      source: { custom: 'side_chat' } }, 'main')).toBe('main');
+    expect(desktopSideChatParent({ ...side, threadSource: null, ephemeral: true }, 'main')).toBe('main');
+    expect(desktopSideChatParent({ ...side, threadSource: null, ephemeral: false }, 'main')).toBeNull();
+    expect(desktopSideChatParent({ ...side, threadSource: 'user', forkedFromId: 'main' }, 'main')).toBeNull();
+    expect(desktopSideChatParent({ ...side, threadSource: 'user', ephemeral: false, turns: [{
+      id: 'turn', status: 'completed', startedAt: 1, completedAt: 2, durationMs: 1000,
+      items: [{ type: 'userMessage', id: 'boundary', content: [{
+        type: 'text', text: 'Side conversation boundary.\nInherited history follows.'
+      }] }]
+    }] }, 'main')).toBe('main');
+    expect(desktopSideChatParent({ ...side, parentThreadId: 'main' }, 'main')).toBeNull();
+  });
+
   it('keeps the current turn active when an earlier completion arrives late', () => {
     let state = sideChatEvent(chat, 'turn/started', { threadId: 'side',
       turn: { id: 'old', status: 'inProgress', startedAt: 100 } });
