@@ -5,16 +5,16 @@
 失败后尝试官方 GitHub。分发由项目的 Cloudflare Worker 提供，不要求更新主机配置
 Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 
-## 安装管理器 0.2.2
+## 安装管理器 0.2.3
 
 | 系统 | 项目分发 | 官方备用 |
 | --- | --- | --- |
-| macOS Apple Silicon | [DMG](https://downloads.73916482.xyz/releases/download/v0.2.16/Codex-Remote-Manager-0.2.2-mac-arm64.dmg) · [ZIP](https://downloads.73916482.xyz/releases/download/v0.2.16/Codex-Remote-Manager-0.2.2-mac-arm64.zip) | [DMG](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.16/Codex-Remote-Manager-0.2.2-mac-arm64.dmg) · [ZIP](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.16/Codex-Remote-Manager-0.2.2-mac-arm64.zip) |
-| Windows x64 | [安装程序](https://downloads.73916482.xyz/releases/download/v0.2.16/Codex-Remote-Manager-0.2.2-win-x64.exe) | [安装程序](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.16/Codex-Remote-Manager-0.2.2-win-x64.exe) |
+| macOS Apple Silicon | [DMG](https://downloads.73916482.xyz/releases/download/v0.2.17/Codex-Remote-Manager-0.2.3-mac-arm64.dmg) · [ZIP](https://downloads.73916482.xyz/releases/download/v0.2.17/Codex-Remote-Manager-0.2.3-mac-arm64.zip) | [DMG](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.17/Codex-Remote-Manager-0.2.3-mac-arm64.dmg) · [ZIP](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.17/Codex-Remote-Manager-0.2.3-mac-arm64.zip) |
+| Windows x64 | [安装程序](https://downloads.73916482.xyz/releases/download/v0.2.17/Codex-Remote-Manager-0.2.3-win-x64.exe) | [安装程序](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.17/Codex-Remote-Manager-0.2.3-win-x64.exe) |
 
 1. 从菜单栏／托盘菜单退出旧管理器。退出管理器不停止 Remote。
-2. 下载并安装 0.2.2，覆盖旧应用。macOS 将新应用替换到原应用位置。
-3. 重新打开管理器，确认显示 0.2.2，选择原 Remote 安装目录。
+2. 下载并安装 0.2.3，覆盖旧应用。macOS 将新应用替换到原应用位置。
+3. 重新打开管理器，确认显示 0.2.3，选择原 Remote 安装目录。
 4. 有中断事务时先恢复；否则重新检查并执行主机更新。保留事务记录和备份，
    不要为重试删除本机数据、文档或更新锁。
 
@@ -24,7 +24,9 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 本次不恢复 AU 功能；签名、公证和真实 Mac 登录环境验收仍是独立断点。
 未签名安装包可能需要按系统下载信誉或 Gatekeeper 流程确认。
 
-English: install manager 0.2.2 manually over the old app, reopen it and select the same
+Remote 0.2.18 未修改管理器，继续使用 v0.2.17 的 0.2.3 安装包。
+
+English: install manager 0.2.3 manually over the old app, reopen it and select the same
 Remote directory before retrying. Host updates cannot patch the old manager's
 bundled updater. Manager self-update, signing and notarization remain paused.
 

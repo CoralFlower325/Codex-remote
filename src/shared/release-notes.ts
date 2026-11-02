@@ -2,6 +2,14 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.18', changes: [
+    '同步 Desktop 已加载及新建的侧边聊天，分页发现、实时消息和模型权限保持一致；关闭网页标签只关闭查看器。',
+    '修复侧聊切换后断流、迟到快照重复文字、已完成轮次误判运行中，以及临时聊天归属和并发发现竞态。',
+    '手机布局跟随可视视口，减少键盘收起后的底部空白；附件与回合索引控件更紧凑，失效会话可安全退出。',
+    '历史补页失败显示同步错误并保留重试游标；登录页取消工作区强制预热，空密码提交给出中文提示。',
+    '归档支持短时撤销，模型和权限补充说明，未知页面返回真实 404。',
+    '正式管理器仍为 0.2.3，无变更；安装包继续从 Remote 0.2.17 发布页提供。'
+  ] },
   { version: '0.2.17', changes: [
     '正式管理器更新至 0.2.3，macOS 外部 Cloudflare 服务及异常公网入口新增一键修复。',
     '识别官方安装与 Homebrew 的现有 LaunchAgent/LaunchDaemon，简短确认后启用并启动或重启；多个服务先选择目标，系统服务使用原生管理员授权。',

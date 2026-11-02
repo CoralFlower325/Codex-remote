@@ -15,8 +15,8 @@ interface ConnectionOptions<Message> {
   pongTimeoutMs?: number;
 }
 
-const DEFAULT_HEARTBEAT_INTERVAL_MS = 25_000;
-const DEFAULT_PONG_TIMEOUT_MS = 30_000;
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 5_000;
+const DEFAULT_PONG_TIMEOUT_MS = 12_000;
 
 export class RemoteConnection<Message extends { type: string } = ServerMessage> {
   private socket: RemoteChannel | null = null;
@@ -136,7 +136,7 @@ export class RemoteConnection<Message extends { type: string } = ServerMessage> 
       } catch {
         return;
       }
-      this.markAlive(message.type === 'pong');
+      if (message.type === 'pong') this.markAlive();
       if (message.type === this.options.readyType) {
         window.clearTimeout(this.connectTimer);
         this.connectTimer = undefined;
@@ -305,12 +305,11 @@ export class RemoteConnection<Message extends { type: string } = ServerMessage> 
     }
   };
 
-  private markAlive(keepPingTimestamp = false): void {
+  private markAlive(): void {
     window.clearTimeout(this.pongTimer);
     this.pongTimer = undefined;
     window.clearTimeout(this.heartbeatTimer);
     this.clearProbe();
-    if (!keepPingTimestamp) this.pingSentAtMs = undefined;
     if (document.visibilityState === 'visible' && this.socket?.readyState === WebSocket.OPEN) {
       this.heartbeatTimer = window.setTimeout(() => this.ping(), this.heartbeatIntervalMs);
     }
@@ -347,8 +346,6 @@ export class RemoteConnection<Message extends { type: string } = ServerMessage> 
     else {
       // Focus/pageshow during normal use must not shorten or extend a handshake.
       if (resumed && !this.synchronized) this.armHandshake(this.socket);
-      window.clearTimeout(this.pongTimer);
-      this.pongTimer = undefined;
       this.ping();
     }
   };

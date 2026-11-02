@@ -131,6 +131,7 @@ describe('opening a read-only chat without waiting for interaction setup', () =>
     const page = await readOpenThread(request, 'chat', 'resume');
     expect(page.items).toHaveLength(140);
     expect(page.nextCursor).toBe('retry');
+    expect(page.continuationError).toBeTruthy();
     expect(request).toHaveBeenCalledTimes(4);
   });
 

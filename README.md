@@ -38,7 +38,7 @@ long equations. The formula renderer and fonts load only when needed.
   <img src="docs/images/review.png" alt="Changed files with line numbers and a unified diff" width="300">
 </p>
 
-Mobile attachment and conversation-index controls use 36px sizing. Desktop keeps its own control sizes. See the [layout guide](docs/guide.md#responsive-layout) for viewport rules and device acceptance limits.
+Mobile attachment and conversation-index controls use 24px sizing; model and dictation controls remain 36px. Desktop attachment/index controls also use compact sizes. See the [layout guide](docs/guide.md#responsive-layout) for viewport rules and device acceptance limits.
 
 </details>
 
@@ -113,7 +113,7 @@ Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
 remains pending.
 
-Remote **0.2.17** pairs with stable manager **0.2.3**. Install the new manager
+Remote **0.2.18** pairs with stable manager **0.2.3** (unchanged; installers in v0.2.17). Install the new manager
 manually over 0.2.0, select the same host directory and retry; updating Remote
 cannot replace the old manager's bundled updater. [Manager downloads](docs/update-downloads.md)
 use the project's public distribution, with official GitHub alternatives.

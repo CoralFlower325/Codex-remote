@@ -6,7 +6,7 @@ import {
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { v4 as randomUUID } from 'uuid';
-import { permissionLabel, type PermissionProfile } from '../../shared/permissions';
+import { permissionDescription, permissionLabel, type PermissionProfile } from '../../shared/permissions';
 import type { ComposerAttachment, ComposerDocumentAttachment, ContextUsage, ModelInfo, ProjectInfo, SkillInfo, SkillsResult } from '../types';
 import { modelDisplayName, reasoningLabel, reasoningOptionsForModel } from '../workspace-model';
 import { findSlashCommand, parseSlashQuery, slashOptions, type SlashCommandId, type SlashOption } from '../slash-commands';
@@ -496,21 +496,24 @@ export function Composer({
                 </>
               ) : activeMenu === 'permissions' ? permissionProfiles.map((profile) => (
                 <button type="button" role="menuitemradio" className="model-option" key={profile.id}
-                  aria-checked={permissions === profile.id} disabled={changing || profile.allowed === false}
+                  aria-checked={permissions === profile.id} title={profile.description || permissionDescription(profile.id)}
+                  disabled={changing || profile.allowed === false}
                   onClick={() => void changeSetting(() => onPermissionsChange(profile.id))}>
                   <span>{permissionLabel(profile.id)}</span>
                   {permissions === profile.id && <Check size={15} aria-hidden="true" />}
                 </button>
               )) : activeMenu === 'models' ? models.map((entry) => (
                 <button type="button" role="menuitemradio" className="model-option" key={entry.id}
-                  aria-checked={entry.model === model} title={entry.displayName} disabled={changing}
+                  aria-checked={entry.model === model} title={entry.description || entry.displayName} disabled={changing}
                   onClick={() => void changeSetting(() => onModelChange(entry.model))}>
                   <span>{modelDisplayName(models, entry.model)}</span>
                   {entry.model === model && <Check size={15} aria-hidden="true" />}
                 </button>
               )) : effortOptions.map((option) => (
                 <button type="button" role="menuitemradio" className="model-option" key={option.value}
-                  aria-checked={option.value === effort} disabled={changing}
+                  aria-checked={option.value === effort}
+                  title={modelInfo?.supportedReasoningEfforts?.find(entry => entry.reasoningEffort === option.value)?.description ||
+                    '推理强度影响模型思考深度、响应时间和用量。'} disabled={changing}
                   onClick={() => void changeSetting(() => onEffortChange(option.value))}>
                   <span>{option.label}</span>
                   {option.value === effort && <Check size={15} aria-hidden="true" />}
@@ -636,7 +639,7 @@ export function Composer({
             )}
             <button type="button" ref={permissionButtonRef}
               className={`composer-permission${permissions === ':danger-full-access' ? ' composer-permission--full' : ''}`}
-              aria-label={`访问权限：${permissionLabel(permissions)}`} title={permissionLabel(permissions)}
+              aria-label={`访问权限：${permissionLabel(permissions)}`} title={permissionDescription(permissions)}
               aria-haspopup="menu" aria-expanded={menu === 'permissions'}
               disabled={disabled || permissionProfiles.length === 0}
               onClick={() => setMenu((current) => current === 'permissions' ? null : 'permissions')}>
@@ -648,7 +651,7 @@ export function Composer({
               aria-haspopup="menu" aria-expanded={menu === 'settings' || menu === 'models'} disabled={models.length === 0}
               onClick={() => setMenu((current) => current === 'settings' || current === 'models' ? null : 'settings')}
               aria-label={`${modelDisplayName(models, model)}，${reasoningLabel(modelInfo, effort)}`}
-              title={`${modelDisplayName(models, model)} · ${reasoningLabel(modelInfo, effort)}`}>
+              title={`${modelInfo?.description || modelDisplayName(models, model)}\n推理强度：${reasoningLabel(modelInfo, effort)}；影响思考深度、响应时间和用量。`}>
               <span>{modelDisplayName(models, model)}</span>
               {effort && <span className="composer-effort">{reasoningLabel(modelInfo, effort)}</span>}
               <ChevronDown size={13} aria-hidden="true" />

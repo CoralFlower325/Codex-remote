@@ -199,8 +199,11 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Handover rejects uncertain actions without replay. Redundant focus/online
   probes healthy connections without resetting deadlines; pongs are not sync.ready.
   Manual reconnect preserves the workspace, drafts and reading state while
-  cancelling stale reads. Preload Workspace; serve the installed public shell
+  cancelling stale reads. Serve the installed public shell
   immediately with its matching modules and install newer shells through SW.
+  Workspace prewarming starts only for a returning-device shell or after verified
+  authentication/login. Do not inject its modulepreload into anonymous HTML.
+  The service worker may still cache the complete public shell in the background.
   Local remote:shell/auth/bootstrap/tasks/chat/connected marks contain timings
   only; never export private content or add background telemetry.
 - Abort abandoned HTTP history and permission reads when their selection changes;
@@ -387,7 +390,7 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   An explicit user version takes precedence.
   Remote and the desktop manager have independent versions. Remote's version lives
   in the root package/lockfile; the manager's lives in desktop/package/lockfile.
-  The stable manager is 0.2.3 with Remote 0.2.17. Remote-only changes must not increment, rebuild
+  The stable manager is 0.2.3 with Remote 0.2.18; installers remain in v0.2.17. Remote-only changes must not increment, rebuild
   or install the manager. Increment the manager patch only for its own changes.
   Manager self-update is paused as 0.2.0AU on archive/manager-0.2.0AU;
   keep AU self-update out of the stable manager and formal releases. Preserve AU history,

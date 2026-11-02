@@ -33,19 +33,44 @@ function fixture() {
   return { ...hub, native, peer, send, eventJournal, ephemeralChats };
 }
 describe('shared realtime peer policy', () => {
-  it('registers Remote-owned ephemeral threads when their first read returns', async () => {
+  it('keeps a previously registered Remote-owned ephemeral thread in reconnect memory', async () => {
     const hub = fixture(), peer = hub.peer();
     hub.connectClient(peer.socket);
-    hub.native.mockResolvedValueOnce({ thread: { id: 'desktop-side', ephemeral: true,
+    hub.ephemeralChats.adopt('remote-side', peer.socket);
+    hub.native.mockResolvedValueOnce({ thread: { id: 'remote-side', ephemeral: true,
       threadSource: 'codex_remote', turns: [{ id: 'turn', status: 'inProgress', startedAt: 10,
         items: [{ id: 'answer', type: 'agentMessage', text: 'Synchronized' }] }] } });
     await hub.send(peer.socket, { type: 'rpc', id: 'read-side', method: 'thread/read',
-      params: { threadId: 'desktop-side', includeTurns: true } });
+      params: { threadId: 'remote-side', includeTurns: true } });
     expect(peer.received.at(-1)).toMatchObject({ type: 'rpc.result', id: 'read-side' });
-    expect(hub.ephemeralChats.snapshot('desktop-side')).toMatchObject({
+    expect(hub.ephemeralChats.snapshot('remote-side')).toMatchObject({
       activeTurnId: 'turn',
       items: [{ id: 'answer', turnId: 'turn', text: 'Synchronized' }]
     });
+  });
+
+  it('does not claim an unrelated Desktop ephemeral thread from a read', async () => {
+    const hub = fixture(), peer = hub.peer();
+    hub.connectClient(peer.socket);
+    hub.native.mockResolvedValueOnce({ thread: { id: 'desktop-ephemeral', ephemeral: true,
+      threadSource: 'desktop', turns: [] } });
+    await hub.send(peer.socket, { type: 'rpc', id: 'read-side', method: 'thread/read',
+      params: { threadId: 'desktop-ephemeral', includeTurns: true } });
+    expect(hub.ephemeralChats.snapshot('desktop-ephemeral')).toBeNull();
+  });
+
+  it('does not transfer a Remote side-chat lifetime to another read-only client', async () => {
+    const hub = fixture(), owner = hub.peer(), reader = hub.peer();
+    hub.connectClient(owner.socket);
+    hub.connectClient(reader.socket);
+    hub.ephemeralChats.add('side', owner.socket);
+    const adopt = vi.spyOn(hub.ephemeralChats, 'adopt');
+    hub.native.mockResolvedValueOnce({ thread: { id: 'side', ephemeral: true,
+      threadSource: 'codex_remote', turns: [] } });
+    await hub.send(reader.socket, { type: 'rpc', id: 'read-side', method: 'thread/read',
+      params: { threadId: 'side', includeTurns: true } });
+    expect(adopt).not.toHaveBeenCalled();
+    expect(hub.ephemeralChats.snapshot('side')).not.toBeNull();
   });
 
   it('never takes ownership of a Desktop-managed side conversation', async () => {

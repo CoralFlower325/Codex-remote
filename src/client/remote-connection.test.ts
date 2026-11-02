@@ -78,9 +78,9 @@ describe('Remote connection recovery', () => {
     const first = FakeSocket.instances[0]!;
     first.open();
     first.message({ type: 'pong', at: 'now' });
-    vi.advanceTimersByTime(25_000);
+    vi.advanceTimersByTime(5_000);
     expect(first.sent).toHaveLength(2);
-    vi.advanceTimersByTime(30_000);
+    vi.advanceTimersByTime(12_000);
     expect(onDisconnect).toHaveBeenCalledOnce();
     expect(current).toBeNull();
     vi.advanceTimersByTime(250);
@@ -120,7 +120,7 @@ describe('Remote connection recovery', () => {
     expect(onDisconnect).toHaveBeenCalledOnce();
   });
 
-  it('refreshes the heartbeat deadline when returning to the foreground', () => {
+  it('probes on foreground return without postponing a pending heartbeat timeout', () => {
     const first = FakeSocket.instances[0]!;
     first.open();
     first.message({ type: 'pong', at: 'now' });
@@ -129,23 +129,23 @@ describe('Remote connection recovery', () => {
     expect(first.sent).toHaveLength(1);
     documentTarget.visibilityState = 'visible';
     documentTarget.dispatchEvent(new Event('visibilitychange'));
+    vi.advanceTimersByTime(9500);
+    browser.dispatchEvent(new Event('focus'));
     expect(first.sent).toHaveLength(2);
-    vi.advanceTimersByTime(29_999);
-    expect(onDisconnect).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
+    vi.advanceTimersByTime(2500);
     expect(onDisconnect).toHaveBeenCalledOnce();
   });
 
-  it('treats regular server messages as heartbeat liveness', () => {
+  it('does not treat regular server messages as a pong response', () => {
     const first = FakeSocket.instances[0]!;
     first.open();
     first.message({ type: 'pong', at: 'now' });
-    vi.advanceTimersByTime(20_000);
+    vi.advanceTimersByTime(5000);
     first.message({ type: 'event', method: 'thread/list/updated', params: {} });
-    vi.advanceTimersByTime(20_000);
+    vi.advanceTimersByTime(11_000);
     expect(onDisconnect).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(5_000);
-    expect(first.sent).toHaveLength(2);
+    vi.advanceTimersByTime(1_000);
+    expect(onDisconnect).toHaveBeenCalledOnce();
   });
 
   it('waits while offline and reconnects immediately when the network returns', () => {

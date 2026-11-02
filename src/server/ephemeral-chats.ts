@@ -60,13 +60,15 @@ export class EphemeralChats<Owner> {
     for (const turn of turns) {
       if (!turn || typeof turn.id !== 'string') continue;
       const existing = entry.turns.get(turn.id);
-      if (!existing) entry.turns.set(turn.id, projectTurnTiming(turn as TurnTiming));
+      if (!existing || existing.status === 'inProgress' && turn.status !== 'inProgress') {
+        entry.turns.set(turn.id, projectTurnTiming(turn as TurnTiming));
+      }
       for (const item of turn.items ?? []) {
         if (!item || typeof item !== 'object' || typeof item.id !== 'string') continue;
         const key = JSON.stringify([turn.id, item.id]);
         entry.items.set(key, { ...item, turnId: turn.id, ...entry.items.get(key) });
       }
-      if (turn.status === 'inProgress') activeTurnId = turn.id;
+      if (entry.turns.get(turn.id)?.status === 'inProgress') activeTurnId = turn.id;
     }
     if (activeTurnId) entry.activeTurnId = activeTurnId;
     else if (entry.activeTurnId && turns.some(turn => turn.id === entry.activeTurnId)) {
@@ -85,7 +87,8 @@ export class EphemeralChats<Owner> {
     if (method === 'turn/started' || method === 'turn/completed') {
       const { items = [], ...turn } = params.turn as TurnTiming & { items?: Array<Record<string, unknown>> };
       entry.turns.set(turn.id, projectTurnTiming(turn));
-      entry.activeTurnId = method === 'turn/started' ? turn.id : null;
+      if (method === 'turn/started') entry.activeTurnId = turn.id;
+      else if (entry.activeTurnId === turn.id) entry.activeTurnId = null;
       for (const item of items) {
         const key = JSON.stringify([turn.id, item.id]);
         entry.items.set(key, { ...entry.items.get(key), ...item, turnId: turn.id });

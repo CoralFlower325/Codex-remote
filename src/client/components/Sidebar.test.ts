@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar';
 import type { RemoteState } from '../useRemote';
 
 const noop = () => {};
+const archive = async () => {};
 const remote = {
   threads: [], projects: [], serverRequests: [], threadsLoading: false,
   showArchived: false, status: 'connected'
@@ -15,7 +16,7 @@ describe('conversation sidebar navigation', () => {
     const html = renderToStaticMarkup(createElement(Sidebar, {
       remote, layout, activeThreadId: null, open: true, collapsed: false, search: '',
       onSearchChange: noop, onClose: noop, onToggleCollapse: noop,
-      onNewTask: noop, onSelectThread: noop, onLogout: noop
+      onNewTask: noop, onSelectThread: noop, onArchiveThread: archive, onLogout: noop
     }));
     expect(html).toContain('<div class="sidebar-product"><strong>Codex</strong></div>');
     expect(html).not.toContain('Codex 菜单');
@@ -37,7 +38,7 @@ describe('running conversation indicator', () => {
         serverRequests: attention ? [{ params: { threadId: thread.id } }] : [] } as unknown as RemoteState,
       layout, activeThreadId: null, open: true, collapsed: false, search: '',
       onSearchChange: noop, onClose: noop, onToggleCollapse: noop,
-      onNewTask: noop, onSelectThread: noop, onLogout: noop
+      onNewTask: noop, onSelectThread: noop, onArchiveThread: archive, onLogout: noop
     }));
     const running = render('active');
     expect(running).toContain('class="thread-running-spinner"');
@@ -58,7 +59,7 @@ describe('pending question indicators', () => {
         serverRequests: blocking ? [{ params: { threadId: thread.id }, method: 'item/tool/requestUserInput' }] : [] } as unknown as RemoteState,
       layout, activeThreadId: null, open: true, collapsed: false, search: '',
       onSearchChange: noop, onClose: noop, onToggleCollapse: noop,
-      onNewTask: noop, onSelectThread: noop, onLogout: noop
+      onNewTask: noop, onSelectThread: noop, onArchiveThread: archive, onLogout: noop
     }));
     const pending = render({ [thread.id]: 2 });
     expect(pending).toContain('aria-label="等待回答 2 个问题"');
@@ -77,7 +78,7 @@ describe('pending question indicators', () => {
       } as unknown as RemoteState,
       layout: 'desktop', activeThreadId: null, open: true, collapsed: false, search: '',
       onSearchChange: noop, onClose: noop, onToggleCollapse: noop,
-      onNewTask: noop, onSelectThread: noop, onLogout: noop
+      onNewTask: noop, onSelectThread: noop, onArchiveThread: archive, onLogout: noop
     }));
     expect(markup).toContain('lucide-circle-alert');
     expect(markup).toContain('thread-question-badge');

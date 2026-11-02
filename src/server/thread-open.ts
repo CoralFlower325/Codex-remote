@@ -42,6 +42,7 @@ export async function readOpenThread(
   ]) as [unknown, HistoryPage];
   const entries = [...history.data];
   let nextCursor = history.nextCursor;
+  let continuationError: string | undefined;
   const cursors = new Set<string>();
   // A tool-heavy tail can contain no visible conversation at all.
   for (let page = 0; page < 2 && nextCursor && !hasConversationContext(entries); page++) {
@@ -52,7 +53,10 @@ export async function readOpenThread(
       older = await request('thread/items/list', {
         threadId, limit: 100, sortDirection: 'desc', cursor: nextCursor
       }) as HistoryPage;
-    } catch { break; }
+    } catch {
+      continuationError = '部分会话记录读取失败，请重试同步。';
+      break;
+    }
     entries.push(...older.data);
     nextCursor = older.nextCursor;
   }
@@ -63,7 +67,8 @@ export async function readOpenThread(
     activeTurnId: null,
     turns: [] as TurnTiming[],
     turnsCursor: null,
-    timingsPending: mode !== 'new'
+    timingsPending: mode !== 'new',
+    ...(continuationError ? { continuationError } : {})
   };
 }
 

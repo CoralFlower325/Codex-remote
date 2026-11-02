@@ -520,7 +520,8 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         setActiveThread(thread);
         setVerifiedThreadId(threadId);
         verifiedThreadRef.current = threadId;
-        setHistorySnapshot(page.snapshot?.stale || timingErrorRef.current ? 'failed' : null);
+        setHistorySnapshot(page.snapshot?.stale || timingErrorRef.current || page.continuationError ? 'failed' : null);
+        if (page.continuationError) setLastError(page.continuationError);
         lastHistoryReadRef.current = Date.now();
         if (!page.timingsPending && turnRevisionRef.current === turnRevision) {
           const active = reconcileActiveTurnId(activeTurnIdRef.current, turnTimingsRef.current, page);
@@ -655,6 +656,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
             `/api/thread/timings?${new URLSearchParams({ threadId, fresh: '1' })}`, historyConfig.readTimeoutMs, 3)
       ]);
       signal.throwIfAborted();
+      if (page.continuationError) throw new Error(page.continuationError);
       if (initialTimings && timedThreadRef.current !== threadId &&
           version === selectionVersionRef.current && activeThreadRef.current === threadId) {
         setTurnTimings(current => {

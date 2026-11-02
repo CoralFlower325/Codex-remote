@@ -161,6 +161,7 @@ export interface ThreadHistoryItemEntry {
 }
 
 export interface ThreadHistoryPage {
+  continuationError?: string;
   items: ThreadHistoryItemEntry[];
   nextCursor: string | null;
   activeTurnId: string | null;

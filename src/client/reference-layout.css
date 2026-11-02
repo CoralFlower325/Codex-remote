@@ -170,7 +170,6 @@ svg { stroke-width: 1.8; }
 .user-message-body { max-width: 77%; padding: 0; font-size: 14px; line-height: 22.75px; font-weight: 430; }
 .user-message-text { background: #f3f3f3; }
 .user-message-attachments { gap: 8px; margin-bottom: 8px; }
-.user-message-attachments > .image-thumbnail { width: 96px; flex-basis: 96px; border-radius: 10px; }
 .agent-message-body { font-size: 14px; line-height: 22.75px; font-weight: 430; }
 .markdown > * + * { margin-top: 11px; }
 .markdown p { font-weight: inherit; }
@@ -236,6 +235,9 @@ svg { stroke-width: 1.8; }
 .slash-menu-error { border-top: 1px solid var(--line); max-height: 90px; overflow-y: auto; }
 .composer-plan { display: inline-flex; align-items: center; gap: 4px; padding: 0 5px; min-height: 26px; border: 0; border-radius: 5px; background: var(--surface-hover); color: var(--ink); font-size: 12px; }
 .command-notice { padding: 6px 20px; color: var(--muted); font-size: 12px; text-align: center; }
+.archive-notice { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.archive-notice > button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: var(--ink); cursor: pointer; }
+.archive-notice > button:disabled { opacity: .5; cursor: default; }
 .command-dialog {
   width: min(480px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow-y: auto;
   border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink);

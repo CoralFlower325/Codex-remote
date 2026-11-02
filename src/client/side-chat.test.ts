@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { desktopSideChatParent, sideChatEvent, type SideChat } from './useSideChats';
+import { describe, expect, it, vi } from 'vitest';
+import { isDesktopSideChat, mergeDesktopSideChatSnapshot, readLoadedThreadIds, sideChatEvent, type SideChat } from './useSideChats';
 import { queuedDraft, replaceQueuedText } from './queued-messages';
 import { turnInput } from './slash-commands';
 import type { Thread } from './types';
@@ -8,22 +8,91 @@ const chat: SideChat = { id: 'tab', threadId: 'side', title: 'Side chat', model:
   permissions: ':read-only', mode: 'default', items: [], timings: {}, activeTurnId: null, error: null };
 
 describe('independent temporary chat state', () => {
+  it('refreshes Desktop settings without replacing selections made during the read', () => {
+    const before = { ...chat, desktop: true };
+    const native = { id: 'side', model: 'new', reasoningEffort: 'low',
+      permissionProfile: ':workspace', collaborationMode: { mode: 'plan' }, turns: [] } as unknown as Thread;
+    expect(mergeDesktopSideChatSnapshot(before, native, before)).toMatchObject({
+      model: 'new', effort: 'low', permissions: ':workspace', mode: 'plan'
+    });
+    expect(mergeDesktopSideChatSnapshot({ ...before, model: 'local' }, native, before).model).toBe('local');
+    const live = sideChatEvent(before, 'thread/settings/updated', { threadId: 'side',
+      threadSettings: { model: 'live', effort: 'medium', activePermissionProfile: { id: ':read-only' },
+        collaborationMode: { mode: 'plan' } } });
+    expect(live).toMatchObject({ model: 'live', effort: 'medium', permissions: ':read-only', mode: 'plan' });
+    expect(mergeDesktopSideChatSnapshot(live, native, before)).toMatchObject({
+      model: 'live', effort: 'medium', permissions: ':read-only', mode: 'plan'
+    });
+  });
   it('recognizes Desktop side conversations without adopting normal forks or subagents', () => {
     const side = { id: 'side', threadSource: 'side_chat', forkedFromId: 'main' } as Thread;
-    expect(desktopSideChatParent(side, 'main')).toBe('main');
-    expect(desktopSideChatParent({ ...side, threadSource: 'queued_side_chat', forkedFromId: null }, 'main')).toBe('main');
-    expect(desktopSideChatParent({ ...side, threadSource: null,
-      source: { custom: 'side_chat' } }, 'main')).toBe('main');
-    expect(desktopSideChatParent({ ...side, threadSource: null, ephemeral: true }, 'main')).toBe('main');
-    expect(desktopSideChatParent({ ...side, threadSource: null, ephemeral: false }, 'main')).toBeNull();
-    expect(desktopSideChatParent({ ...side, threadSource: 'user', forkedFromId: 'main' }, 'main')).toBeNull();
-    expect(desktopSideChatParent({ ...side, threadSource: 'user', ephemeral: false, turns: [{
+    expect(isDesktopSideChat(side)).toBe(true);
+    expect(isDesktopSideChat({ ...side, threadSource: 'queued_side_chat', forkedFromId: null })).toBe(true);
+    expect(isDesktopSideChat({ ...side, threadSource: null, source: { custom: 'side_chat' } })).toBe(true);
+    expect(isDesktopSideChat({ ...side, threadSource: null, ephemeral: true })).toBe(false);
+    expect(isDesktopSideChat({ ...side, threadSource: null, ephemeral: false })).toBe(false);
+    expect(isDesktopSideChat({ ...side, threadSource: 'user', forkedFromId: 'main' })).toBe(false);
+    expect(isDesktopSideChat({ ...side, threadSource: 'user', ephemeral: false, turns: [{
       id: 'turn', status: 'completed', startedAt: 1, completedAt: 2, durationMs: 1000,
       items: [{ type: 'userMessage', id: 'boundary', content: [{
         type: 'text', text: 'Side conversation boundary.\nInherited history follows.'
       }] }]
-    }] }, 'main')).toBe('main');
-    expect(desktopSideChatParent({ ...side, parentThreadId: 'main' }, 'main')).toBeNull();
+    }] })).toBe(true);
+    expect(isDesktopSideChat({ ...side, parentThreadId: 'main' })).toBe(false);
+    expect(isDesktopSideChat({ ...side, source: { subAgent: { parentThreadId: 'main' } } })).toBe(false);
+  });
+
+  it('follows loaded-thread cursors, deduplicates identities and stops repeated cursors', async () => {
+    const rpc = vi.fn().mockResolvedValueOnce({ data: Array.from({ length: 100 }, (_, i) => `thread-${i}`), nextCursor: 'next' })
+      .mockResolvedValueOnce({ data: ['thread-99', 'side-after-100'], nextCursor: 'next' });
+    const ids = await readLoadedThreadIds({ rpc }, () => false);
+    expect(ids).toHaveLength(101);
+    expect(ids.at(-1)).toBe('side-after-100');
+    expect(rpc.mock.calls).toEqual([
+      ['thread/loaded/list', { limit: 100 }],
+      ['thread/loaded/list', { limit: 100, cursor: 'next' }]
+    ]);
+  });
+
+  it('stops loaded-thread discovery on navigation cancellation', async () => {
+    let cancelled = false;
+    const rpc = vi.fn().mockImplementation(async () => {
+      cancelled = true;
+      return { data: ['first'], nextCursor: 'unread' };
+    });
+    await readLoadedThreadIds({ rpc }, () => cancelled);
+    expect(rpc).toHaveBeenCalledOnce();
+  });
+
+  it('clears an active side turn completed while disconnected and refreshes its final text', () => {
+    const before = sideChatEvent(chat, 'turn/started', { threadId: 'side',
+      turn: { id: 'turn', status: 'inProgress', startedAt: 100 } });
+    const next = mergeDesktopSideChatSnapshot(before, { id: 'side', turns: [{
+      id: 'turn', status: 'completed', startedAt: 100, completedAt: 110, durationMs: 10000,
+      items: [{ type: 'agentMessage', id: 'answer', text: 'Final native reply' }]
+    }] } as Thread, before);
+    expect(next.activeTurnId).toBeNull();
+    expect(next.timings.turn?.status).toBe('completed');
+    expect(next.items).toMatchObject([{ id: 'answer', text: 'Final native reply' }]);
+  });
+
+  it('keeps live completion and text when an older Desktop snapshot arrives late', () => {
+    let before = sideChatEvent(chat, 'turn/started', { threadId: 'side',
+      turn: { id: 'turn', status: 'inProgress', startedAt: 100 } });
+    before = sideChatEvent(before, 'item/agentMessage/delta', {
+      threadId: 'side', turnId: 'turn', itemId: 'answer', delta: 'Old'
+    });
+    const live = sideChatEvent(before, 'turn/completed', { threadId: 'side', turn: {
+      id: 'turn', status: 'completed', startedAt: 100, completedAt: 110,
+      items: [{ type: 'agentMessage', id: 'answer', text: 'Final live reply' }]
+    } });
+    const next = mergeDesktopSideChatSnapshot(live, { id: 'side', turns: [{
+      id: 'turn', status: 'inProgress', startedAt: 100, completedAt: null, durationMs: null,
+      items: [{ type: 'agentMessage', id: 'answer', text: 'Old' }]
+    }] } as Thread, before);
+    expect(next.activeTurnId).toBeNull();
+    expect(next.timings.turn?.status).toBe('completed');
+    expect(next.items).toMatchObject([{ id: 'answer', text: 'Final live reply' }]);
   });
 
   it('keeps the current turn active when an earlier completion arrives late', () => {

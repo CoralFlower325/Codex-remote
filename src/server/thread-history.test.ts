@@ -74,6 +74,7 @@ describe('native history paging', () => {
     const page = await readConversationHistoryPage(request, 'thread', 'start');
     expect(page.items).toHaveLength(1);
     expect(page.nextCursor).toBe('retry');
+    expect(page.continuationError).toBeTruthy();
   });
 
   it('stops repeated native cursors without duplicating the same page', async () => {

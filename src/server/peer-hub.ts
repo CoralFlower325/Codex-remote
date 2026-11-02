@@ -139,10 +139,14 @@ export function createPeerHub({ codexBridge, eventJournal, questionTracker, meta
             id: string; source?: unknown; ephemeral?: boolean;
             turns?: Array<{ id: string; status?: TurnTiming['status']; items?: Array<Record<string, unknown>> }>;
           } }).thread;
-          if (thread?.ephemeral && !isSideConversationThread(thread)) {
-            ephemeralChats.adopt(thread.id, socket);
+          const startsRemoteEphemeral = /^(?:thread\/start|thread\/fork)$/.test(message.method) &&
+            params?.ephemeral === true;
+          const alreadyTracked = thread?.id ? ephemeralChats.snapshot(thread.id) !== null : false;
+          if (thread?.ephemeral && !isSideConversationThread(thread) &&
+              (startsRemoteEphemeral || alreadyTracked)) {
+            if (startsRemoteEphemeral) ephemeralChats.add(thread.id, socket);
             ephemeralChats.recordThread(thread.id, thread.turns ?? []);
-            if (socket.readyState !== WebSocket.OPEN) ephemeralChats.disconnect(socket);
+            if (startsRemoteEphemeral && socket.readyState !== WebSocket.OPEN) ephemeralChats.disconnect(socket);
           }
           if (thread && isTaskThread(thread)) pushNotifications.watch(thread.id);
         }

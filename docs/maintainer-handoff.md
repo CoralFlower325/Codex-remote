@@ -15,7 +15,18 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-Remote 0.2.17 pairs with stable manager 0.2.3. External macOS Cloudflare jobs
+Remote 0.2.18 pairs with unchanged manager 0.2.3; its installers remain in
+v0.2.17. PR #7 adds Desktop-managed side-chat viewers and mobile viewport fixes.
+Follow loaded-thread cursors, require explicit native side-chat identity, preserve
+native parent metadata, and keep these threads out of Remote's release ownership.
+Flush pending live events before snapshot baselines and reconciliation; a late
+read must not duplicate deltas, revive completed turns or reopen closed viewers.
+Native settings events must win over older reads. Keep five-second foreground
+heartbeats and twelve-second pong deadlines. Unknown actions are never replayed.
+See [Muse audit and PR acceptance](pr-7-review.md) for the corrected findings,
+synthetic checks and outstanding terminal/physical-device boundaries.
+
+The preceding Remote 0.2.17 pairs with stable manager 0.2.3. External macOS Cloudflare jobs
 now have explicit repair controls: discover existing official/Homebrew
 LaunchAgents/Daemons, select ambiguous jobs, confirm, revalidate identity,
 enable/start/restart, then check running/PID and public health independently.
