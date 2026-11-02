@@ -23,6 +23,18 @@ establish recovery of the user's actual public domain, interactive administrator
 authorization or signed-in Mac integration. External configuration and ordinary
 Remote Start/Stop behavior remain unchanged.
 
+Exact functional source `02d1a8c3e37251938f4f46ef311614aaff2468bd` is tagged
+`v0.2.17`. Three-platform CI `41399876731`, runtime-package installation/recovery
+`41400151332` and both source/packaged manager jobs `41400151329` all pass.
+The macOS jobs pass the isolated native launchd check. All seven formal assets
+match their public sizes and SHA-256 digests, and both runtime manifests match
+the tagged commit. Five archives/installers were fully downloaded through the
+project distribution using the existing system proxy; manifest downloads used
+GitHub. A direct TLS attempt timed out, so this is not TUN-off acceptance.
+The released Windows manager was installed over 0.2.2 with its settings/root
+preserved; version 0.2.3, healthy state, current-version check, minimize/close
+to tray and unchanged Remote/Desktop processes passed.
+
 ## Manager 0.2.2 Confirmation And Update Repairs
 
 Windows source and packaged Electron smoke checks pass. The version page retains

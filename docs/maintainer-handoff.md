@@ -15,7 +15,20 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-Remote 0.2.16 pairs with stable manager 0.2.2. Repeated child-agent status
+Remote 0.2.17 pairs with stable manager 0.2.3. External macOS Cloudflare jobs
+now have explicit repair controls: discover existing official/Homebrew
+LaunchAgents/Daemons, select ambiguous jobs, confirm, revalidate identity,
+enable/start/restart, then check running/PID and public health independently.
+System jobs use native administrator authorization. Ordinary Remote lifecycle
+still leaves external tunnels alone; no plist, credentials or tunnel is created.
+CI `41399876731`, runtime packages `41400151332` and manager packaging
+`41400151329` pass for tag `v0.2.17` / source
+`02d1a8c3e37251938f4f46ef311614aaff2468bd`.
+See [manager acceptance](desktop-manager-acceptance.md). Real Mac recovery and
+interactive authorization remain separate acceptance. This batch changes
+Remote version/release metadata only; chat/backend behavior is unchanged.
+
+The preceding Remote 0.2.16 pairs with stable manager 0.2.2. Repeated child-agent status
 records retain state without splitting consecutive activity at invisible rows.
 Final-answer completion evidence is shared across steering slices, while active
 turns remain visible. Full-document Markdown previews preserve cross-block
