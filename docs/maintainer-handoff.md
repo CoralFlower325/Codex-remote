@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-11-02.
+Last reconciled: 2026-11-03.
 
 ## Authority
 
@@ -15,7 +15,27 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-Remote 0.2.18 pairs with unchanged manager 0.2.3; its installers remain in
+Remote 0.2.19 pairs with unchanged manager 0.2.3; manager installers remain
+in v0.2.17. Tag v0.2.19 identifies functional source `ec7c2c1a50aa12041b96bcc3856cd34d2514c425`.
+Three-platform CI 41607126694 and two-platform runtime CI 41607561784 pass;
+four formal attachments and distribution copies match complete size, SHA-256
+and manifest source. The installed origin and public shell report 0.2.19,
+matching assets and ready Desktop transport. Both Workers are synchronized.
+The manager plan passes and packaging is skipped because its version is unchanged.
+
+Remote now uses only Desktop's existing App Server. Bridge loss stays offline
+and reconnects; it must never start a standalone server or replay uncertain
+actions. The legacy orphan was removed after ownership checks, without editing
+native sessions or locks. Writer conflicts stop automatic resume attempts;
+actual sends and the old user-visible error after Retry remain live-acceptance
+items. Terminal roots/cwd and preview path fixes are covered in the
+[follow-up acceptance and physical-device checklist](review-followup-acceptance.md).
+The macOS zsh byte/offset issue and logical-path assertion are fixed.
+Windows runtime attempt 1 had a native PTY worker access violation; attempt 2
+passed. Its intermittent root cause remains open. Physical iPhone and signed-in
+macOS acceptance, manager self-update and signing retain their prior boundaries.
+
+The preceding Remote 0.2.18 pairs with unchanged manager 0.2.3; its installers remain in
 v0.2.17. PR #7 adds Desktop-managed side-chat viewers and mobile viewport fixes.
 Follow loaded-thread cursors, require explicit native side-chat identity, preserve
 native parent metadata, and keep these threads out of Remote's release ownership.

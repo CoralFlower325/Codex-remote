@@ -30,8 +30,9 @@ screenshots.
 ## Issues
 
 Explain the expected and actual behavior and provide reproduction steps. Include
-the OS, Node version, relevant Codex version, and whether `/health` reports
-`desktop` or `standalone`. Redact paths, project names, chat content, domains,
+the OS, Node version, relevant Codex version, and the `codex` readiness and
+`transport` fields from `/health`. Remote uses only the Desktop-owned transport.
+Redact paths, project names, chat content, domains,
 and account information before uploading logs or images.
 
 Never upload `.env`, `data/`, password hashes, tunnel credentials, API keys,

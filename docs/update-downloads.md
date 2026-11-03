@@ -24,7 +24,7 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 本次不恢复 AU 功能；签名、公证和真实 Mac 登录环境验收仍是独立断点。
 未签名安装包可能需要按系统下载信誉或 Gatekeeper 流程确认。
 
-Remote 0.2.18 未修改管理器，继续使用 v0.2.17 的 0.2.3 安装包。
+Remote 0.2.19 未修改管理器，继续使用 v0.2.17 的 0.2.3 安装包。
 
 English: install manager 0.2.3 manually over the old app, reopen it and select the same
 Remote directory before retrying. Host updates cannot patch the old manager's
@@ -96,6 +96,11 @@ HEAD 和 Range，没有以局部读取代替整包摘要验证。
 详见[管理器](desktop-manager.zh-CN.md)与[网页后端更新](web-backend-update.md)。
 
 ## 维护分发服务
+
+2026-11-03 已发布 Remote **0.2.19**，管理器 **0.2.3** 无变更，安装包保留在 `v0.2.17`。
+分发 Worker `5538be92-afe2-40c2-a991-c48ee5d9bc18` 已同步 v0.2.19 四附件快照；
+四份附件均完整下载并通过大小和 SHA-256 校验，HEAD/Range 及方法、路由、查询、多段 Range 边界通过，
+旧管理器安装包 HEAD 可达。验收沿用现有 Windows 网络及代理，不等于关闭 TUN 或 Mac 真机验收。
 
 2026-11-02 本批发布 Remote 0.2.18，管理器仍为 0.2.3，无变更；
 管理器安装包保留在 v0.2.17。下载 Worker
