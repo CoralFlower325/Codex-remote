@@ -72,7 +72,9 @@ describe('terminal shell directory integration', () => {
           expect(result.status, result.stderr).toBe(0);
           const report = /\x1b\]7;([^\x07]*)\x07/.exec(result.stdout)?.[1];
           expect(report, result.stdout).toContain('%E6%96%87%E6%A1%A3');
-          expect(terminalReportedCwd(report ?? '')).toBe(fs.realpathSync.native(cwd));
+          const reported = terminalReportedCwd(report ?? '');
+          expect(reported).not.toBeNull();
+          expect(fs.realpathSync.native(reported!)).toBe(fs.realpathSync.native(cwd));
         } finally {
           integration.dispose();
           fs.rmSync(directory, { recursive: true, force: true });

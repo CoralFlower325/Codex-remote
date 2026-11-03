@@ -31,7 +31,7 @@ __remote_report_cwd() {
   fi
   local LC_ALL=C
   for ((i=0; i<\${#value}; i++)); do
-    char="\${value:i:1}"
+    char="\${value:$i:1}"
     case "$char" in
       [a-zA-Z0-9/._~-]) encoded="$encoded$char" ;;
       *)

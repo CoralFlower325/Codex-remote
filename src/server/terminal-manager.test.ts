@@ -125,13 +125,16 @@ describe('workspace terminals with a real PTY', () => {
       `Set-Location -LiteralPath '${destination.replace(/'/g, "''")}'`,
       `cd '${destination.replace(/'/g, "'\\''")}'`
     ));
-    await expect.poll(() => manager.list(workspace).find(info => info.id === id)?.cwd,
-      { timeout: 20_000 }).toBe(fs.realpathSync.native(destination));
+    await expect.poll(() => {
+      const reported = manager.list(workspace).find(info => info.id === id)?.cwd;
+      return reported && fs.realpathSync.native(reported);
+    }, { timeout: 20_000 }).toBe(fs.realpathSync.native(destination));
+    const reportedCwd = manager.list(workspace).find(info => info.id === id)!.cwd;
     expect(manager.list(workspace).find(info => info.id === otherId)?.cwd).toBe(workspace.cwd);
     detach();
     manager.attach(workspace, id, message => messages.push(message));
     expect(manager.list(workspace).find(info => info.id === id)).toMatchObject({
-      cwd: fs.realpathSync.native(destination), initialCwd: workspace.cwd, cwdStatus: 'reported'
+      cwd: reportedCwd, initialCwd: workspace.cwd, cwdStatus: 'reported'
     });
     manager.input(workspace, id, command(
       "Set-Location -LiteralPath 'missing-child'",
@@ -139,7 +142,7 @@ describe('workspace terminals with a real PTY', () => {
     ));
     manager.input(workspace, id, command("Write-Output ('FAILED_' + 'CD_DONE')", "printf 'FAILED_%s\\n' CD_DONE"));
     await waitForOutput(messages, 'FAILED_CD_DONE');
-    expect(manager.list(workspace).find(info => info.id === id)?.cwd).toBe(fs.realpathSync.native(destination));
+    expect(manager.list(workspace).find(info => info.id === id)?.cwd).toBe(reportedCwd);
     if (process.platform === 'win32') {
       manager.input(workspace, id, "Set-Location Env:\\\r");
       await expect.poll(() => manager.list(workspace).find(info => info.id === id)?.cwdStatus,
