@@ -59,6 +59,12 @@ export function isUnusableThreadError(error: unknown): boolean {
     /model provider .+ not found/i.test(message);
 }
 
+export function isThreadWriterConflict(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /\bthread-store conflict\b.*\bactive writer\b/i.test(message) ||
+    /\balready (?:open|opened) in another (?:app|application)\b/i.test(message);
+}
+
 export function titlesMatch(left: string, right: string): boolean {
   const normalize = (value: string) => value.replace(/[\u2026\s]+/g, '').trim();
   const a = normalize(left);

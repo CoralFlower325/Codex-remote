@@ -161,7 +161,7 @@ macOS：
 curl --fail http://127.0.0.1:4545/health
 ```
 
-实时桌面同步应显示 `codex: ready`、`transport: desktop`。若为 `standalone`，说明 Remote 正在使用独立 App Server。
+实时桌面同步应显示 `codex: ready`、`transport: desktop`。Remote 只使用 Desktop 原有 App Server；桌面桥不可用时保持离线。
 
 ## 工作原理
 
@@ -180,7 +180,7 @@ Cloudflare Tunnel（可选）
 Codex Desktop -> 桌面端所属的 App Server
 ```
 
-桌面端不可用时，Remote 可以回退到独立 App Server。独立模式**不能共享桌面进程的实时事件**，可通过 `/health` 检查当前传输方式。
+桌面端不可用时，Remote 保持离线，每三秒重连原桌面桥，不启动独立 App Server，不自动重发失败的消息或归档请求。可通过 `/health` 检查就绪状态。遇到 active-writer 冲突时停止自动 resume，等所属进程释放后手动重试。归档仍走原 Desktop 传输，原生后端拒绝时保留实际错误。
 
 ## Windows 开启与关闭
 
@@ -609,7 +609,7 @@ Windows `Status` 除了查看计划任务，还会检查后端健康、Desktop �
 
 - 当前界面标签为简体中文，项目提供中英文文档。
 - 项目是独立适配，不是所有 Codex Desktop 界面的像素级复制。
-- 桌面内部协议变化可能影响同步；独立回退模式不能复现桌面实时事件。
+- 桌面内部协议变化可能影响同步；需恢复原 Desktop 桥，Remote 不启动竞争后端。
 - Remote 终端不接管 Desktop 已有的 shell。检查器依赖已加载会话中的文件与变更，并非完整项目文件管理器。
 - 命令审批已完成实机验证。文件修改、用户输入、持久命令和网络策略审批有辅助逻辑与测试，但仍需分别完成实机验收。
 - 听写依赖浏览器支持和麦克风权限，本次发布尚未验收真实语音输入。

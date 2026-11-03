@@ -172,7 +172,7 @@ macOS:
 curl --fail http://127.0.0.1:4545/health
 ```
 
-For live desktop synchronization, expect `codex: ready` and `transport: desktop`. A `standalone` transport means Remote is using a separate App Server.
+For live desktop synchronization, expect `codex: ready` and `transport: desktop`. Remote uses only Desktop's existing App Server; an unavailable Desktop bridge leaves Remote offline.
 
 ## How It Works
 
@@ -191,7 +191,7 @@ Local Node.js server (127.0.0.1:4545)
 Codex Desktop -> its owning App Server
 ```
 
-When Desktop is unavailable, Remote can fall back to a standalone App Server. Standalone mode does **not** share the desktop process's live events. Check the active transport at `/health`.
+When Desktop is unavailable, Remote stays offline and reconnects to the original Desktop bridge every three seconds. It never starts a separate App Server or replays failed messages or archive requests. Check readiness at `/health`. An active-writer conflict stops automatic resume attempts; retry explicitly after its owner releases the chat. An archive request still uses the original Desktop transport and can fail if the native owner rejects it.
 
 ## Windows Start / Stop
 
@@ -889,7 +889,7 @@ continues to manage its independently installed tunnel separately.
 
 - Interface labels are currently Simplified Chinese; both English and Chinese documentation are provided.
 - This is an independent adaptation, not a pixel-exact copy of every Codex Desktop screen.
-- Internal Desktop protocol changes can break synchronization; standalone fallback cannot reproduce Desktop live events.
+- Internal Desktop protocol changes can break synchronization. Restore the original Desktop bridge to recover; Remote does not start a competing backend.
 - Remote terminals do not attach to Desktop-owned shells. The inspector derives review and file information from loaded chat history, not an unrestricted project explorer.
 - Live command approval is verified. File-change, user-input, and persistent command/network-policy approvals have helpers and tests but still need dedicated live acceptance.
 - Browser dictation requires browser support and microphone permission; actual spoken input has not been accepted in the release verification.

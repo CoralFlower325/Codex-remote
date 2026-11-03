@@ -13,7 +13,7 @@ import { beginForegroundRead, constrainedNetwork, prioritizeInteraction, yieldTo
 import { readDeviceWorkspace, saveDeviceWorkspace, readDeviceChat, saveDeviceChat, removeDeviceChat } from './device-snapshots';
 import { provisionalHistory, provisionalThread, type OpenThreadPage } from './loading-snapshots';
 import { RemoteConnection, type RemoteChannel } from './remote-connection';
-import { isUnusableThreadError, itemKey, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings, reconcileActiveTurnId, upsertItem } from './remote-state';
+import { isThreadWriterConflict, isUnusableThreadError, itemKey, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings, reconcileActiveTurnId, upsertItem } from './remote-state';
 import type {
   BridgeStatus,
   ServerRequest,
@@ -636,7 +636,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         if (!currentSelection()) return;
         resumeError = error instanceof Error ? error.message : String(error);
         setLastError(resumeError);
-        if (attempts < 3) retryTimer = window.setTimeout(resume, 500 * 2 ** (attempts - 1));
+        if (attempts < 3 && !isThreadWriterConflict(error)) retryTimer = window.setTimeout(resume, 500 * 2 ** (attempts - 1));
       });
     };
     resume();

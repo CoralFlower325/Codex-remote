@@ -92,7 +92,7 @@ cd Codex-remote
 
 安装会按锁文件安装依赖、构建应用，并要求设置访问密码。首次密码初始化仅接受主机上的请求。
 
-打开 **http://127.0.0.1:4545** 并登录。共享桌面实时事件时，`/health` 应显示 `codex: ready` 和 `transport: desktop`。若为 `standalone`，则使用独立 App Server，不能共享桌面实时事件。
+打开 **http://127.0.0.1:4545** 并登录。`/health` 应显示 `codex: ready` 和 `transport: desktop`。Remote 只使用 Desktop 原有 App Server；桌面桥不可用时保持离线并重连，不启动独立 App Server，也不自动重发失败的消息。
 
 ### 3. 从另一台设备访问
 

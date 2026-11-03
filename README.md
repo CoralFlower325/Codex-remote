@@ -94,7 +94,7 @@ Run the setup command for your host, then start Remote:
 
 Setup installs locked dependencies, builds the app and asks for an access password. Initial password setup is accepted only on the host.
 
-Open **http://127.0.0.1:4545** and sign in. For shared Desktop live events, `/health` must report `codex: ready` and `transport: desktop`. A `standalone` transport uses a separate App Server and does not share Desktop live events.
+Open **http://127.0.0.1:4545** and sign in. `/health` must report `codex: ready` and `transport: desktop`. Remote uses only Desktop's existing App Server. If its bridge is unavailable, Remote stays offline and reconnects; it never starts a separate App Server or replays failed sends.
 
 ### 3. Use It From Another Device
 

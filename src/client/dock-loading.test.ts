@@ -452,6 +452,30 @@ describe('cached history verification', () => {
     expect(resumes).toHaveLength(1);
     expect(historyReads()).toBe(reads);
   });
+  it('does not repeatedly resume a writer conflict, and leaves archiving on the native transport', async () => {
+    const f = fixture(path => /\/thread\/(?:open|timings)\?/.test(String(path)) ? json(page)
+      : String(path).includes('/api/threads?') ? json({ data: [], nextCursor: null }) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    const methods: string[] = [];
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type !== 'rpc') return;
+      methods.push(message.method);
+      connection.options.onMessage(message.method === 'thread/resume'
+        ? { type: 'rpc.error', id: message.id,
+          error: { message: 'thread-store conflict: thread synthetic already has an active writer' } }
+        : { type: 'rpc.result', id: message.id, result: { data: [] } });
+    } });
+    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    await settle();
+    await vi.advanceTimersByTimeAsync(2_000); await settle();
+    expect(methods.filter(method => method === 'thread/resume')).toHaveLength(1);
+    expect(f.remote.threadReady).toBe(false);
+    expect(f.remote.lastError).toContain('active writer');
+    await f.remote.archiveThread(thread.id, true); await settle();
+    expect(methods.filter(method => method === 'thread/archive')).toHaveLength(1);
+    expect(methods).not.toContain('turn/start');
+  });
   it('retries an exhausted native resume when the user selects the same chat again', async () => {
     const f = fixture(path => /\/thread\/(?:open|timings)\?/.test(String(path)) ? json(page) : new Promise(() => {}));
     await f.remote.openThread(thread.id); await settle();
