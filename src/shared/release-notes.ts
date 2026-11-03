@@ -3,6 +3,7 @@ export interface ReleaseNote { version: string; changes: string[] }
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
   { version: '0.2.19', changes: [
+    '修复 Desktop 断连时误启独立 App Server 导致会话占用；断连仅重连原后端，不自动重发消息或归档。',
     '终端跟随 shell 上报的当前目录，等待上报、无法读取和回退默认目录均显示明确提示。',
     '多根目录项目可选择并记住根目录，已有聊天通过原生设置更新后续轮次的工作目录，终端跟随切换。',
     '修复 Windows 预览链接前置斜杠导致盘符重复的问题，统一文件、下载及文档预览的路径处理。',

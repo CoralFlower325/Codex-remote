@@ -1,5 +1,7 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { terminalCwdIntegration, terminalReportedCwd } from './terminal-cwd.js';
 
@@ -49,4 +51,33 @@ describe('terminal shell directory integration', () => {
   it('does not pretend to track unsupported shells', () => {
     expect(terminalCwdIntegration('/bin/fish', ['-l']).supported).toBe(false);
   });
+
+  for (const shell of ['bash', 'zsh']) {
+    it.skipIf(process.platform === 'win32' || !fs.existsSync(`/bin/${shell}`))(
+      `reports UTF-8 path bytes in ${shell} without leaking locale or shell options`, () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-cwd-encoding-'));
+        const cwd = path.join(directory, 'space # \u6587\u6863 % \u00e9');
+        fs.mkdirSync(cwd);
+        const integration = terminalCwdIntegration(`/bin/${shell}`, [], { HOME: directory });
+        try {
+          const script = shell === 'zsh'
+            ? 'source "$REMOTE_SHELL_ZDOTDIR/.zshrc"; setopt multibyte; before=$options[multibyte]; __remote_report_cwd; [[ "$options[multibyte]" = "$before" ]]'
+            : 'source "$REMOTE_BASH_CWD"; __remote_report_cwd';
+          const result = spawnSync(`/bin/${shell}`, ['-f', '-c', script], {
+            cwd, encoding: 'utf8',
+            env: { ...process.env, HOME: directory, LC_ALL: 'C', ...integration.env },
+            timeout: 5000
+          });
+          expect(result.error).toBeUndefined();
+          expect(result.status, result.stderr).toBe(0);
+          const report = /\x1b\]7;([^\x07]*)\x07/.exec(result.stdout)?.[1];
+          expect(report, result.stdout).toContain('%E6%96%87%E6%A1%A3');
+          expect(terminalReportedCwd(report ?? '')).toBe(fs.realpathSync.native(cwd));
+        } finally {
+          integration.dispose();
+          fs.rmSync(directory, { recursive: true, force: true });
+        }
+      }
+    );
+  }
 });

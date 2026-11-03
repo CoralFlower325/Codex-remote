@@ -25,12 +25,19 @@ function global:prompt {
 const reportPosix = `
 __remote_report_cwd() {
   local remote_exit=$? value="$PWD" encoded="" char hex i
+  if [ -n "\${ZSH_VERSION-}" ]; then
+    emulate -L zsh
+    setopt no_multibyte
+  fi
   local LC_ALL=C
   for ((i=0; i<\${#value}; i++)); do
     char="\${value:i:1}"
     case "$char" in
       [a-zA-Z0-9/._~-]) encoded="$encoded$char" ;;
-      *) printf -v hex '%%%02X' "'$char"; encoded="$encoded$hex" ;;
+      *)
+        printf -v hex '%d' "'$char"
+        printf -v hex '%%%02X' "$((hex & 255))"
+        encoded="$encoded$hex" ;;
     esac
   done
   printf '\\033]7;file://%s\\007' "$encoded"
