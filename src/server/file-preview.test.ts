@@ -59,6 +59,19 @@ describe('authenticated local previews', () => {
     expect(await readPreviewFile(path.join(directory, 'document.docx'))).toMatchObject({ kind: 'office',
       previewUrl: expect.stringContaining('/api/file-preview/document?') });
   });
+  it.skipIf(process.platform !== 'win32')('normalizes slash-prefixed drive links at metadata, content and document boundaries', async () => {
+    const filePath = path.join(directory, 'report.md');
+    const slashPrefixed = '/' + filePath.replace(/\\/g, '/');
+    expect(await readPreviewFile(slashPrefixed)).toMatchObject({ path: filePath, kind: 'markdown' });
+    const options = { headers: { cookie: 'preview=test' } };
+    const response = await request(`${origin}/api/file-preview?path=${encodeURIComponent(slashPrefixed)}`, options);
+    expect(response.status).toBe(200);
+    expect((await response.json()).path).toBe(filePath);
+    const content = '/api/file-preview/content/' + slashPrefixed.split('/').map(encodeURIComponent).join('/');
+    expect(await (await request(origin + content, options)).text()).toContain('# Result');
+    const document = '/' + path.join(directory, 'document.docx').replace(/\\/g, '/');
+    expect((await request(`${origin}/api/file-preview/document?path=${encodeURIComponent(document)}`, options)).status).toBe(200);
+  });
   it('requires authentication for converted documents and preserves private response/error boundaries', async () => {
     const file = await readPreviewFile(path.join(directory, 'document.docx'));
     expect((await request(origin + file.previewUrl)).status).toBe(401);

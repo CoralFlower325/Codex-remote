@@ -32,6 +32,7 @@
 .terminal-screen .xterm { height: 100%; }
 .terminal-screen .xterm-viewport { overscroll-behavior: contain; }
 .terminal-error { flex: 0 0 auto; overflow-wrap: anywhere; padding: 4px 14px; color: var(--danger); font-size: 12px; }
+.terminal-directory-notice { flex: 0 0 auto; overflow-wrap: anywhere; padding: 4px 14px; border-bottom: 1px solid var(--line); color: var(--ink-soft); font-size: 12px; }
 .terminal-touch-keys { display: none; }
 @media (pointer: coarse) {
   .terminal-toolbar { min-height: 44px; }

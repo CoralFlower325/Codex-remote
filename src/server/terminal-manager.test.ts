@@ -110,4 +110,43 @@ describe('workspace terminals with a real PTY', () => {
     expect(terminalShell('darwin', { SHELL: '/bin/zsh' })).toEqual({ file: '/bin/zsh', args: ['-l'] });
     expect(() => manager.open(path.join(directory, 'missing'))).toThrow();
   });
+
+  it('tracks successful shell directory changes, preserves them across attach, and isolates tabs', async () => {
+    const workspace = manager.open();
+    const id = manager.create(workspace);
+    const otherId = manager.create(workspace);
+    const destination = path.join(directory, 'space # \u6587\u6863');
+    fs.mkdirSync(destination);
+    const messages: TerminalServerMessage[] = [];
+    const detach = manager.attach(workspace, id, message => messages.push(message));
+    await expect.poll(() => manager.list(workspace).find(info => info.id === id)?.cwdStatus,
+      { timeout: 20_000 }).toBe('reported');
+    manager.input(workspace, id, command(
+      `Set-Location -LiteralPath '${destination.replace(/'/g, "''")}'`,
+      `cd '${destination.replace(/'/g, "'\\''")}'`
+    ));
+    await expect.poll(() => manager.list(workspace).find(info => info.id === id)?.cwd,
+      { timeout: 20_000 }).toBe(fs.realpathSync.native(destination));
+    expect(manager.list(workspace).find(info => info.id === otherId)?.cwd).toBe(workspace.cwd);
+    detach();
+    manager.attach(workspace, id, message => messages.push(message));
+    expect(manager.list(workspace).find(info => info.id === id)).toMatchObject({
+      cwd: fs.realpathSync.native(destination), initialCwd: workspace.cwd, cwdStatus: 'reported'
+    });
+    manager.input(workspace, id, command(
+      "Set-Location -LiteralPath 'missing-child'",
+      "cd 'missing-child'"
+    ));
+    manager.input(workspace, id, command("Write-Output ('FAILED_' + 'CD_DONE')", "printf 'FAILED_%s\\n' CD_DONE"));
+    await waitForOutput(messages, 'FAILED_CD_DONE');
+    expect(manager.list(workspace).find(info => info.id === id)?.cwd).toBe(fs.realpathSync.native(destination));
+    if (process.platform === 'win32') {
+      manager.input(workspace, id, "Set-Location Env:\\\r");
+      await expect.poll(() => manager.list(workspace).find(info => info.id === id)?.cwdStatus,
+        { timeout: 20_000 }).toBe('unavailable');
+      manager.input(workspace, id, `Set-Location -LiteralPath '${directory.replace(/'/g, "''")}'\r`);
+      await expect.poll(() => manager.list(workspace).find(info => info.id === id)?.cwdStatus,
+        { timeout: 20_000 }).toBe('reported');
+    }
+  }, 45_000);
 });

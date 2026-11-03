@@ -659,10 +659,21 @@ tabs. A shell's own `cd` does not change that binding. Hide closes only the
 panel, while a tab's trash button ends that terminal. Refreshing the page or
 reconnecting preserves the process and restores its latest 1,000 scrollback
 lines. Stopping/restarting Remote ends its terminal processes and clears them.
-The toolbar explicitly labels the starting directory; a shell's current prompt
-or `pwd`/`Get-Location` reflects later directory changes. Input stays disabled
+Local candidate 0.2.19 (not published) displays the shell-reported current directory.
+PowerShell and bash report at each prompt; zsh also reports directory changes.
+Pending or unavailable reports are explicit and only the starting path is shown
+in those states. Missing task/project paths show the actual fallback directory:
+`CODEX_WORKDIR`, or the host home when unset. Explicit invalid paths fail visibly.
+Input stays disabled
 until the terminal snapshot has connected. Changing tasks to another directory
 recreates the browser terminal view, then attaches that directory's session.
+
+Projects with multiple roots have a header selector remembered per project in
+the current browser. Existing chats keep their cwd until explicitly changed
+through native settings; running turns cannot switch roots. New tasks use the
+chosen root. Explicit root selection starts a new terminal tab if the previous
+one is elsewhere, exited or cannot report its directory. Existing tabs retain
+their processes and state. See the [physical-device checklist](review-followup-acceptance.md).
 
 The terminal uses a separate authenticated WebSocket and loads its browser
 renderer only when opened. Output bypasses conversation rendering; terminal

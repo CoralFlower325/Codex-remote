@@ -306,6 +306,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.model-option > .model-option-copy { display: flex; flex: 1; flex-direction: column; gap: 3px; overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+.model-option-copy > small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.model-option > svg { flex-shrink: 0; }
+.model-menu-note { margin: 4px 9px 8px; line-height: 1.5; overflow-wrap: anywhere; }
 
 .settings-note {
   color: var(--muted);

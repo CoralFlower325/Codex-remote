@@ -63,6 +63,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
+| [PR #7 后续与真机步骤](review-followup-acceptance.md) | 本地候选 0.2.19：终端 cwd、多根目录、Windows 预览路径、说明与路径复制；未发布，iPhone/macOS 待验收 |
 | [Muse 核对与 PR #7](pr-7-review.md) | 0.2.18 侧聊归属、同步竞态、移动布局、历史错误及登录/归档修复 |
 | [代码整理](refactor-acceptance.md) | v0.1.16 基线、独立差分与桌面/手机界面对照 |
 | [Startup](startup-acceptance.md) | Shell, authentication, tasks, chat and connection phases / 启动各阶段 |

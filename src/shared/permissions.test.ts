@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { permissionLabel, permissionProfileId, permissionProfileUpdate } from './permissions';
+import { permissionDescription, permissionLabel, permissionProfileId, permissionProfileUpdate } from './permissions';
 
 describe('native permission profiles', () => {
   it('reads native active profiles and legacy sandbox settings', () => {
@@ -14,5 +14,12 @@ describe('native permission profiles', () => {
     expect(permissionProfileUpdate(':danger-full-access').approvalPolicy).toBe('never');
     expect(permissionProfileUpdate('custom')).toEqual({ permissions: 'custom' });
     expect(permissionLabel(':read-only')).toBe('只读');
+  });
+  it('always explains full access and never approvals even when the host supplies a shorter label', () => {
+    const description = permissionDescription(':danger-full-access', 'Full access');
+    expect(description).toContain('danger-full-access');
+    expect(description).toContain('approvalPolicy');
+    expect(description).toContain('never');
+    expect(permissionDescription('custom', 'Native custom policy')).toBe('Native custom policy');
   });
 });

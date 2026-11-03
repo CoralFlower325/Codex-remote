@@ -1194,31 +1194,6 @@
   font-size: 0.86rem;
 }
 
-.inspector-path-row .inspector-file-path {
-  display: flex;
-  min-width: 0;
-  width: 100%;
-}
-
-.inspector-file-path .inspector-path-directory,
-.inspector-file-path .inspector-path-filename {
-  min-width: 0;
-  overflow: hidden;
-  font: inherit;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.inspector-file-path .inspector-path-directory {
-  max-width: 40%;
-  flex: 0 1 auto;
-  color: var(--muted);
-}
-
-.inspector-file-path .inspector-path-filename {
-  flex: 1;
-}
-
 .inspector-activity {
   border: 1px solid var(--line);
   border-radius: 8px;

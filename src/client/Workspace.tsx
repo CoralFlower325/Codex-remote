@@ -50,6 +50,8 @@ import { GoalStatus } from './components/GoalStatus';
 import { SummaryPanel } from './components/SummaryPanel';
 import { useSideChats } from './useSideChats';
 import { useWorkspaceLocation } from './useWorkspaceLocation';
+import { ProjectRootPicker } from './components/ProjectRootPicker';
+import { readProjectRoots, rememberProjectRoot, selectedProjectRoot, threadProject } from './project-roots';
 
 interface WorkspaceProps {
   authenticated: boolean;
@@ -76,6 +78,9 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const [inspectorView, setInspectorView] = useState<InspectorView>('changes');
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [projectRoots, setProjectRoots] = useState(() => readProjectRoots());
+  const [changingRoot, setChangingRoot] = useState(false);
+  const [terminalRootRequest, setTerminalRootRequest] = useState<string | null>(null);
   const [newTaskModel, setNewTaskModel] = useState('');
   const [newTaskEffort, setNewTaskEffort] = useState('');
   const [newTaskPermissions, setNewTaskPermissions] = useState('');
@@ -159,7 +164,9 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   );
   const effectiveModel = activeThread?.model || newTaskModel || defaultModel?.model || '';
   const effectivePermissions = activeThread?.permissionProfile || newTaskPermissions || remote.defaultPermissionProfile || '';
-  const permissionCwd = activeThread?.cwd || remote.projects.find((project) => project.id === selectedProjectId)?.roots[0]?.path;
+  const currentProject = activeThread ? threadProject(activeThread, remote.projects)
+    : remote.projects.find(project => project.id === selectedProjectId);
+  const permissionCwd = activeThread?.cwd || selectedProjectRoot(currentProject, projectRoots);
   const effectiveMode = activeThread ? activeThread.collaborationMode?.mode ?? 'default' : newTaskMode;
   const hasSavedThread = Boolean(activeThread) && !remote.isNewThread && !remote.showArchived && remote.threadReady;
   const commandProps = {
@@ -297,6 +304,22 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     await remote.setThreadSettings(activeThread.id, { permissions });
   }
 
+  async function changeRoot(cwd: string) {
+    if (!currentProject || changingRoot || remote.activeTurnId || !currentProject.roots.some(root => root.path === cwd)) return;
+    setChangingRoot(true);
+    setTerminalRootRequest(cwd);
+    remote.setLastError(null);
+    try {
+      if (activeThread) await remote.setThreadSettings(activeThread.id, { cwd });
+      const next = rememberProjectRoot(undefined, projectRoots, currentProject, cwd);
+      setProjectRoots(next);
+    } catch (error) {
+      setTerminalRootRequest(current => current === cwd ? null : current);
+      showError(error);
+    }
+    finally { setChangingRoot(false); }
+  }
+
   async function runCommand(command: SlashCommandId, argument: string) {
     const definition = slashCommands.find((entry) => entry.id === command)!;
     if (definition.needsThread && !hasSavedThread) throw new Error('先打开一个已保存的聊天。');
@@ -327,8 +350,9 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
 
   async function submitHome(text: string, attachments: ComposerAttachment[], skills: SkillInfo[]) {
     const project = remote.projects.find((entry) => entry.id === selectedProjectId);
+    const cwd = selectedProjectRoot(project, projectRoots);
     const thread = await remote.createThread({
-      ...(project?.roots?.[0]?.path ? { cwd: project.roots[0].path } : {}),
+      ...(cwd ? { cwd } : {}),
       ...(project?.id ? { projectId: project.id } : {}),
       ...(newTaskModel ? { model: newTaskModel } : {}),
       ...(newTaskEffort ? { effort: newTaskEffort } : {}),
@@ -499,6 +523,10 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
             </button>
           </div>
         </header>
+        {currentProject && <ProjectRootPicker project={currentProject} cwd={permissionCwd}
+          busy={changingRoot} disabled={!remote.connected || Boolean(remote.activeTurnId) || remote.showArchived ||
+            Boolean(activeThread && (!remote.threadReady || remote.messageEditPending))}
+          onChange={cwd => void changeRoot(cwd)} />}
 
         {(startupError || remote.connectionError) && (
           <div className="connection-banner" role="status">
@@ -535,6 +563,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
             model={effectiveModel}
             effort={activeEffort}
             permissions={effectivePermissions}
+            cwdChanging={changingRoot}
             onPermissionsChange={changePermissions}
             onModelChange={changeModel}
             onEffortChange={changeEffort}
@@ -552,6 +581,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
             model={newTaskModel}
             effort={newTaskEffort}
             permissions={effectivePermissions}
+            cwdChanging={changingRoot}
             onPermissionsChange={changePermissions}
             focusRequest={composerFocusRequest}
             onProjectChange={(projectId) => {
@@ -567,7 +597,9 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           />
         )}
         {terminalOpen && <Suspense fallback={<div className="terminal-loading" role="status">加载终端…</div>}>
-          <TerminalPanel key={permissionCwd ?? 'host-home'} cwd={permissionCwd} onClose={() => setTerminalOpen(false)} />
+          <TerminalPanel key={permissionCwd ?? 'host-home'} cwd={permissionCwd} onClose={() => setTerminalOpen(false)}
+            startAtCwd={terminalRootRequest === permissionCwd}
+            onDirectoryOpened={cwd => setTerminalRootRequest(current => current === cwd ? null : current)} />
         </Suspense>}
         <SummaryPanel key={`summary:${activeThread?.id ?? 'empty'}`} remote={remote} open={summaryOpen} pinned={summaryPinned}
           inline={summaryInline} onClose={closeSummary}
@@ -629,6 +661,7 @@ function HomeView({
   model,
   effort,
   permissions,
+  cwdChanging,
   onPermissionsChange,
   focusRequest,
   onProjectChange,
@@ -644,6 +677,7 @@ function HomeView({
   model: string;
   effort: string;
   permissions: string;
+  cwdChanging: boolean;
   onPermissionsChange: (permissions: string) => Promise<void>;
   focusRequest: number;
   onProjectChange: (projectId: string) => void;
@@ -665,7 +699,7 @@ function HomeView({
         <Composer
           {...commandProps}
           variant="home"
-          disabled={!remote.connected}
+          disabled={!remote.connected || cwdChanging}
           layout={layout}
           model={model}
           effort={effort}
@@ -694,6 +728,7 @@ function ThreadScreen({
   model,
   effort,
   permissions,
+  cwdChanging,
   onPermissionsChange,
   onModelChange,
   onEffortChange,
@@ -709,6 +744,7 @@ function ThreadScreen({
   model: string;
   effort: string;
   permissions: string;
+  cwdChanging: boolean;
   onPermissionsChange: (permissions: string) => Promise<void>;
   onModelChange: (model: string) => void;
   onEffortChange: (effort: string) => void;
@@ -720,7 +756,7 @@ function ThreadScreen({
 }) {
   const [queueEnabled, setQueueEnabled] = useState(true);
   const [editing, setEditing] = useState<UserMessage | null>(null);
-  const editDisabled = !remote.connected || !remote.threadReady || remote.showArchived || Boolean(remote.activeTurnId);
+  const editDisabled = !remote.connected || !remote.threadReady || remote.showArchived || Boolean(remote.activeTurnId) || cwdChanging;
   const editable = !editDisabled && !remote.viewingHistory
     ? editableInterruptedMessage(remote.items, remote.turnTimings, remote.activeTurnId) : null;
   const forkReply = useCallback((turnId: string) => remote.forkThread(thread.id, turnId), [remote.forkThread, thread.id]);
@@ -767,7 +803,7 @@ function ThreadScreen({
         <GoalStatus key={thread.id} goal={remote.activeGoal} disabled={!remote.connected || !remote.threadReady || remote.showArchived || remote.messageEditPending}
           onUpdate={update => remote.setGoal(thread.id, update)} onDelete={() => remote.clearGoal(thread.id)} onError={onError} />
         {!remote.viewingHistory && <QuestionDock items={remote.items}
-          disabled={!remote.connected || !remote.threadReady || remote.showArchived || remote.messageEditPending}
+          disabled={!remote.connected || !remote.threadReady || remote.showArchived || remote.messageEditPending || cwdChanging}
           onSubmit={text => onSubmit(text, [], [])} onError={onError} />}
         <ApprovalDock
           requests={remote.serverRequests.filter((request) => request.params.threadId === thread.id)}
@@ -784,7 +820,7 @@ function ThreadScreen({
           variant="thread"
           draftKey={thread.id}
           insertRequest={insertRequest}
-          disabled={!remote.connected || !remote.threadReady || remote.showArchived || remote.messageEditPending}
+          disabled={!remote.connected || !remote.threadReady || remote.showArchived || remote.messageEditPending || cwdChanging}
           layout={layout}
           model={model}
           effort={effort}

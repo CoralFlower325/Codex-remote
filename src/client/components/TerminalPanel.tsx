@@ -9,12 +9,15 @@ import { copyText } from '../clipboard';
 import type { TerminalClientMessage, TerminalInfo, TerminalServerMessage } from '../../shared/terminal';
 import './terminal.css';
 
-export default function TerminalPanel({ cwd, onClose }: { cwd: string | undefined; onClose: () => void }) {
+export default function TerminalPanel({ cwd, onClose, startAtCwd = false, onDirectoryOpened }: {
+  cwd: string | undefined; onClose: () => void; startAtCwd?: boolean; onDirectoryOpened?: (cwd: string | undefined) => void;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const controls = useRef<{ send: (message: TerminalClientMessage) => void; focus: () => void; bottom: () => void } | null>(null);
   const [sessions, setSessions] = useState<TerminalInfo[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [directory, setDirectory] = useState(cwd ?? '');
+  const [cwdFallback, setCwdFallback] = useState(false);
   const [status, setStatus] = useState('连接中');
   const [inputReady, setInputReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +43,7 @@ export default function TerminalPanel({ cwd, onClose }: { cwd: string | undefine
     let disposed = false;
     let frame = 0;
     let rendering = Promise.resolve();
+    let requireSelectedDirectory = startAtCwd;
 
     function send(message: TerminalClientMessage) {
       if (message.type === 'terminal.input' && !ready) return;
@@ -74,9 +78,14 @@ export default function TerminalPanel({ cwd, onClose }: { cwd: string | undefine
     }
     function onMessage(message: TerminalServerMessage) {
       if (message.type === 'terminal.state') {
+        if (requireSelectedDirectory) {
+          requireSelectedDirectory = false;
+          onDirectoryOpened?.(cwd);
+        }
         setSessions(message.sessions);
         setActiveId(message.activeSessionId);
         setDirectory(message.cwd);
+        setCwdFallback(message.cwdFallback);
         if (message.activeSessionId !== attachedId) {
           ready = false;
           terminal.options.disableStdin = true;
@@ -132,7 +141,7 @@ export default function TerminalPanel({ cwd, onClose }: { cwd: string | undefine
       onSocket: (next) => { socket = next; },
       onOpen: () => {
         setError(null); setStatus('连接中');
-        send({ type: 'terminal.open', ...(cwd ? { cwd } : {}) });
+        send({ type: 'terminal.open', ...(cwd ? { cwd } : {}), ...(requireSelectedDirectory ? { startAtCwd: true } : {}) });
       },
       onMessage,
       onDisconnect: () => {
@@ -143,7 +152,7 @@ export default function TerminalPanel({ cwd, onClose }: { cwd: string | undefine
     controls.current = { send, focus: () => terminal.focus(), bottom: () => terminal.scrollToBottom() };
     const observer = new ResizeObserver(scheduleFit);
     observer.observe(host);
-    setSessions([]); setActiveId(null); setDirectory(cwd ?? '');
+    setSessions([]); setActiveId(null); setDirectory(cwd ?? ''); setCwdFallback(false);
     setError(null); setInputReady(false); setStatus('连接中');
     connection.start();
     return () => {
@@ -166,9 +175,9 @@ export default function TerminalPanel({ cwd, onClose }: { cwd: string | undefine
     <section className="terminal-panel" aria-label="工作区终端">
       <header className="terminal-toolbar">
         <span className="terminal-heading"><SquareTerminal size={15} /><span>终端</span></span>
-        <span className="terminal-directory" title={`起始目录：${directory || '主机主目录'}；同目录的任务共享终端，cd 后以 shell 当前目录为准。`}
-          aria-label={`终端起始目录：${directory || '主机主目录'}`}>
-          <span>起始目录</span> {directory || '主机主目录'}
+        <span className="terminal-directory" title={`当前目录：${active?.cwdStatus === 'reported' ? active.cwd : '尚未确认'}；起始目录：${directory}；同起始目录的任务共享终端。`}
+          aria-label={`终端${active?.cwdStatus === 'reported' ? '当前' : '起始'}目录：${active?.cwdStatus === 'reported' ? active.cwd : directory}`}>
+          <span>{active?.cwdStatus === 'reported' ? '当前目录' : '起始目录'}</span> {active?.cwdStatus === 'reported' ? active.cwd : directory || '等待连接'}
         </span>
         <span className="terminal-status" data-ready={inputReady} role="status">{active && active.exitCode !== null ? `已退出 ${active.exitCode}` : status}</span>
         <button type="button" className="icon-button" title="新建终端" aria-label="新建终端"
@@ -178,6 +187,10 @@ export default function TerminalPanel({ cwd, onClose }: { cwd: string | undefine
           onClick={() => controls.current?.bottom()}><ArrowDownToLine size={15} /></button>
         <button type="button" className="icon-button" title="隐藏终端" aria-label="隐藏终端" onClick={onClose}><X size={16} /></button>
       </header>
+      {cwdFallback && <div className="terminal-directory-notice" role="status">未能确定任务或项目目录，已回退到主机默认目录：{directory}</div>}
+      {active && active.exitCode === null && active.cwdStatus !== 'reported' && <div className="terminal-directory-notice" role="status">
+        {active.cwdStatus === 'pending' ? '等待 shell 上报当前目录。' : '无法读取 shell 当前目录；上方仅显示起始目录，请在 shell 中确认所在位置。'}
+      </div>}
       {sessions.length > 0 && <div className="terminal-tabs" role="tablist" aria-label="终端会话">
         {sessions.map((session) => <div className={`terminal-tab${session.id === activeId ? ' is-active' : ''}`} key={session.id}>
           <button type="button" role="tab" aria-selected={session.id === activeId} aria-controls="workspace-terminal-screen"

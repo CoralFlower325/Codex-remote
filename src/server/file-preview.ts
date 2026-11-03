@@ -3,13 +3,14 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Router, type RequestHandler, type Response } from 'express';
 import type { PreviewFile } from '../shared/file-preview.js';
-import { previewContentUrl } from '../shared/file-preview.js';
+import { normalizePreviewPath, previewContentUrl } from '../shared/file-preview.js';
 import { OfficePreviews, OfficePreviewError, officeExtensions } from './office-preview.js';
 
 const MAX_TEXT_BYTES = 1024 * 1024;
 const images = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.avif', '.svg']);
 
 export async function readPreviewFile(requestedPath: string): Promise<PreviewFile> {
+  requestedPath = normalizePreviewPath(requestedPath);
   if (!path.isAbsolute(requestedPath)) throw new Error('An absolute file path is required.');
   const filePath = path.resolve(requestedPath);
   const info = await fs.stat(filePath);
@@ -66,7 +67,7 @@ export function filePreviewRouter(authenticate: RequestHandler, office = new Off
   router.use(authenticate);
   router.get('/document', async (req, res) => {
     try {
-      const pdf = await office.read(typeof req.query.path === 'string' ? req.query.path : '');
+      const pdf = await office.read(normalizePreviewPath(typeof req.query.path === 'string' ? req.query.path : ''));
       if (res.destroyed) return;
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -80,7 +81,7 @@ export function filePreviewRouter(authenticate: RequestHandler, office = new Off
     }
   });
   router.get('/', async (req, res) => {
-    const requestedPath = typeof req.query.path === 'string' ? req.query.path : '';
+    const requestedPath = normalizePreviewPath(typeof req.query.path === 'string' ? req.query.path : '');
     if (!requestedPath || !path.isAbsolute(requestedPath)) {
       res.status(400).json({ error: 'An absolute file path is required.' }); return;
     }
@@ -101,7 +102,7 @@ export function filePreviewRouter(authenticate: RequestHandler, office = new Off
   });
   router.get('/content/*filePath', async (req, res) => {
     const parts = req.params.filePath;
-    const requestedPath = Array.isArray(parts) ? parts.join('/') : parts;
+    const requestedPath = normalizePreviewPath((Array.isArray(parts) ? parts.join('/') : parts) ?? '');
     if (!requestedPath || !path.isAbsolute(requestedPath)) {
       res.status(400).json({ error: 'An absolute file path is required.' }); return;
     }

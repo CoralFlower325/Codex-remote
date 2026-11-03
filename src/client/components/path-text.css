@@ -1,0 +1,8 @@
+.path-text { display: block; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; font: inherit; }
+.path-copy { flex: 0 0 auto; width: 32px; min-height: 32px; }
+.path-copy-error { color: var(--danger); overflow-wrap: anywhere; font-size: 12px; }
+.file-preview-path, .diff-file-toolbar { display: flex; min-width: 0; align-items: center; gap: 6px; }
+.file-preview-path { flex: 0 0 auto; padding: 2px 8px 2px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.diff-file-toolbar > .diff-file-heading { min-width: 0; flex: 1; }
+.diff-file-toolbar > .path-copy { margin-right: 4px; }
+@media (pointer: coarse) { .path-copy { width: 44px; min-height: 44px; } }

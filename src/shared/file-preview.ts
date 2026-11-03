@@ -12,6 +12,10 @@ export interface PreviewFile {
   truncated: boolean;
 }
 
+export function normalizePreviewPath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/^\/+([a-z]:\/)/i, '$1');
+}
+
 export function previewContentUrl(filePath: string): string {
-  return '/api/file-preview/content/' + filePath.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+  return '/api/file-preview/content/' + normalizePreviewPath(filePath).split('/').map(encodeURIComponent).join('/');
 }

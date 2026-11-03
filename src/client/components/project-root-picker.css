@@ -1,0 +1,4 @@
+.project-root-picker { display: flex; flex: 0 0 auto; min-width: 0; align-items: center; gap: 8px; padding: 4px 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.project-root-picker > svg, .project-root-picker > label { flex: 0 0 auto; }
+.project-root-picker > select { min-width: 0; width: 100%; max-width: 560px; min-height: 32px; overflow: hidden; text-overflow: ellipsis; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); padding: 4px 8px; font: inherit; }
+@media (pointer: coarse) { .project-root-picker > select { min-height: 44px; } }

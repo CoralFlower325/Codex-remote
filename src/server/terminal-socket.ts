@@ -1,4 +1,5 @@
 import { WebSocket } from 'ws';
+import path from 'node:path';
 
 import type { TerminalClientMessage, TerminalServerMessage } from '../shared/terminal.js';
 import { TerminalManager, type TerminalWorkspace } from './terminal-manager.js';
@@ -8,6 +9,7 @@ export function handleTerminalSocket(socket: WebSocket, manager: TerminalManager
   let activeId: string | null = null;
   let detach: (() => void) | undefined;
   let unacknowledged = 0;
+  let cwdFallback = false;
 
   function send(message: TerminalServerMessage) {
     if (!authorized()) return;
@@ -32,7 +34,7 @@ export function handleTerminalSocket(socket: WebSocket, manager: TerminalManager
 
   function sendState() {
     if (workspace) send({
-      type: 'terminal.state', cwd: workspace.cwd, sessions: manager.list(workspace), activeSessionId: activeId
+      type: 'terminal.state', cwd: workspace.cwd, cwdFallback, sessions: manager.list(workspace), activeSessionId: activeId
     });
   }
 
@@ -48,12 +50,24 @@ export function handleTerminalSocket(socket: WebSocket, manager: TerminalManager
       if (message.type === 'ping') { send({ type: 'pong', at: new Date().toISOString() }); return; }
       if (message.type === 'terminal.open') {
         if (message.cwd !== undefined && typeof message.cwd !== 'string') throw new Error('Invalid working directory.');
+        if (message.cwd !== undefined && !message.cwd.trim()) throw new Error('Invalid working directory.');
+        if (message.startAtCwd !== undefined && typeof message.startAtCwd !== 'boolean') throw new Error('Invalid directory selection.');
+        const nextWorkspace = manager.open(message.cwd);
         workspace?.listeners.delete(changed);
         detach?.();
         detach = undefined;
         activeId = null;
-        workspace = manager.open(message.cwd);
-        if (!workspace.sessions.size) manager.create(workspace);
+        workspace = nextWorkspace;
+        cwdFallback = message.cwd === undefined;
+        const active = manager.list(workspace).find(session => session.id === workspace!.activeSessionId);
+        const key = (value: string) => {
+          const normalized = path.resolve(value);
+          return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+        };
+        if (!workspace.sessions.size || message.startAtCwd &&
+            (!active || active.exitCode !== null || active.cwdStatus === 'unavailable' || key(active.cwd) !== key(workspace.cwd))) {
+          manager.create(workspace);
+        }
         workspace.listeners.add(changed);
         attach(workspace.activeSessionId);
         return;

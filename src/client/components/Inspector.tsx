@@ -19,6 +19,7 @@ import type { useSubagentChats } from '../useSubagentChats';
 import { SubagentChatView } from './SubagentChatView';
 import { SubagentRows } from './Subagents';
 import { PanelBoundary } from './PanelBoundary';
+import { PathText, CopyPathButton } from './PathText';
 
 const FilePreview = lazy(() => import('./FilePreview'));
 
@@ -184,12 +185,12 @@ export function Inspector({ open, thread, items, onClose, layout, view, remote, 
             </div>
           ) : (
             <div className="inspector-list">
-              <div className="inspector-path-row"><Folder size={15} /><code title={thread.cwd}>{thread.cwd}</code></div>
+              <div className="inspector-path-row"><Folder size={15} /><PathText value={thread.cwd} /><CopyPathButton value={thread.cwd} /></div>
               {thread.gitInfo?.branch && <div className="inspector-path-row"><GitBranch size={15} /><span>{thread.gitInfo.branch}</span></div>}
               {changedPaths.map((path) => (
-                <div className="inspector-path-row" key={path}><FileCode2 size={15} /><PreviewLink href={path} title={path}>
-                  <FilePath value={path} cwd={thread.cwd} />
-                </PreviewLink></div>
+                <div className="inspector-path-row" key={path}><FileCode2 size={15} /><PreviewLink href={path} title={path} aria-label={path}>
+                  <PathText value={path} label={displayPath(path, thread.cwd)} />
+                </PreviewLink><CopyPathButton value={path} /></div>
               ))}
             </div>
           )}
@@ -274,11 +275,11 @@ const DiffFile = memo(function DiffFile({ file, cwd, mode, expanded }: {
   useEffect(() => setOpen(expanded), [expanded]);
   return (
     <section className="diff-file">
-      <button type="button" className="diff-file-heading" aria-expanded={open} onClick={() => setOpen(!open)} title={file.path}>
+      <div className="diff-file-toolbar"><button type="button" className="diff-file-heading" aria-expanded={open} onClick={() => setOpen(!open)} title={file.path}>
         <ChevronDown size={14} className={open ? '' : 'is-collapsed'} />
-        <code>{displayPath(file.path, cwd)}</code>
+        <PathText value={file.path} label={displayPath(file.path, cwd)} />
         <span className="diff-stat"><span className="diff-added">+{file.added}</span><span className="diff-deleted">−{file.deleted}</span></span>
-      </button>
+      </button><CopyPathButton value={file.path} /></div>
       {open && (file.hunks.length === 0 ? (
         <div className="diff-unavailable">无文本差异</div>
       ) : (
@@ -332,15 +333,6 @@ function CommandDetail({ command: summary, active }: { command: Extract<ThreadIt
 
 function EmptyInspector({ text }: { text: string }) {
   return <div className="inspector-empty"><FileCode2 size={22} /><span>{text}</span></div>;
-}
-
-function FilePath({ value, cwd }: { value: string; cwd: string }) {
-  const label = displayPath(value, cwd);
-  const separator = label.lastIndexOf('/');
-  return <code className="inspector-file-path" title={value}>
-    {separator >= 0 && <span className="inspector-path-directory">{label.slice(0, separator + 1)}</span>}
-    <span className="inspector-path-filename">{label.slice(separator + 1)}</span>
-  </code>;
 }
 
 function displayPath(value: string, cwd: string): string {

@@ -56,6 +56,7 @@ interface UseRemoteOptions {
 }
 
 export interface ThreadSettingsPatch {
+  cwd?: string;
   model?: string;
   effort?: string;
   permissions?: string;
@@ -1076,11 +1077,15 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
 
   const setThreadSettings = useCallback(
     async (threadId: string, settings: ThreadSettingsPatch) => {
+      if (settings.cwd && activeThreadRef.current === threadId && activeTurnIdRef.current) {
+        throw new Error('请等待当前轮次结束后再切换根目录。');
+      }
       await rpc('thread/settings/update', {
         threadId, ...settings,
         ...(settings.permissions ? permissionProfileUpdate(settings.permissions) : {})
       });
       recordThreadMetadata(threadId, {
+        ...(settings.cwd ? { cwd: settings.cwd } : {}),
         ...(settings.model ? { model: settings.model } : {}),
         ...(settings.effort ? { reasoningEffort: settings.effort } : {}),
         ...(settings.permissions ? { permissionProfile: settings.permissions } : {}),
@@ -1091,6 +1096,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           thread.id === threadId
             ? {
                 ...thread,
+                ...(settings.cwd ? { cwd: settings.cwd } : {}),
                 ...(settings.model ? { model: settings.model } : {}),
                 ...(settings.effort ? { reasoningEffort: settings.effort } : {}),
                 ...(settings.permissions ? { permissionProfile: settings.permissions } : {}),
@@ -1103,6 +1109,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         current?.id === threadId
           ? {
               ...current,
+              ...(settings.cwd ? { cwd: settings.cwd } : {}),
               ...(settings.model ? { model: settings.model } : {}),
               ...(settings.effort ? { reasoningEffort: settings.effort } : {}),
               ...(settings.permissions ? { permissionProfile: settings.permissions } : {}),
@@ -1761,10 +1768,11 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     if (method === 'thread/settings/updated') {
       const threadId = String(params.threadId ?? '');
       const settings = params.threadSettings as
-        | ({ model?: string; effort?: string | null; collaborationMode?: CollaborationMode } & PermissionSettings)
+        | ({ cwd?: string; model?: string; effort?: string | null; collaborationMode?: CollaborationMode } & PermissionSettings)
         | undefined;
       if (threadId && settings) {
         recordThreadMetadata(threadId, {
+          ...(settings.cwd ? { cwd: settings.cwd } : {}),
           ...(settings.model ? { model: settings.model } : {}),
           ...(settings.effort ? { reasoningEffort: settings.effort } : {}),
           ...(settings.collaborationMode ? { collaborationMode: settings.collaborationMode } : {}),
@@ -1775,6 +1783,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
             thread.id === threadId
               ? {
                   ...thread,
+                  ...(settings.cwd ? { cwd: settings.cwd } : {}),
                   ...(settings.model ? { model: settings.model } : {}),
                   ...(settings.effort ? { reasoningEffort: settings.effort } : {}),
                   ...(settings.collaborationMode ? { collaborationMode: settings.collaborationMode } : {}),
@@ -1787,6 +1796,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           current?.id === threadId
             ? {
                 ...current,
+                ...(settings.cwd ? { cwd: settings.cwd } : {}),
                 ...(settings.model ? { model: settings.model } : {}),
                 ...(settings.effort ? { reasoningEffort: settings.effort } : {}),
                 ...(settings.collaborationMode ? { collaborationMode: settings.collaborationMode } : {}),

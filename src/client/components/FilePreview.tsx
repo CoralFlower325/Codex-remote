@@ -8,6 +8,7 @@ import { previewLabel } from '../preview-links';
 import { MarkdownText } from './MarkdownText';
 import { PreviewLinks } from './PreviewLinks';
 import { previewDocument } from '../preview-rendering';
+import { PathText, CopyPathButton } from './PathText';
 
 const PdfPreview = lazy(() => import('./PdfPreview'));
 
@@ -86,6 +87,8 @@ export default function FilePreview({ target, active }: { target: PreviewTarget;
         </>}
       </div>
     </div>
+    {target.kind === 'file' && <div className="file-preview-path"><PathText value={file?.path || target.path} />
+      <CopyPathButton value={file?.path || target.path} /></div>}
     {error && <div className="file-preview-error" role="alert">{error}</div>}
     {!active ? null : loading ? <div className="file-preview-loading" role="status" aria-label="正在加载预览">
       <div className="message-skeleton message-skeleton--long" /><div className="message-skeleton message-skeleton--medium" />

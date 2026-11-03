@@ -496,17 +496,19 @@ export function Composer({
                 </>
               ) : activeMenu === 'permissions' ? permissionProfiles.map((profile) => (
                 <button type="button" role="menuitemradio" className="model-option" key={profile.id}
-                  aria-checked={permissions === profile.id} title={profile.description || permissionDescription(profile.id)}
+                  aria-checked={permissions === profile.id} title={permissionDescription(profile.id, profile.description)}
                   disabled={changing || profile.allowed === false}
                   onClick={() => void changeSetting(() => onPermissionsChange(profile.id))}>
-                  <span>{permissionLabel(profile.id)}</span>
+                  <span className="model-option-copy"><span>{permissionLabel(profile.id)}</span>
+                    <small>{permissionDescription(profile.id, profile.description)}</small></span>
                   {permissions === profile.id && <Check size={15} aria-hidden="true" />}
                 </button>
               )) : activeMenu === 'models' ? models.map((entry) => (
                 <button type="button" role="menuitemradio" className="model-option" key={entry.id}
                   aria-checked={entry.model === model} title={entry.description || entry.displayName} disabled={changing}
                   onClick={() => void changeSetting(() => onModelChange(entry.model))}>
-                  <span>{modelDisplayName(models, entry.model)}</span>
+                  <span className="model-option-copy"><span>{modelDisplayName(models, entry.model)}</span>
+                    {entry.description && <small>{entry.description}</small>}</span>
                   {entry.model === model && <Check size={15} aria-hidden="true" />}
                 </button>
               )) : effortOptions.map((option) => (
@@ -520,6 +522,7 @@ export function Composer({
                 </button>
               ))}
             </div>
+            {activeMenu === 'settings' && <p className="settings-note model-menu-note">推理强度影响思考深度、响应时间和用量；可用档位由当前模型决定。</p>}
             {activeMenu === 'settings' && (
               <button type="button" role="menuitem" className="model-submenu-button" onClick={() => setMenu('models')}>
                 <span>模型</span><span className="model-submenu-value">{modelDisplayName(models, model)}</span><ChevronRight size={15} />

@@ -92,6 +92,41 @@ describe('terminal socket lifecycle', () => {
     socket.close();
   });
 
+  it('reports a missing task directory fallback and does not silently replace invalid explicit directories', () => {
+    const { socket, directory } = setup();
+    socket.receive({ type: 'terminal.open' });
+    expect(socket.sent.find(message => message.type === 'terminal.state')).toMatchObject({ cwdFallback: true });
+    socket.receive({ type: 'terminal.open', cwd: directory });
+    expect(socket.sent.filter(message => message.type === 'terminal.state').at(-1)).toMatchObject({ cwdFallback: false });
+    socket.receive({ type: 'terminal.open', cwd: path.join(directory, 'missing') });
+    expect(socket.sent.at(-1)).toMatchObject({ type: 'terminal.error' });
+    socket.receive({ type: 'terminal.open', cwd: '' });
+    expect(socket.sent.at(-1)).toMatchObject({ type: 'terminal.error' });
+    socket.close();
+  });
+
+  it('starts at an explicitly selected root without resetting the old shell or duplicating reconnects', async () => {
+    const { socket, manager, directory } = setup();
+    socket.receive({ type: 'terminal.open', cwd: directory });
+    const workspace = manager.open(directory);
+    const original = manager.list(workspace)[0]!;
+    await expect.poll(() => manager.list(workspace)[0]?.cwdStatus, { timeout: 20_000 }).toBe('reported');
+    manager.input(workspace, original.id, process.platform === 'win32'
+      ? "Set-Location ..\r" : "cd ..\r");
+    await expect.poll(() => manager.list(workspace)[0]?.cwd, { timeout: 20_000 }).toBe(path.dirname(workspace.cwd));
+    socket.receive({ type: 'terminal.open', cwd: directory, startAtCwd: true });
+    const selected = manager.list(workspace).at(-1)!;
+    expect(manager.list(workspace)).toHaveLength(2);
+    expect(selected.id).not.toBe(original.id);
+    expect(selected.initialCwd).toBe(workspace.cwd);
+    expect(manager.list(workspace)[0]?.cwd).toBe(path.dirname(workspace.cwd));
+    socket.receive({ type: 'terminal.open', cwd: directory, startAtCwd: true });
+    expect(manager.list(workspace)).toHaveLength(2);
+    expect(socket.sent.filter(message => message.type === 'terminal.state').at(-1))
+      .toMatchObject({ activeSessionId: selected.id });
+    socket.close();
+  }, 30_000);
+
   it('disconnects a client that cannot render its output so reconnect can restore a bounded snapshot', async () => {
     const { manager, socket } = setup();
     socket.receive({ type: 'terminal.open' });

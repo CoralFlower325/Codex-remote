@@ -8,6 +8,7 @@ import serializer from '@xterm/addon-serialize';
 import nodePty, { type IPty, type IDisposable } from 'node-pty';
 
 import type { TerminalInfo, TerminalServerMessage } from '../shared/terminal.js';
+import { terminalCwdIntegration, terminalReportedCwd } from './terminal-cwd.js';
 
 interface Session {
   info: TerminalInfo;
@@ -19,6 +20,8 @@ interface Session {
   pendingBytes: number;
   paused: boolean;
   closed: boolean;
+  cwdTimer: ReturnType<typeof setTimeout>;
+  disposeIntegration: () => void;
 }
 
 export interface TerminalWorkspace {
@@ -61,27 +64,48 @@ export class TerminalManager {
 
   create(workspace: TerminalWorkspace): string {
     const shell = terminalShell();
+    const integration = terminalCwdIntegration(shell.file, shell.args);
     const screen = new headless.Terminal({ cols: 80, rows: 24, scrollback: 1000, allowProposedApi: true });
     const serialize = new serializer.SerializeAddon();
     screen.loadAddon(serialize);
     let pty: IPty;
     try {
-      pty = nodePty.spawn(shell.file, shell.args, {
+      pty = nodePty.spawn(shell.file, integration.args, {
         name: 'xterm-256color', cols: 80, rows: 24, cwd: workspace.cwd,
         useConptyDll: process.platform === 'win32',
-        env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }
+        env: { ...process.env, ...integration.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }
       });
     } catch (error) {
       screen.dispose();
+      integration.dispose();
       throw error;
     }
     const id = randomUUID();
     const title = `${path.basename(shell.file).replace(/\.exe$/i, '')} ${this.nextTitle++}`;
     const session: Session = {
-      info: { id, title, cwd: workspace.cwd, shell: shell.file, exitCode: null },
+      info: { id, title, cwd: workspace.cwd, initialCwd: workspace.cwd,
+        cwdStatus: integration.supported ? 'pending' : 'unavailable', shell: shell.file, exitCode: null },
       pty, screen, serialize, listeners: new Set(), disposables: [],
-      pendingBytes: 0, paused: false, closed: false
+      pendingBytes: 0, paused: false, closed: false,
+      disposeIntegration: integration.dispose,
+      cwdTimer: setTimeout(() => {
+        if (session.closed || session.info.cwdStatus !== 'pending') return;
+        session.info.cwdStatus = 'unavailable';
+        this.changed(workspace);
+      }, 10_000)
     };
+    session.cwdTimer.unref();
+    session.disposables.push(screen.parser.registerOscHandler(7, (value) => {
+      const cwd = terminalReportedCwd(value);
+      const status = cwd ? 'reported' : 'unavailable';
+      if (session.info.cwdStatus !== status || cwd && session.info.cwd !== cwd) {
+        session.info.cwdStatus = status;
+        if (cwd) session.info.cwd = cwd;
+        this.changed(workspace);
+      }
+      clearTimeout(session.cwdTimer);
+      return true;
+    }));
     workspace.sessions.set(id, session);
     workspace.activeSessionId = id;
     session.disposables.push(pty.onData((data) => {
@@ -105,6 +129,8 @@ export class TerminalManager {
     session.disposables.push(pty.onExit(({ exitCode }) => {
       if (session.closed) return;
       session.info.exitCode = exitCode;
+      clearTimeout(session.cwdTimer);
+      session.disposeIntegration();
       this.changed(workspace);
     }));
     this.changed(workspace);
@@ -142,9 +168,11 @@ export class TerminalManager {
   close(workspace: TerminalWorkspace, id: string): void {
     const session = this.session(workspace, id);
     session.closed = true;
+    clearTimeout(session.cwdTimer);
     workspace.sessions.delete(id);
     for (const disposable of session.disposables) disposable.dispose();
     if (session.info.exitCode === null) session.pty.kill();
+    session.disposeIntegration();
     session.screen.dispose();
     session.listeners.clear();
     if (workspace.activeSessionId === id) workspace.activeSessionId = [...workspace.sessions.keys()].at(-1) ?? null;

@@ -8,6 +8,22 @@ describe('native-style preview links', () => {
       .toEqual({ kind: 'file', path: 'F:/Projects/My App/src/main.ts', line: 42 });
     expect(previewTarget('file:///C:/Projects/code.ts#L12-L16', ''))
       .toEqual({ kind: 'file', path: 'C:/Projects/code.ts', line: 12 });
+    for (const value of ['/F:/Projects/docs/pr-7-review.md:12', '/F%3A/Projects/docs/pr-7-review.md:12',
+      '\\F:\\Projects\\docs\\pr-7-review.md:12']) {
+      expect(previewTarget(value, 'F:/Projects')).toEqual({ kind: 'file', path: 'F:/Projects/docs/pr-7-review.md', line: 12 });
+    }
+    expect(previewContentUrl('/F:/Projects/docs/pr-7-review.md'))
+      .toBe('/api/file-preview/content/F%3A/Projects/docs/pr-7-review.md');
+  });
+  it('preserves UNC roots, POSIX paths and encoded filename suffixes', () => {
+    expect(previewTarget('file://server/share/docs/report.md#L3', ''))
+      .toEqual({ kind: 'file', path: '//server/share/docs/report.md', line: 3 });
+    expect(previewTarget('\\\\server\\share\\..\\report.md', ''))
+      .toEqual({ kind: 'file', path: '//server/share/report.md' });
+    expect(previewTarget('/tmp/report%23L12', ''))
+      .toEqual({ kind: 'file', path: '/tmp/report#L12' });
+    expect(previewTarget('result.md', '/F:/Projects'))
+      .toEqual({ kind: 'file', path: 'F:/Projects/result.md' });
   });
   it('resolves document links against the current Windows or macOS workspace', () => {
     expect(previewTarget('../notes/result.md', 'F:\\Projects\\atlas\\src'))
