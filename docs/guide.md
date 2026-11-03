@@ -659,7 +659,7 @@ tabs. A shell's own `cd` does not change that binding. Hide closes only the
 panel, while a tab's trash button ends that terminal. Refreshing the page or
 reconnecting preserves the process and restores its latest 1,000 scrollback
 lines. Stopping/restarting Remote ends its terminal processes and clears them.
-Local candidate 0.2.19 (not published) displays the shell-reported current directory.
+Remote 0.2.19 displays the shell-reported current directory.
 PowerShell and bash report at each prompt; zsh also reports directory changes.
 Pending or unavailable reports are explicit and only the starting path is shown
 in those states. Missing task/project paths show the actual fallback directory:

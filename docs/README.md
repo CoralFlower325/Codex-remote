@@ -36,6 +36,7 @@ the authority for what is actually installed.
 - [0.2.0AU 暂停开发与签名断点](manager-self-update-checkpoints.md)
 - [更新分发 Worker、公开下载与部署](update-downloads.md#维护分发服务)
 - [Agent rules / 开发约束](../AGENTS.md)
+- [Development contracts / 实现约束](development-contracts.md)
 - [Product principles / 产品原则](../PRODUCT.md)
 - [Security / 安全](../SECURITY.md)
 - [GitHub Releases / 版本记录](https://github.com/CoralFlower325/Codex-remote/releases)
@@ -63,7 +64,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
-| [PR #7 后续与真机步骤](review-followup-acceptance.md) | 本地候选 0.2.19：终端 cwd、多根目录、Windows 预览路径、说明与路径复制；未发布，iPhone/macOS 待验收 |
+| [PR #7 后续与真机步骤](review-followup-acceptance.md) | 已发布 0.2.19：终端 cwd、多根目录、Windows 预览路径、说明与路径复制；原生 App Server 占用修复，iPhone/macOS 待验收 |
 | [Muse 核对与 PR #7](pr-7-review.md) | 0.2.18 侧聊归属、同步竞态、移动布局、历史错误及登录/归档修复 |
 | [代码整理](refactor-acceptance.md) | v0.1.16 基线、独立差分与桌面/手机界面对照 |
 | [Startup](startup-acceptance.md) | Shell, authentication, tasks, chat and connection phases / 启动各阶段 |
