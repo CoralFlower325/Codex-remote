@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.20', changes: [
+    '新增自动任务：侧栏可创建、编辑、暂停、删除和立即运行，计划支持每小时、每天、工作日、每周和自定义间隔，并可指定项目、模型与推理强度。',
+    '自动任务由 Remote 服务端保存在私有数据中，到点后经 Desktop 桥以原生方式新建会话并发送提示词；桌面端离线期间错过的执行在恢复连接后合并为一次，结果不确定时只记录未知、绝不重发。需要说明：原生 App Server 未提供自动任务接口，本功能不是 Desktop 内置自动任务的同步副本，两处任务互不可见。',
+    '每轮对话在用时旁显示原生开始与结束时刻（时:分:秒，跨日带月日），运行中的轮次只显示开始时刻；时间全部取自原生轮次时间戳，不从消息时间推导。',
+    '正式管理器仍为 0.2.3，无变更；管理器自更新、签名及公证继续暂停。'
+  ] },
   { version: '0.2.19', changes: [
     '修复 Desktop 断连时误启独立 App Server 导致会话占用；断连仅重连原后端，不自动重发消息或归档。',
     '终端跟随 shell 上报的当前目录，等待上报、无法读取和回退默认目录均显示明确提示。',

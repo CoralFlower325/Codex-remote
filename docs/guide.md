@@ -66,6 +66,7 @@ Detailed setup, everyday controls and operating limits. Screenshots use syntheti
 - [Slash Commands](#slash-commands)
 - [Models, Permissions, and State](#models-permissions-and-state)
 - [Device Notifications](#device-notifications)
+- [Automations and Turn Times](#automations-and-turn-times)
 - [Loading and Mobile Networks](#loading-and-mobile-networks)
 - [Known Limits](#known-limits)
 - [Troubleshooting](#troubleshooting)
@@ -347,6 +348,8 @@ and never triggers automatic resubmission; check the conversation before proceed
 - **Responsive light UI.** Drag the desktop sidebar and review dividers to resize all three columns; widths are remembered in the current browser, and double-clicking restores defaults. Phones use navigation drawers, with a compact composer and system typography.
 - **Connection recovery.** Heartbeat deadlines, handshake timeouts, network/foreground recovery, and drafts stored per chat in the browser.
 - **Device notifications.** Opt into encrypted Web Push for completed tasks, pending questions and approvals, test delivery, and turn off this device from Settings.
+- **Automations.** Create scheduled tasks from the sidebar with a prompt, project, model, and reasoning effort; each run starts a new chat. Pause, edit, run now, and open the latest run's chat.
+- **Turn clock times.** Every turn shows its native start and end time (HH:MM:SS) beside the processed duration; running turns show only the start.
 - **Faster repeat entry.** Previously verified devices can open the empty workspace while login is checked in the background; tasks and chats still require server authentication.
 - **Self-hosted access.** Password login, signed HTTP-only sessions, local-only initial setup, and optional Cloudflare Tunnel.
 - **Windows and macOS controls.** Double-click `.cmd` files on Windows or `.command` files on macOS to start and stop Remote.
@@ -763,6 +766,33 @@ revoke an existing OS push subscription; use Disable or remove the site's
 notification permission. Delivery depends on system settings, Focus modes and
 the push service. A test accepted by the service is not proof that a real phone
 displayed it.
+
+## Automations and Turn Times
+
+Open **Automations** in the sidebar to create, edit, pause, resume, delete, and
+run scheduled tasks. Each task has a name, prompt, project (or no project),
+model, and reasoning effort. Schedules mirror the native presets: hourly (at a
+chosen minute), daily, weekdays, weekly (on a chosen day), and a custom minute
+interval.
+
+One boundary matters: the native App Server protocol exposes no automation
+API, so Desktop's built-in automations cannot be read or synced through the
+bridge. Remote therefore schedules its own definitions on the server. They are
+stored as private runtime data in `data/automations.json` (keep it across
+updates, out of Git) and dispatched through the Desktop bridge with the same
+native calls the web client makes: start a thread, then start a turn with the
+prompt. Occurrences that fall due while Desktop is offline are not lost and
+are not replayed repeatedly; they collapse into a single run when the bridge
+returns. A run whose outcome cannot be proven (for example, the connection
+dropped mid-dispatch) is recorded as unknown, keeps any created chat link, and
+is never resent automatically. Remote automations and Desktop automations are
+invisible to each other. Scheduling uses the host's local time, and the Remote
+server must stay running.
+
+Each turn also shows its start and end clock time (HH:MM:SS, with month and
+day when not today) beside the processed duration; a running turn shows only
+its start. Both come from the native turn timestamps, never from message or
+browser connection times, and turns without a native anchor show no clock time.
 
 ## Loading and Mobile Networks
 

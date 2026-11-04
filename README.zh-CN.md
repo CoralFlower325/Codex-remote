@@ -132,6 +132,7 @@ Codex 原生运行错误会保留在对应轮次，展示已有的 HTTP 状态�
 - **远程更新后端**：设置中检查当前连接的 Windows x64 或 Apple Silicon Remote，新版只显示版本号和更新按钮；映射更新进度，成功后自动刷新配套网页。详见[网页后端更新](docs/web-backend-update.md)。
 - **保留原生对话上下文**：可以只发送一个技能，两端均保留可见消息；同轮引导不移动计时位置，处理时长继续从该轮最初开始计算。
 - **接收设备通知**：按需开启任务结束、提问和审批 Web Push，载荷含标题及有限长度的答复或提问预览，可能显示在锁屏上。
+- **自动任务**：侧栏按计划自动新建会话执行提示词（每小时、每天、工作日、每周或自定义间隔），由 Remote 服务端调度并经 Desktop 桥执行，与 Desktop 内置自动任务互不可见。
 - **打开主机终端**：Remote 独立管理的交互式 shell 以宿主用户身份运行，与 Desktop 终端分开，不受模型权限配置限制。
 
 [完整使用指南](docs/guide.zh-CN.md) · [设备通知](docs/guide.zh-CN.md#设备通知) · [更新与恢复](docs/manual-version-update.md) · [摘要面板](docs/native-summary-panel.md)

@@ -5,7 +5,7 @@ import type { TimelineEntry, TimelineSection } from '../timeline-model';
 import { finalAnswerIndex } from '../timeline-model';
 import type { ThreadItem } from '../types';
 import { itemKey } from '../remote-state';
-import { elapsedTurnMs, formatWorkDuration, type TurnTiming } from '../../shared/turn-timing';
+import { elapsedTurnMs, formatTurnClockTime, formatWorkDuration, turnClockTimes, type TurnTiming } from '../../shared/turn-timing';
 import { hostNow } from '../host-clock';
 import { userMessageDisplayText } from '../../shared/user-message';
 import { localImageSource } from '../markdown-media';
@@ -146,7 +146,12 @@ export function TurnDuration({ timing, active, finalStartedAtMs }: {
   const text = duration === null ? (working ? '处理中' : '活动')
     : !active && timing?.status === 'interrupted' ? `你在 ${formatWorkDuration(duration)} 后停止了`
     : working && duration < 1000 ? '处理中' : `${working ? '已处理' : '用时'} ${formatWorkDuration(duration)}`;
-  return <span className="turn-duration">{text}</span>;
+  const clock = timing ? turnClockTimes(timing) : null;
+  return <>
+    <span className="turn-duration">{text}</span>
+    {clock?.startMs != null && <span className="turn-clock">开始 {formatTurnClockTime(clock.startMs, now)}
+      {clock.endMs != null && <> · 结束 {formatTurnClockTime(clock.endMs, now)}</>}</span>}
+  </>;
 }
 
 export const MessageItem = memo(function MessageItem({ item, showFull = false, onEdit }: {

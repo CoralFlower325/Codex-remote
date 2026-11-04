@@ -183,6 +183,7 @@ svg { stroke-width: 1.8; }
 .turn-disclosure > svg { flex-shrink: 0; }
 .turn-disclosure > .is-open { transform: rotate(90deg); }
 .turn-duration { font-variant-numeric: tabular-nums; }
+.turn-clock { margin-left: 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .turn-activity > .activity-group + .message { margin-top: 20px; }
 .turn-activity + .message { margin-top: 20px; }
 .turn-activity > .activity-group:has(+ .activity-group) { margin-bottom: 0; }

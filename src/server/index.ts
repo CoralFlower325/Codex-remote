@@ -28,6 +28,7 @@ import { MetadataReader, readWorkspaceBootstrap } from './bootstrap.js';
 import { WorkspaceSnapshots } from './workspace-snapshots.js';
 import { TerminalManager } from './terminal-manager.js';
 import { handleTerminalSocket } from './terminal-socket.js';
+import { Automations } from './automations.js';
 import { EphemeralChats } from './ephemeral-chats.js';
 import { QueueDispatcher } from './queue-dispatcher.js';
 import { QuestionTracker } from './question-tracker.js';
@@ -73,6 +74,12 @@ const pushNotifications = new PushNotifications(
 const ephemeralChats = new EphemeralChats<RemotePeer>(threadId => codexBridge.request('thread/unsubscribe', { threadId }));
 const queueDispatcher = new QueueDispatcher(<T,>(method: import('../shared/protocol.js').ClientRpcMethod, params: unknown) =>
   codexBridge.request(method, params) as Promise<T>);
+const automations = new Automations(
+  config.dataDir,
+  (method, params) => codexBridge.request(method as import('../shared/protocol.js').ClientRpcMethod, params),
+  () => codexBridge.getStatus() === 'ready'
+);
+automations.start();
 const terminalWss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
 const terminals = new TerminalManager(config.codexWorkdir);
 const sessionConnections = new SessionConnections();
@@ -276,6 +283,11 @@ app.use('/api/notifications', requireAuth, (req, _res, next) => {
   assertTrustedOrigin(req);
   next();
 }, pushNotifications.router());
+
+app.use('/api/automations', requireAuth, (req, _res, next) => {
+  assertTrustedOrigin(req);
+  next();
+}, automations.router());
 
 app.get('/api/connections', requireAuth, (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');

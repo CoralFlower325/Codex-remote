@@ -38,4 +38,14 @@ describe('first conversation paint before turn timings', () => {
     expect(render(true, undefined, true)).toContain('class="turn-activity"');
     expect(render(true, { ...timing, status: 'inProgress' })).toContain('class="turn-activity"');
   });
+  it('shows native start and end clock times beside the folded duration', () => {
+    const start = new Date(); start.setHours(9, 0, 0, 0);
+    const end = new Date(); end.setHours(9, 1, 30, 0);
+    const clockTiming: TurnTiming = { id: 'turn', status: 'completed',
+      startedAt: start.getTime() / 1000, completedAt: end.getTime() / 1000, durationMs: 90_000 };
+    const html = render(true, clockTiming);
+    expect(html).toContain('class="turn-clock"');
+    expect(html).toContain('开始 09:00:00');
+    expect(html).toContain('结束 09:01:30');
+  });
 });

@@ -46,6 +46,35 @@ export function elapsedTurnMs(turn: TurnTiming, nowMs: number, finalStartedAtMs?
   return endMs == null ? null : Math.max(0, endMs - turn.startedAt * 1000);
 }
 
+export interface TurnClockTimes {
+  startMs: number | null;
+  endMs: number | null;
+}
+
+/** Wall-clock anchors for one native turn, derived only from native timing. */
+export function turnClockTimes(turn: TurnTiming): TurnClockTimes {
+  const startMs = turn.startedAt != null ? turn.startedAt * 1000
+    : turn.completedAt != null && turn.durationMs != null
+      ? turn.completedAt * 1000 - turn.durationMs : null;
+  const endMs = turn.status === 'inProgress' ? null
+    : turn.completedAt != null ? turn.completedAt * 1000
+    : startMs != null && turn.durationMs != null ? startMs + turn.durationMs : null;
+  return { startMs, endMs };
+}
+
+const clockTimeFormat = new Intl.DateTimeFormat('zh-CN', {
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+});
+
+export function formatTurnClockTime(milliseconds: number, nowMs: number): string {
+  const date = new Date(milliseconds);
+  const now = new Date(nowMs);
+  const sameDay = date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+  return sameDay ? clockTimeFormat.format(date)
+    : `${date.getMonth() + 1}月${date.getDate()}日 ${clockTimeFormat.format(date)}`;
+}
+
 const durationUnits = (['day', 'hour', 'minute', 'second'] as const).map(unit =>
   new Intl.NumberFormat('zh-CN', { style: 'unit', unit, unitDisplay: 'narrow' }));
 
