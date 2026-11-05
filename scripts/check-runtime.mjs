@@ -10,6 +10,9 @@ const require = createRequire(import.meta.url);
 if (!express || !WebSocket || !webPush || !headless.Terminal) throw new Error('Runtime dependency unavailable.');
 await fs.access('dist/client/index.html');
 await fs.access('dist-server/server/index.js');
+await fs.access('dist/desktop-relay/automations.js');
+const { validAutomationRule } = await import('../dist-server/shared/automation-schedule.js');
+if (!validAutomationRule('RRULE:FREQ=DAILY')) throw new Error('Runtime RRULE parser unavailable.');
 require('node-pty');
 // Exercise the native binary and macOS spawn-helper with no Desktop connection.
 await new Promise((resolve, reject) => {

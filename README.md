@@ -138,7 +138,7 @@ HTTP status codes and Codex retry state. See [runtime errors](docs/native-runtim
 - **Update the connected host.** Settings can check and update the Windows x64 or Apple Silicon Remote backend, show its version and live progress, then refresh the matching web client. See [remote updates](docs/web-backend-update.md).
 - **Keep native conversation context.** A skill can be sent on its own and remains visible in both clients. Steering keeps the work timer at the first response and preserves the native turn start.
 - **Receive device notifications.** Opt into completed-task, question and approval Web Push. Payloads include titles and bounded reply/question previews; they may appear on a lock screen.
-- **Automations.** Schedule prompts (hourly, daily, weekdays, weekly, or a custom interval) that start a new chat through the Desktop bridge. Remote schedules them on the server; they are separate from Desktop's built-in automations.
+- **Automations.** Manage Desktop's native scheduled tasks from the sidebar, with shared definitions, schedules, projects and run links. Desktop owns persistence and execution; manually running an existing-chat heartbeat still requires Desktop.
 - **Open a host terminal.** Remote-owned interactive shells run as the host user, separately from Desktop terminals and outside model permission profiles.
 
 [Full user guide](docs/guide.md) · [Notifications](docs/guide.md#device-notifications) · [Updates and recovery](docs/manual-version-update.md) · [Summary panel](docs/native-summary-panel.md)

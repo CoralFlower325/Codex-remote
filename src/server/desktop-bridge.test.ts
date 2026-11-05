@@ -1,16 +1,26 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DesktopBridge } from './desktop-bridge.js';
+
+vi.mock('node:fs/promises', () => ({
+  readFile: vi.fn(async () => '/* native automation relay fixture */')
+}));
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); });
 
-async function desktop(pendingRequests: unknown[] = []) {
-  const server = http.createServer((_req, res) => {
+async function desktop(pendingRequests: unknown[] = [],
+  automationReply?: (socket: WebSocket, command: any) => void) {
+  const commands: any[] = [];
+  const server = http.createServer((req, res) => {
+    if (req.url === '/overlay') { res.writeHead(500); res.end(); return; }
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify([{ type: 'page', url: 'app://-/index.html', webSocketDebuggerUrl: `ws://127.0.0.1:${port}` }]));
+    res.end(JSON.stringify([
+      { type: 'page', url: 'app://-/index.html?initialRoute=%2Favatar-overlay', webSocketDebuggerUrl: `ws://127.0.0.1:${port}/overlay` },
+      { type: 'page', url: 'app://-/index.html', webSocketDebuggerUrl: `ws://127.0.0.1:${port}` }
+    ]));
   });
   const sockets = new WebSocketServer({ server });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -23,7 +33,11 @@ async function desktop(pendingRequests: unknown[] = []) {
     client = socket;
     socket.on('message', (raw) => {
       const command = JSON.parse(String(raw));
+      commands.push(command);
       const expression = command.params?.expression ?? '';
+      if (expression.includes('window.__codexRemoteAutomationRequest(') && automationReply) {
+        automationReply(socket, command); return;
+      }
       socket.send(JSON.stringify({ id: command.id, result: { result: {
         value: expression.includes('window.__codexRemotePendingRequests ??=') ? pendingRequests : true
       } } }));
@@ -47,7 +61,7 @@ async function desktop(pendingRequests: unknown[] = []) {
     for (const socket of sockets.clients) socket.terminate();
     await new Promise<void>((resolve) => sockets.close(() => server.close(() => resolve())));
   });
-  return { bridge, relay };
+  return { bridge, relay, commands };
 }
 
 describe('desktop RPC transport', () => {
@@ -85,5 +99,22 @@ describe('desktop RPC transport', () => {
     relay({ type: 'mcp-notification', method: 'serverRequest/resolved', params: { requestId: 8 } });
     expect(await resolved).toBe('desktop:8');
     expect(bridge.getPendingServerRequests()).toEqual([]);
+  });
+
+  it('uses the native automation relay and returns unsupported-service errors without fallback', async () => {
+    const { bridge, commands } = await desktop([], (socket, command) => socket.send(JSON.stringify({
+      id: command.id, result: { result: { value: { ok: false, error: 'Native service unavailable' } } }
+    })));
+    await bridge.connect();
+    await expect(bridge.requestAutomation('list')).rejects.toThrow('Native service unavailable');
+    expect(commands.filter(c => c.params?.expression?.includes('window.__codexRemoteAutomationRequest('))).toHaveLength(1);
+    expect(commands.some(c => c.params?.expression?.startsWith('window.electronBridge.sendMessageFromView('))).toBe(false);
+  });
+
+  it('reports an uncertain write once when the Desktop connection closes', async () => {
+    const { bridge, commands } = await desktop([], socket => socket.close());
+    await bridge.connect();
+    await expect(bridge.requestAutomation('runNow', { id: 'native-1' })).rejects.toThrow('操作结果无法确认');
+    expect(commands.filter(c => c.params?.expression?.includes('window.__codexRemoteAutomationRequest('))).toHaveLength(1);
   });
 });

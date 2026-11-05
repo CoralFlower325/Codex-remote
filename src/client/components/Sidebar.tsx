@@ -2,7 +2,7 @@ import {
   Archive, ArchiveRestore, Bell, CalendarClock, ChevronRight, CircleAlert, FolderOpen, FolderPlus,
   LoaderCircle, LogOut, MessageSquare, MessageSquareText, Plus, RefreshCw, Search, Wrench, X
 } from 'lucide-react';
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { displayThreadTitle } from '../remote-state';
 import type { RemoteState } from '../useRemote';
 import type { Thread } from '../types';
@@ -10,10 +10,12 @@ import { buildSidebarGroups, connectionLabel } from '../workspace-model';
 import { WorkspaceFolderDialog } from './WorkspaceFolderDialog';
 import { api } from '../api';
 import { NotificationSettings } from './NotificationSettings';
-import { Automations } from './Automations';
 import { AppUpdateDialog } from './AppUpdateDialog';
 import { BackendUpdateDialog } from './BackendUpdateDialog';
 import { clearUpdateReceipt, takeUpdateReceipt } from '../app-update';
+import { PanelBoundary } from './PanelBoundary';
+
+const Automations = lazy(() => import('./Automations').then(module => ({ default: module.Automations })));
 
 interface SidebarProps {
   remote: RemoteState;
@@ -238,8 +240,8 @@ export function Sidebar({
       )}
       {folderDialogOpen && <WorkspaceFolderDialog remote={remote} onSelect={onNewTask} onClose={() => setFolderDialogOpen(false)} />}
       {notificationsOpen && <NotificationSettings onClose={() => setNotificationsOpen(false)} />}
-      {automationsOpen && <Automations remote={remote} onClose={() => setAutomationsOpen(false)}
-        onOpenThread={(threadId) => { onSelectThread(threadId); if (layout === 'mobile') onClose(); }} />}
+      {automationsOpen && <PanelBoundary><Suspense fallback={null}><Automations remote={remote} onClose={() => setAutomationsOpen(false)}
+        onOpenThread={(threadId) => { onSelectThread(threadId); if (layout === 'mobile') onClose(); }} /></Suspense></PanelBoundary>}
       <BackendUpdateDialog open={backendUpdateOpen} onClose={() => setBackendUpdateOpen(false)} />
       {updateOpen && <AppUpdateDialog completed={completedUpdate} onClose={() => {
         setUpdateOpen(false); setCompletedUpdate(null); clearUpdateReceipt();

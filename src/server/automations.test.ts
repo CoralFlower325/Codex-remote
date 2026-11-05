@@ -1,102 +1,145 @@
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import http from 'node:http';
+import express from 'express';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Automations, type AutomationBridgeRequest } from './automations';
+import type { Automation } from '../shared/automation-schedule';
 
-const dirs: string[] = [];
-function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'automations-'));
-  dirs.push(dir);
-  return dir;
+const servers: http.Server[] = [];
+afterEach(async () => { await Promise.all(servers.splice(0).map(s => new Promise<void>(resolve => s.close(() => resolve())))); });
+
+const sample = (): Automation => ({
+  id: 'native-1', kind: 'cron', name: 'Native task', prompt: 'Inspect project',
+  status: 'ACTIVE', rrule: 'RRULE:FREQ=DAILY;BYHOUR=9;BYMINUTE=0', model: 'synthetic',
+  reasoningEffort: 'high', nextRunAt: 100000, lastRunAt: 90000,
+  createdAt: 1, updatedAt: 2, target: { type: 'project', projectId: 'p1' },
+  cwds: ['/one', '/two'], executionEnvironment: 'worktree',
+  localEnvironmentConfigPath: '.codex/environment.toml', notificationPolicy: 'failed_runs_only', autoArchive: true
+});
+
+async function harness(items = [sample()], action?: AutomationBridgeRequest) {
+  const request = vi.fn<AutomationBridgeRequest>(async (method, params) => {
+    if (method === 'list') return { items };
+    if (method === 'readHistory') return { items: [{
+      automationId: 'native-1', threadId: 'run-1', status: 'PENDING_REVIEW',
+      createdAt: 90000, archivedAssistantMessage: 'private archived body'
+    }] };
+    return action ? action(method, params) : { success: true, item: items[0] };
+  });
+  const app = express();
+  app.use(express.json());
+  const store = new Automations(request);
+  app.use('/api/automations', store.router());
+  const server = app.listen(0, '127.0.0.1'); servers.push(server);
+  await new Promise<void>(resolve => server.once('listening', resolve));
+  const port = (server.address() as import('node:net').AddressInfo).port;
+  const call = (path = '', method = 'GET', body?: unknown) => fetch(`http://127.0.0.1:${port}/api/automations${path}`, {
+    method, headers: { 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {})
+  });
+  return { request, call, store };
 }
-afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 
-const T0 = new Date(2026, 10, 5, 9, 0, 0, 0).getTime();
-
-function harness(options: { ready?: boolean; failWith?: unknown } = {}) {
-  const dir = tempDir();
-  let now = T0;
-  const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
-  const request: AutomationBridgeRequest = async (method, params) => {
-    calls.push({ method, params: params as Record<string, unknown> });
-    if (options.failWith) throw options.failWith;
-    if (method === 'thread/start') return { thread: { id: 'thread-1' } };
-    return { turn: { id: 'turn-1' } };
-  };
-  const store = new Automations(dir, request, () => options.ready ?? true, () => now);
-  return { dir, store, calls, setNow: (value: number) => { now = value; } };
-}
-
-describe('automations store and scheduler', () => {
-  it('creates, validates and persists automations', () => {
-    const { dir, store } = harness();
-    const created = store.create({
-      name: '晨间巡检', prompt: '检查待办', schedule: { kind: 'daily', time: '09:30' },
-      projectId: 'p1', model: 'gpt-test', effort: 'high'
+describe('Desktop-owned automations', () => {
+  it('reads native state and bounded history, omitting archived message bodies', async () => {
+    const { call, request } = await harness();
+    const response = await call();
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    const body = await response.json();
+    expect(body.automations).toEqual([sample()]);
+    expect(body.runs[0]).toEqual({
+      automationId: 'native-1', threadId: 'run-1', status: 'PENDING_REVIEW', createdAt: 90000
     });
-    expect(created.nextRunAt).toBe(new Date(2026, 10, 5, 9, 30).getTime());
-    expect(() => store.create({ name: '', prompt: 'x', schedule: { kind: 'daily', time: '09:30' } })).toThrow();
-    expect(() => store.create({ name: 'x', prompt: 'x', schedule: { kind: 'daily', time: '25:00' } })).toThrow();
-    const reloaded = new Automations(dir, async () => ({}), () => true, () => T0);
-    expect(reloaded.list()).toHaveLength(1);
-    expect(reloaded.list()[0]?.name).toBe('晨间巡检');
+    expect(request.mock.calls.map(c => c[0])).toEqual(['list', 'readHistory']);
+    expect(request).toHaveBeenCalledWith('readHistory', { limit: 200 });
   });
 
-  it('dispatches a due automation through thread/start then turn/start and advances the schedule', async () => {
-    const { store, calls, setNow } = harness();
-    const created = store.create({ name: '巡检', prompt: '看看仓库状态', schedule: { kind: 'interval', everyMinutes: 30 } });
-    expect(calls).toHaveLength(0);
-    setNow(T0 + 31 * 60_000);
-    await store.tick();
-    expect(calls.map(call => call.method)).toEqual(['thread/start', 'turn/start']);
-    expect(calls[1]?.params).toMatchObject({ threadId: 'thread-1' });
-    expect((calls[1]?.params.input as Array<{ text: string }>)[0]?.text).toBe('看看仓库状态');
-    const after = store.get(created.id)!;
-    expect(after.lastThreadId).toBe('thread-1');
-    expect(after.runs[0]).toMatchObject({ kind: 'scheduled', status: 'started' });
-    expect(after.nextRunAt).toBe(T0 + 60 * 60_000);
+  it('creates through the native service without thread/start or turn/start', async () => {
+    const { call, request } = await harness();
+    const response = await call('', 'POST', {
+      name: 'Task', prompt: 'Inspect', rrule: 'RRULE:FREQ=HOURLY;INTERVAL=3',
+      status: 'PAUSED', projectId: 'p1', executionEnvironment: 'worktree', model: null, reasoningEffort: null,
+      approvalPolicy: 'never'
+    });
+    expect(response.status).toBe(200);
+    expect(request).toHaveBeenCalledExactlyOnceWith('create', {
+      kind: 'cron', name: 'Task', prompt: 'Inspect', rrule: 'RRULE:FREQ=HOURLY;INTERVAL=3',
+      status: 'PAUSED', projectId: 'p1', executionEnvironment: 'worktree', model: null, reasoningEffort: null
+    });
   });
 
-  it('collapses occurrences missed while offline into one run when the bridge returns', async () => {
-    let ready = false;
-    const dir = tempDir();
-    let now = T0;
-    const calls: string[] = [];
-    const store = new Automations(dir, async method => {
-      calls.push(method);
-      return method === 'thread/start' ? { thread: { id: 't' } } : {};
-    }, () => ready, () => now);
-    const created = store.create({ name: '巡检', prompt: 'x', schedule: { kind: 'interval', everyMinutes: 30 } });
-    now = T0 + 5 * 3_600_000; // Five hours offline: ten occurrences missed.
-    await store.tick();
-    expect(calls).toHaveLength(0);
-    ready = true;
-    await store.tick();
-    expect(calls).toEqual(['thread/start', 'turn/start']);
-    expect(store.get(created.id)?.nextRunAt).toBeGreaterThan(now);
-    expect(store.get(created.id)?.runs).toHaveLength(1);
+  it('preserves native target, environment, notification and auto-archive settings when pausing', async () => {
+    const { call, request } = await harness();
+    expect((await call('/native-1', 'PATCH', { status: 'PAUSED', updatedAt: 2 })).status).toBe(200);
+    expect(request.mock.calls.at(-1)).toEqual(['update', {
+      id: 'native-1', kind: 'cron', name: 'Native task', prompt: 'Inspect project',
+      rrule: sample().rrule, status: 'PAUSED', model: 'synthetic', reasoningEffort: 'high',
+      projectId: 'p1', executionEnvironment: 'worktree', notificationPolicy: 'failed_runs_only',
+      localEnvironmentConfigPath: '.codex/environment.toml', autoArchive: true
+    }]);
   });
 
-  it('records definite rejections as failed and unprovable outcomes as unknown, without replaying', async () => {
-    const rejected = harness({ failWith: Object.assign(new Error('bad model'), { code: -32602 }) });
-    const a = rejected.store.create({ name: 'A', prompt: 'x', schedule: { kind: 'daily', time: '10:00' } });
-    await rejected.store.runNow(a.id);
-    expect(rejected.store.get(a.id)?.runs[0]?.status).toBe('failed');
-
-    const dropped = harness({ failWith: new Error('socket closed') });
-    const b = dropped.store.create({ name: 'B', prompt: 'x', schedule: { kind: 'daily', time: '10:00' } });
-    await dropped.store.runNow(b.id);
-    expect(dropped.store.get(b.id)?.runs[0]?.status).toBe('unknown');
-    expect(dropped.calls).toHaveLength(1); // Exactly one attempt, never replayed.
+  it('does not collapse legacy multi-root targets to roots[0]', async () => {
+    const task = { ...sample(), target: null };
+    const { call, request } = await harness([task]);
+    await call('/native-1', 'PATCH', { status: 'PAUSED' });
+    const params = request.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(params.cwds).toEqual(['/one', '/two']);
+    expect(params).not.toHaveProperty('projectId');
   });
 
-  it('pausing clears the next run and resuming recomputes it', () => {
-    const { store } = harness();
-    const created = store.create({ name: 'A', prompt: 'x', schedule: { kind: 'daily', time: '10:00' } });
-    const paused = store.update(created.id, { status: 'paused' });
-    expect(paused.nextRunAt).toBeNull();
-    const resumed = store.update(created.id, { status: 'active' });
-    expect(resumed.nextRunAt).toBe(new Date(2026, 10, 5, 10, 0).getTime());
+  it('retains heartbeat ownership and refuses to guess its live chat permissions for manual runs', async () => {
+    const task: Automation = { ...sample(), kind: 'heartbeat', targetThreadId: 'chat-1' };
+    const { call, request } = await harness([task]);
+    await call('/native-1', 'PATCH', { status: 'PAUSED' });
+    expect(request.mock.calls.at(-1)?.[1]).toMatchObject({ kind: 'heartbeat', targetThreadId: 'chat-1' });
+    const response = await call('/native-1/run', 'POST', {});
+    expect(response.status).toBe(409);
+    expect(request.mock.calls.some(c => c[0] === 'runNow')).toBe(false);
+  });
+
+  it('rejects stale edits without writing over Desktop changes', async () => {
+    const { call, request } = await harness();
+    expect((await call('/native-1', 'PATCH', { status: 'PAUSED', updatedAt: 1 })).status).toBe(409);
+    expect(request.mock.calls.some(c => c[0] === 'update')).toBe(false);
+  });
+
+  it('never retries unknown actions after transport failure', async () => {
+    const { call, request } = await harness([sample()], async () => { throw new Error('Outcome unknown'); });
+    expect((await call('/native-1/run', 'POST', {})).status).toBe(502);
+    expect(request.mock.calls.filter(c => c[0] === 'runNow')).toHaveLength(1);
+    expect(request).toHaveBeenLastCalledWith('runNow', {
+      id: 'native-1', collaborationMode: null, permissions: null
+    });
+  });
+
+  it('serializes all mutations for one task', async () => {
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const { call, request } = await harness([sample()], async () => { await held; return { success: true }; });
+    const running = call('/native-1/run', 'POST', {});
+    await vi.waitFor(() => expect(request.mock.calls.some(c => c[0] === 'runNow')).toBe(true));
+    expect((await call('/native-1', 'DELETE', {})).status).toBe(409);
+    release(); expect((await running).status).toBe(200);
+  });
+
+  it('validates native inputs before mutation and reports failed deletion', async () => {
+    const { call, request } = await harness([sample()], async () => ({ success: false }));
+    expect((await call('/native-1', 'PATCH', { rrule: 'invalid' })).status).toBe(400);
+    expect(request.mock.calls.some(c => c[0] === 'update')).toBe(false);
+    expect((await call('/native-1', 'DELETE', {})).status).toBe(502);
+  });
+
+  it('preserves unchanged native settings outside Remote editor limits', async () => {
+    const native = { ...sample(), name: 'n'.repeat(100), prompt: 'p'.repeat(9000), rrule: 'future-native-rule' };
+    const { call, request } = await harness([native]);
+    expect((await call('/native-1', 'PATCH', { status: 'PAUSED' })).status).toBe(200);
+    expect(request.mock.calls.at(-1)?.[1]).toMatchObject({
+      name: native.name, prompt: native.prompt, rrule: native.rrule
+    });
+  });
+
+  it('treats a missing native write acknowledgement as unknown, without retry', async () => {
+    const { call, request } = await harness([sample()], async () => ({}));
+    expect((await call('/native-1', 'PATCH', { status: 'PAUSED' })).status).toBe(502);
+    expect(request.mock.calls.filter(c => c[0] === 'update')).toHaveLength(1);
   });
 });

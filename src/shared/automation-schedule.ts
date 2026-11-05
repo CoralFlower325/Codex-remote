@@ -1,130 +1,82 @@
-// Scheduling model for Remote automations. Native Codex App Server exposes no
-// automation API (verified against the generated protocol schema), so Remote
-// stores definitions privately and dispatches them through the existing
-// Desktop bridge. Schedule kinds mirror the native automation presets:
-// hourly, daily, weekdays, weekly, plus a custom minute interval.
+import * as recurrence from 'rrule';
+
+// Node loads this package's CommonJS entry; Vite selects its ES module entry.
+const { RRule, rrulestr } = (Reflect.get(recurrence, 'default') as typeof recurrence | undefined) ?? recurrence;
+
+export interface Automation {
+  id: string;
+  kind: 'cron' | 'heartbeat';
+  name: string;
+  prompt: string;
+  status: 'ACTIVE' | 'PAUSED';
+  rrule: string;
+  model: string | null;
+  reasoningEffort: string | null;
+  nextRunAt: number | null;
+  lastRunAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+  target?: { type: 'project'; projectId: string } | { type: 'projectless' } | null;
+  cwds?: string[];
+  targetThreadId?: string;
+  executionEnvironment?: 'local' | 'worktree';
+  localEnvironmentConfigPath?: string | null;
+  autoArchive?: boolean;
+  notificationPolicy?: 'failed_runs_only' | null;
+}
+
+export interface AutomationRun {
+  automationId: string;
+  threadId: string;
+  status: string;
+  createdAt: number;
+}
+
+export interface AutomationList {
+  automations: Automation[];
+  runs: AutomationRun[];
+  timeZone: string;
+}
+
+export type AutomationMethod = 'list' | 'readHistory' | 'create' | 'update' | 'delete' | 'runNow';
+export const automationMethods: readonly AutomationMethod[] =
+  ['list', 'readHistory', 'create', 'update', 'delete', 'runNow'];
 
 export type AutomationSchedule =
   | { kind: 'interval'; everyMinutes: number }
   | { kind: 'hourly'; minute: number }
-  | { kind: 'daily'; time: string }
-  | { kind: 'weekdays'; time: string }
-  | { kind: 'weekly'; weekday: number; time: string };
+  | { kind: 'daily' | 'weekdays'; time: string }
+  | { kind: 'weekly'; weekday: number; time: string }
+  | { kind: 'custom'; rrule: string };
 
-export type AutomationStatus = 'active' | 'paused';
-export type AutomationRunStatus = 'started' | 'failed' | 'unknown';
-
-export interface AutomationRunRecord {
-  at: number;
-  kind: 'scheduled' | 'manual';
-  status: AutomationRunStatus;
-  threadId?: string;
-  error?: string;
-}
-
-export interface Automation {
-  id: string;
-  name: string;
-  prompt: string;
-  projectId: string | null;
-  cwd: string | null;
-  model: string | null;
-  effort: string | null;
-  status: AutomationStatus;
-  schedule: AutomationSchedule;
-  nextRunAt: number | null;
-  lastRunAt: number | null;
-  lastThreadId: string | null;
-  createdAt: number;
-  updatedAt: number;
-  runs: AutomationRunRecord[];
-}
-
-const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const AUTOMATION_WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+const weekdays = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object';
+// Editor presets only. Desktop owns validation, timezones and scheduling.
+export function automationScheduleRule(schedule: AutomationSchedule): string {
+  if (schedule.kind === 'custom') return schedule.rrule;
+  if (schedule.kind === 'interval') return `RRULE:FREQ=MINUTELY;INTERVAL=${schedule.everyMinutes}`;
+  if (schedule.kind === 'hourly') return `RRULE:FREQ=HOURLY;BYMINUTE=${schedule.minute};BYSECOND=0`;
+  const [hour, minute] = schedule.time.split(':').map(Number);
+  const days = schedule.kind === 'weekdays' ? ';BYDAY=MO,TU,WE,TH,FR'
+    : schedule.kind === 'weekly' ? `;BYDAY=${weekdays[schedule.weekday]}` : '';
+  return `RRULE:FREQ=${days ? 'WEEKLY' : 'DAILY'}${days};BYHOUR=${hour};BYMINUTE=${minute};BYSECOND=0`;
 }
 
-export function isAutomationSchedule(value: unknown): value is AutomationSchedule {
-  if (!isRecord(value)) return false;
-  switch (value.kind) {
-    case 'interval':
-      return Number.isInteger(value.everyMinutes)
-        && (value.everyMinutes as number) >= 1 && (value.everyMinutes as number) <= 7 * 24 * 60;
-    case 'hourly':
-      return Number.isInteger(value.minute) && (value.minute as number) >= 0 && (value.minute as number) <= 59;
-    case 'daily':
-    case 'weekdays':
-      return typeof value.time === 'string' && TIME_PATTERN.test(value.time);
-    case 'weekly':
-      return Number.isInteger(value.weekday) && (value.weekday as number) >= 0 && (value.weekday as number) <= 6
-        && typeof value.time === 'string' && TIME_PATTERN.test(value.time);
-    default:
-      return false;
-  }
+export function validAutomationRule(rule: string): boolean {
+  if (!rule.trim() || rule.length > 4096) return false;
+  try { rrulestr(rule); return true; } catch { return false; }
 }
 
-function atTime(day: Date, time: string): number {
-  const [hours, minutes] = time.split(':').map(Number);
-  const candidate = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hours, minutes, 0, 0);
-  return candidate.getTime();
-}
-
-/** First run time strictly after `afterMs`, in the host's local timezone. */
-export function nextAutomationRun(schedule: AutomationSchedule, afterMs: number): number {
-  switch (schedule.kind) {
-    case 'interval':
-      return afterMs + schedule.everyMinutes * 60_000;
-    case 'hourly': {
-      const after = new Date(afterMs);
-      let candidate = new Date(after.getFullYear(), after.getMonth(), after.getDate(), after.getHours(), schedule.minute, 0, 0).getTime();
-      if (candidate <= afterMs) candidate += 3_600_000;
-      return candidate;
-    }
-    case 'daily': {
-      let candidate = atTime(new Date(afterMs), schedule.time);
-      if (candidate <= afterMs) {
-        const next = new Date(afterMs); next.setDate(next.getDate() + 1);
-        candidate = atTime(next, schedule.time);
-      }
-      return candidate;
-    }
-    case 'weekdays': {
-      for (let offset = 0; offset < 8; offset++) {
-        const day = new Date(afterMs); day.setDate(day.getDate() + offset);
-        const weekday = day.getDay();
-        if (weekday === 0 || weekday === 6) continue;
-        const candidate = atTime(day, schedule.time);
-        if (candidate > afterMs) return candidate;
-      }
-      throw new Error('No weekday found');
-    }
-    case 'weekly': {
-      for (let offset = 0; offset < 8; offset++) {
-        const day = new Date(afterMs); day.setDate(day.getDate() + offset);
-        if (day.getDay() !== schedule.weekday) continue;
-        const candidate = atTime(day, schedule.time);
-        if (candidate > afterMs) return candidate;
-      }
-      throw new Error('No matching weekday found');
-    }
-  }
-}
-
-export function automationScheduleSummary(schedule: AutomationSchedule): string {
-  switch (schedule.kind) {
-    case 'interval':
-      return schedule.everyMinutes % 60 === 0
-        ? `每 ${schedule.everyMinutes / 60} 小时` : `每 ${schedule.everyMinutes} 分钟`;
-    case 'hourly':
-      return `每小时 :${String(schedule.minute).padStart(2, '0')}`;
-    case 'daily':
-      return `每天 ${schedule.time}`;
-    case 'weekdays':
-      return `工作日 ${schedule.time}`;
-    case 'weekly':
-      return `每周${AUTOMATION_WEEKDAYS[schedule.weekday]} ${schedule.time}`;
-  }
+export function automationScheduleSummary(rule: string): string {
+  try {
+    const parsed = rrulestr(rule);
+    if (!(parsed instanceof RRule)) return '自定义计划';
+    const { freq, interval } = parsed.options;
+    if (freq === RRule.MINUTELY) return `每 ${interval} 分钟`;
+    if (freq === RRule.HOURLY) return `每 ${interval} 小时`;
+    if (freq === RRule.DAILY) return interval === 1 ? '每天' : `每 ${interval} 天`;
+    if (freq === RRule.WEEKLY) return interval === 1 ? '每周' : `每 ${interval} 周`;
+    return '自定义计划';
+  } catch { return '自定义计划'; }
 }

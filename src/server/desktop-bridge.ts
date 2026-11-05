@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { WebSocket } from 'ws';
 import { NativeRpcError } from '../shared/native-error.js';
+import { readFile } from 'node:fs/promises';
+import { automationMethods, type AutomationMethod } from '../shared/automation-schedule.js';
 
 interface DebugTarget {
   type: string;
@@ -87,7 +89,7 @@ export class DesktopBridge extends EventEmitter {
       signal: AbortSignal.timeout(1500)
     });
     const targets = await response.json() as DebugTarget[];
-    const page = targets.find((target) => target.type === 'page' && target.url.includes('app://-/index.html'));
+    const page = targets.find((target) => target.type === 'page' && target.url === 'app://-/index.html');
     if (!page) return false;
     const socket = new WebSocket(page.webSocketDebuggerUrl);
     this.socket = socket;
@@ -144,6 +146,23 @@ export class DesktopBridge extends EventEmitter {
     return result;
   }
 
+  async requestAutomation(method: AutomationMethod, params?: unknown): Promise<unknown> {
+    if (!automationMethods.includes(method)) throw new Error('Automation method is not allowed.');
+    if (!this.isConnected()) throw new Error('Codex Desktop 未连接，自动任务暂不可用。');
+    const script = await readFile(new URL('../../dist/desktop-relay/automations.js', import.meta.url), 'utf8');
+    let response: { ok: boolean; result?: unknown; error?: string };
+    try {
+      response = await this.evaluate(`${script}\nwindow.__codexRemoteAutomationRequest(${JSON.stringify(method)},${JSON.stringify(params ?? null)})`,
+        method === 'list' || method === 'readHistory' ? 10_000 : 120_000);
+    } catch {
+      throw new Error(method === 'list' || method === 'readHistory'
+        ? 'Codex Desktop 自动任务读取失败，请重新连接后重试。'
+        : '与 Desktop 的连接中断，操作结果无法确认。请检查原生任务及运行记录，不要直接重复操作。');
+    }
+    if (!response || response.ok !== true) throw new Error(response?.error || '原生自动任务接口不可用。');
+    return response.result;
+  }
+
   getPendingServerRequests() {
     return [...this.approvals].map(([requestId, { method, params }]) => ({ requestId, method, params }));
   }
@@ -182,18 +201,18 @@ export class DesktopBridge extends EventEmitter {
     }
   }
 
-  private async evaluate(expression: string): Promise<any> {
-    const result = await this.call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+  private async evaluate(expression: string, timeoutMs = 5000): Promise<any> {
+    const result = await this.call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, timeoutMs);
     if (result.exceptionDetails) {
       throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     }
     return result.result?.value;
   }
 
-  private call(method: string, params: unknown = {}): Promise<any> {
+  private call(method: string, params: unknown = {}, timeoutMs = 5000): Promise<any> {
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.commands.delete(id); reject(new Error(`Desktop command timed out: ${method}`)); }, 5000);
+      const timer = setTimeout(() => { this.commands.delete(id); reject(new Error(`Desktop command timed out: ${method}`)); }, timeoutMs);
       this.commands.set(id, {
         resolve: (value) => { clearTimeout(timer); resolve(value); },
         reject: (error) => { clearTimeout(timer); reject(error); }

@@ -1,10 +1,10 @@
 import {
-  CalendarClock, LoaderCircle, Pause, Pencil, Play, Plus, Trash2, X
+  CalendarClock, LoaderCircle, Pause, Pencil, Play, Plus, RefreshCw, Trash2, X
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  automationScheduleSummary, AUTOMATION_WEEKDAYS,
-  type Automation, type AutomationSchedule
+  automationScheduleRule, automationScheduleSummary, AUTOMATION_WEEKDAYS,
+  type Automation, type AutomationList, type AutomationSchedule, type AutomationRun
 } from '../../shared/automation-schedule';
 import { formatTurnClockTime } from '../../shared/turn-timing';
 import { api } from '../api';
@@ -17,6 +17,8 @@ interface Draft {
   name: string;
   prompt: string;
   projectId: string;
+  projectChanged: boolean;
+  executionEnvironment: 'local' | 'worktree';
   model: string;
   effort: string;
   kind: ScheduleKind;
@@ -25,6 +27,7 @@ interface Draft {
   time: string;
   weekday: number;
   active: boolean;
+  rrule: string;
 }
 
 const EFFORT_LABELS: Record<string, string> = {
@@ -32,20 +35,21 @@ const EFFORT_LABELS: Record<string, string> = {
 };
 
 function draftFrom(automation?: Automation): Draft {
-  const schedule = automation?.schedule;
   return {
     name: automation?.name ?? '',
     prompt: automation?.prompt ?? '',
-    projectId: automation?.projectId ?? '',
+    projectId: automation?.target?.type === 'project' ? automation.target.projectId : '',
+    projectChanged: false,
+    executionEnvironment: automation?.executionEnvironment ?? 'local',
     model: automation?.model ?? '',
-    effort: automation?.effort ?? '',
-    kind: schedule?.kind ?? 'daily',
-    everyMinutes: schedule?.kind === 'interval' ? schedule.everyMinutes : 60,
-    minute: schedule?.kind === 'hourly' ? schedule.minute : 0,
-    time: schedule && (schedule.kind === 'daily' || schedule.kind === 'weekdays' || schedule.kind === 'weekly')
-      ? schedule.time : '09:00',
-    weekday: schedule?.kind === 'weekly' ? schedule.weekday : 1,
-    active: automation ? automation.status === 'active' : true
+    effort: automation?.reasoningEffort ?? '',
+    kind: automation ? 'custom' : 'daily',
+    everyMinutes: 60,
+    minute: 0,
+    time: '09:00',
+    weekday: 1,
+    active: automation ? automation.status === 'ACTIVE' : true,
+    rrule: automation?.rrule ?? ''
   };
 }
 
@@ -56,16 +60,16 @@ function scheduleFrom(draft: Draft): AutomationSchedule {
     case 'daily': return { kind: 'daily', time: draft.time };
     case 'weekdays': return { kind: 'weekdays', time: draft.time };
     case 'weekly': return { kind: 'weekly', weekday: draft.weekday, time: draft.time };
+    case 'custom': return { kind: 'custom', rrule: draft.rrule };
   }
 }
 
-function runStatusText(automation: Automation): string {
-  const last = automation.runs[0];
-  if (!last) return '尚未运行';
-  const at = formatTurnClockTime(last.at, Date.now());
-  if (last.status === 'started') return `上次运行 ${at} · 已开始`;
-  if (last.status === 'failed') return `上次运行 ${at} · 主机拒绝${last.error ? `：${last.error}` : ''}`;
-  return `上次运行 ${at} · 结果未知${last.error ? `：${last.error}` : ''}`;
+function runStatusText(automation: Automation, last?: AutomationRun, timeZone?: string): string {
+  if (!automation.lastRunAt) return '尚未运行';
+  const at = formatTurnClockTime(automation.lastRunAt, Date.now(), timeZone);
+  const status = last && ({ IN_PROGRESS: '运行中', PENDING_REVIEW: '待查看',
+    ACCEPTED: '已完成', ARCHIVED: '已归档' } as Record<string, string>)[last.status];
+  return `上次运行 ${at}${status ? ` · ${status}` : ''}`;
 }
 
 export function Automations({ remote, onClose, onOpenThread }: {
@@ -81,139 +85,180 @@ export function Automations({ remote, onClose, onOpenThread }: {
   const [editing, setEditing] = useState<Automation | 'new' | null>(null);
   const [draft, setDraft] = useState<Draft>(() => draftFrom());
   const [saving, setSaving] = useState(false);
+  const [runs, setRuns] = useState<AutomationRun[]>([]);
+  const [timeZone, setTimeZone] = useState<string>();
+  const [checking, setChecking] = useState(false);
+  const mounted = useRef(false);
+  const busy = useRef(false);
+  const read = useRef<AbortController | null>(null);
+  const version = useRef(0);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (manual = false) => {
+    if (busy.current || !mounted.current) return;
+    read.current?.abort();
+    const controller = new AbortController();
+    read.current = controller;
+    const current = ++version.current;
+    setChecking(true);
     try {
-      const result = await api<{ automations: Automation[] }>('/api/automations', { cache: 'no-store' });
-      setAutomations(result.automations);
-      setError(null);
+      const result = await api<AutomationList>('/api/automations', {
+        cache: 'no-store', signal: controller.signal, timeoutMs: 15000
+      });
+      if (!mounted.current || current !== version.current) return;
+      setAutomations(result.automations); setRuns(result.runs); setTimeZone(result.timeZone);
+      if (manual) setError(null);
     } catch (error) {
-      setError(error instanceof Error ? error.message : String(error));
-    }
+      if (mounted.current && current === version.current && !controller.signal.aborted) {
+        setError(error instanceof Error ? error.message : String(error));
+      }
+    } finally { if (mounted.current && current === version.current) setChecking(false); }
   }, []);
 
   useEffect(() => { dialog.current?.showModal(); }, []);
   useEffect(() => {
+    mounted.current = true;
     void refresh();
-    const timer = setInterval(() => { void refresh(); }, 30_000);
-    return () => clearInterval(timer);
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh();
+    }, 30_000);
+    return () => { mounted.current = false; version.current++; read.current?.abort(); clearInterval(timer); };
   }, [refresh]);
 
   const act = async (id: string, action: () => Promise<unknown>) => {
+    if (busy.current) return;
+    busy.current = true; version.current++; read.current?.abort(); setChecking(false);
     setBusyId(id);
-    try { await action(); await refresh(); }
-    catch (error) { setError(error instanceof Error ? error.message : String(error)); }
-    finally { setBusyId(null); }
+    setError(null);
+    try { await action(); busy.current = false; await refresh(); }
+    catch (error) { if (mounted.current) setError(error instanceof Error ? error.message : String(error)); }
+    finally { busy.current = false; if (mounted.current) setBusyId(null); }
   };
 
   const save = async () => {
-    const project = remote.projects.find(entry => entry.id === draft.projectId);
+    if (busy.current) return;
     const payload = {
       name: draft.name, prompt: draft.prompt,
-      projectId: project?.id ?? null, cwd: project?.roots[0]?.path ?? null,
-      model: draft.model || null, effort: draft.effort || null,
-      schedule: scheduleFrom(draft), status: draft.active ? 'active' : 'paused'
+      ...(editing === 'new' || draft.projectChanged ? { projectId: draft.projectId || null } : {}),
+      executionEnvironment: draft.executionEnvironment,
+      model: draft.model || null, reasoningEffort: draft.effort || null,
+      rrule: automationScheduleRule(scheduleFrom(draft)), status: draft.active ? 'ACTIVE' : 'PAUSED',
+      ...(editing && editing !== 'new' ? { updatedAt: editing.updatedAt } : {})
     };
+    busy.current = true; version.current++; read.current?.abort(); setChecking(false); setError(null);
     setSaving(true);
     try {
       if (editing === 'new') await api('/api/automations', { method: 'POST', body: JSON.stringify(payload) });
-      else if (editing) await api(`/api/automations/${editing.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+      else if (editing) await api(`/api/automations/${encodeURIComponent(editing.id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
       setEditing(null);
+      busy.current = false;
       await refresh();
-    } catch (error) { setError(error instanceof Error ? error.message : String(error)); }
-    finally { setSaving(false); }
+    } catch (error) { if (mounted.current) setError(error instanceof Error ? error.message : String(error)); }
+    finally { busy.current = false; if (mounted.current) setSaving(false); }
   };
 
   const selectedModel = remote.models.find(entry => entry.model === draft.model);
   const efforts = selectedModel?.supportedReasoningEfforts?.map(entry => entry.reasoningEffort)
     ?? ['low', 'medium', 'high', 'xhigh'];
-  const projectName = (automation: Automation) =>
-    remote.projects.find(entry => entry.id === automation.projectId)?.name
-    ?? (automation.cwd ? automation.cwd.split('/').filter(Boolean).at(-1) : null)
-    ?? '任务';
+  const projectName = (automation: Automation) => automation.kind === 'heartbeat' ? '继续现有聊天'
+    : automation.target?.type === 'project'
+      ? remote.projects.find(entry => entry.id === (automation.target as { projectId: string }).projectId)?.name ?? '原生项目'
+      : automation.cwds?.length && automation.target == null ? automation.cwds.join(' · ') : '无项目';
+  const mutation = (automation: Automation) => JSON.stringify({ updatedAt: automation.updatedAt });
 
   return (
     <dialog ref={dialog} className="automations-dialog" aria-label="自动任务"
-      onClose={onClose} onCancel={onClose}>
+      onClose={onClose} onCancel={event => { if (busy.current) event.preventDefault(); }}>
       <header className="automations-header">
         <strong><CalendarClock size={17} />自动任务</strong>
+        <button type="button" className="icon-button" aria-label="刷新自动任务" title="刷新"
+          disabled={Boolean(busyId) || saving || checking} onClick={() => void refresh(true)}>
+          <RefreshCw size={16} className={checking ? 'spin' : ''} /></button>
         <button type="button" className="icon-button" aria-label="关闭自动任务"
+          disabled={Boolean(busyId) || saving}
           onClick={() => dialog.current?.close()}><X size={18} /></button>
       </header>
       {error && <div className="automations-error" role="alert">{error}</div>}
+      <div className="automations-native">Codex Desktop · {timeZone ?? '主机时区'}</div>
       {editing === null ? (
         <div className="automations-body">
-          <button type="button" className="automations-new" onClick={() => {
+          <button type="button" className="automations-new" disabled={automations === null || Boolean(busyId)} onClick={() => {
             setDraft(draftFrom()); setEditing('new'); setError(null);
           }}><Plus size={16} /><span>新建自动任务</span></button>
-          {automations === null && <div className="automations-empty">正在加载…</div>}
+          {automations === null && <div className="automations-empty">{checking || !error ? '正在加载…' : '无法加载原生任务，请刷新重试。'}</div>}
           {automations?.length === 0 && (
-            <div className="automations-empty">还没有自动任务。新建后，Remote 会按计划在所选项目里开启新会话并发送提示词；桌面端离线时顺延到重新连接后合并执行一次。</div>
+            <div className="automations-empty">还没有自动任务。</div>
           )}
-          {automations?.map(automation => (
+          {automations?.map(automation => {
+            const last = runs.filter(run => run.automationId === automation.id)
+              .sort((a, b) => b.createdAt - a.createdAt)[0];
+            const threadId = last?.threadId ?? automation.targetThreadId;
+            return (
             <article className="automation-row" key={automation.id}>
               <div className="automation-main">
                 <div className="automation-title">
                   <strong>{automation.name}</strong>
                   <span className={`automation-status automation-status--${automation.status}`}>
-                    {automation.status === 'active' ? '进行中' : '已暂停'}
+                    {automation.status === 'ACTIVE' ? '已启用' : '已暂停'}
                   </span>
                 </div>
                 <div className="automation-meta">
-                  {automationScheduleSummary(automation.schedule)} · {projectName(automation)}
+                  <span title={automation.rrule}>{automationScheduleSummary(automation.rrule)}</span> · {projectName(automation)}
                   {automation.model ? ` · ${remote.models.find(entry => entry.model === automation.model)?.displayName ?? automation.model}` : ''}
                 </div>
                 <div className="automation-meta">
-                  {automation.status === 'active' && automation.nextRunAt
-                    ? `下次运行 ${formatTurnClockTime(automation.nextRunAt, Date.now())} · ` : ''}
-                  {runStatusText(automation)}
+                  {automation.status === 'ACTIVE' && automation.nextRunAt
+                    ? `下次运行 ${formatTurnClockTime(automation.nextRunAt, Date.now(), timeZone)} · ` : ''}
+                  {runStatusText(automation, last, timeZone)}
                 </div>
                 <p className="automation-prompt">{automation.prompt}</p>
-                {automation.lastThreadId && (
+                {threadId && (
                   <button type="button" className="automation-link" onClick={() => {
-                    dialog.current?.close(); onOpenThread(automation.lastThreadId!);
+                    dialog.current?.close(); onOpenThread(threadId);
                   }}>查看最近会话</button>
                 )}
               </div>
               <div className="automation-actions">
-                <button type="button" className="icon-button" aria-label="立即运行" title="立即运行"
-                  disabled={busyId === automation.id}
-                  onClick={() => void act(automation.id, () => api(`/api/automations/${automation.id}/run`, { method: 'POST', body: '{}' }))}>
+                <button type="button" className="icon-button" aria-label="立即运行"
+                  disabled={Boolean(busyId) || automation.kind === 'heartbeat'}
+                  title={automation.kind === 'heartbeat' ? '请在 Desktop 确认聊天权限后运行' : '立即运行'}
+                  onClick={() => void act(automation.id, () => api(`/api/automations/${encodeURIComponent(automation.id)}/run`, { method: 'POST', body: mutation(automation) }))}>
                   {busyId === automation.id ? <LoaderCircle size={15} className="spin" /> : <Play size={15} />}
                 </button>
                 <button type="button" className="icon-button"
-                  aria-label={automation.status === 'active' ? '暂停' : '恢复'}
-                  title={automation.status === 'active' ? '暂停' : '恢复'}
-                  disabled={busyId === automation.id}
-                  onClick={() => void act(automation.id, () => api(`/api/automations/${automation.id}`, {
+                  aria-label={automation.status === 'ACTIVE' ? '暂停' : '恢复'}
+                  title={automation.status === 'ACTIVE' ? '暂停' : '恢复'}
+                  disabled={Boolean(busyId)}
+                  onClick={() => void act(automation.id, () => api(`/api/automations/${encodeURIComponent(automation.id)}`, {
                     method: 'PATCH',
-                    body: JSON.stringify({ status: automation.status === 'active' ? 'paused' : 'active' })
+                    body: JSON.stringify({ status: automation.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE', updatedAt: automation.updatedAt })
                   }))}>
-                  {automation.status === 'active' ? <Pause size={15} /> : <Play size={15} />}
+                  {automation.status === 'ACTIVE' ? <Pause size={15} /> : <Play size={15} />}
                 </button>
                 <button type="button" className="icon-button" aria-label="编辑" title="编辑"
+                  disabled={Boolean(busyId)}
                   onClick={() => { setDraft(draftFrom(automation)); setEditing(automation); setError(null); }}>
                   <Pencil size={15} />
                 </button>
                 {confirmDeleteId === automation.id ? (
                   <button type="button" className="automation-confirm-delete"
-                    disabled={busyId === automation.id}
+                    disabled={Boolean(busyId)}
                     onClick={() => void act(automation.id, async () => {
-                      await api(`/api/automations/${automation.id}`, { method: 'DELETE' });
+                      await api(`/api/automations/${encodeURIComponent(automation.id)}`, { method: 'DELETE', body: mutation(automation) });
                       setConfirmDeleteId(null);
                     })}>确认删除</button>
                 ) : (
                   <button type="button" className="icon-button" aria-label="删除" title="删除"
+                    disabled={Boolean(busyId)}
                     onClick={() => setConfirmDeleteId(automation.id)}>
                     <Trash2 size={15} />
                   </button>
                 )}
               </div>
             </article>
-          ))}
+          ); })}
         </div>
       ) : (
-        <form className="automations-body automations-editor" onSubmit={event => {
+        <form className="automations-body automations-editor" inert={saving} onSubmit={event => {
           event.preventDefault(); void save();
         }}>
           <label className="automations-field"><span>名称</span>
@@ -222,22 +267,34 @@ export function Automations({ remote, onClose, onOpenThread }: {
           </label>
           <label className="automations-field"><span>提示词</span>
             <textarea value={draft.prompt} maxLength={8000} required rows={5}
-              placeholder="每次运行时发送给新会话的提示词"
+              placeholder="每次运行时使用的提示词"
               onChange={event => setDraft({ ...draft, prompt: event.target.value })} />
           </label>
+          {editing !== 'new' && editing.kind === 'heartbeat' ? <div className="automations-summary">继续原生聊天</div> : <>
           <label className="automations-field"><span>项目</span>
             <select value={draft.projectId}
-              onChange={event => setDraft({ ...draft, projectId: event.target.value })}>
+              onChange={event => setDraft({ ...draft, projectId: event.target.value, projectChanged: true })}>
               <option value="">任务（无项目）</option>
+              {draft.projectId && !remote.projects.some(p => p.id === draft.projectId) &&
+                <option value={draft.projectId}>当前原生项目</option>}
               {remote.projects.map(project => (
                 <option key={project.id} value={project.id}>{project.name}</option>
               ))}
             </select>
           </label>
+          <label className="automations-field"><span>执行环境</span>
+            <select value={draft.executionEnvironment} onChange={event =>
+              setDraft({ ...draft, executionEnvironment: event.target.value as 'local' | 'worktree' })}>
+              <option value="local">本地</option>
+              <option value="worktree">工作树</option>
+            </select>
+          </label></>}
           <div className="automations-grid">
             <label className="automations-field"><span>模型</span>
               <select value={draft.model} onChange={event => setDraft({ ...draft, model: event.target.value, effort: '' })}>
                 <option value="">默认模型</option>
+                {draft.model && !remote.models.some(model => model.model === draft.model && !model.hidden) &&
+                  <option value={draft.model}>{draft.model}</option>}
                 {remote.models.filter(model => !model.hidden).map(model => (
                   <option key={model.id} value={model.model}>{model.displayName}</option>
                 ))}
@@ -246,6 +303,8 @@ export function Automations({ remote, onClose, onOpenThread }: {
             <label className="automations-field"><span>推理强度</span>
               <select value={draft.effort} onChange={event => setDraft({ ...draft, effort: event.target.value })}>
                 <option value="">默认</option>
+                {draft.effort && !efforts.includes(draft.effort) &&
+                  <option value={draft.effort}>{EFFORT_LABELS[draft.effort] ?? draft.effort}</option>}
                 {efforts.map(effort => (
                   <option key={effort} value={effort}>{EFFORT_LABELS[effort] ?? effort}</option>
                 ))}
@@ -260,6 +319,7 @@ export function Automations({ remote, onClose, onOpenThread }: {
                 <option value="weekdays">工作日</option>
                 <option value="weekly">每周</option>
                 <option value="interval">自定义间隔</option>
+                <option value="custom">原生计划</option>
               </select>
             </label>
             {draft.kind === 'interval' && (
@@ -295,7 +355,11 @@ export function Automations({ remote, onClose, onOpenThread }: {
               </label>
             </>)}
           </div>
-          <div className="automations-summary">{automationScheduleSummary(scheduleFrom(draft))}</div>
+          {draft.kind === 'custom' && <label className="automations-field"><span>计划（RRULE）</span>
+            <textarea value={draft.rrule} required maxLength={4096} rows={3}
+              onChange={event => setDraft({ ...draft, rrule: event.target.value })} />
+          </label>}
+          <div className="automations-summary">{automationScheduleSummary(automationScheduleRule(scheduleFrom(draft)))}</div>
           <label className="automations-toggle">
             <input type="checkbox" checked={draft.active}
               onChange={event => setDraft({ ...draft, active: event.target.checked })} />

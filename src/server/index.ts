@@ -75,11 +75,11 @@ const ephemeralChats = new EphemeralChats<RemotePeer>(threadId => codexBridge.re
 const queueDispatcher = new QueueDispatcher(<T,>(method: import('../shared/protocol.js').ClientRpcMethod, params: unknown) =>
   codexBridge.request(method, params) as Promise<T>);
 const automations = new Automations(
-  config.dataDir,
-  (method, params) => codexBridge.request(method as import('../shared/protocol.js').ClientRpcMethod, params),
-  () => codexBridge.getStatus() === 'ready'
+  async (method, params) => {
+    await codexBridge.ensureStarted();
+    return desktopBridge.requestAutomation(method, params);
+  }
 );
-automations.start();
 const terminalWss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
 const terminals = new TerminalManager(config.codexWorkdir);
 const sessionConnections = new SessionConnections();

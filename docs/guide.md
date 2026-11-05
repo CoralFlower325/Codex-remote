@@ -348,7 +348,7 @@ and never triggers automatic resubmission; check the conversation before proceed
 - **Responsive light UI.** Drag the desktop sidebar and review dividers to resize all three columns; widths are remembered in the current browser, and double-clicking restores defaults. Phones use navigation drawers, with a compact composer and system typography.
 - **Connection recovery.** Heartbeat deadlines, handshake timeouts, network/foreground recovery, and drafts stored per chat in the browser.
 - **Device notifications.** Opt into encrypted Web Push for completed tasks, pending questions and approvals, test delivery, and turn off this device from Settings.
-- **Automations.** Create scheduled tasks from the sidebar with a prompt, project, model, and reasoning effort; each run starts a new chat. Pause, edit, run now, and open the latest run's chat.
+- **Automations.** Manage Desktop's native tasks from the sidebar: create scheduled chats, edit, pause, delete, and open recent run links. Existing-chat heartbeats retain their native ownership; manual execution requires Desktop.
 - **Turn clock times.** Every turn shows its native start and end time (HH:MM:SS) beside the processed duration; running turns show only the start.
 - **Faster repeat entry.** Previously verified devices can open the empty workspace while login is checked in the background; tasks and chats still require server authentication.
 - **Self-hosted access.** Password login, signed HTTP-only sessions, local-only initial setup, and optional Cloudflare Tunnel.
@@ -775,19 +775,26 @@ model, and reasoning effort. Schedules mirror the native presets: hourly (at a
 chosen minute), daily, weekdays, weekly (on a chosen day), and a custom minute
 interval.
 
-One boundary matters: the native App Server protocol exposes no automation
-API, so Desktop's built-in automations cannot be read or synced through the
-bridge. Remote therefore schedules its own definitions on the server. They are
-stored as private runtime data in `data/automations.json` (keep it across
-updates, out of Git) and dispatched through the Desktop bridge with the same
-native calls the web client makes: start a thread, then start a turn with the
-prompt. Occurrences that fall due while Desktop is offline are not lost and
-are not replayed repeatedly; they collapse into a single run when the bridge
-returns. A run whose outcome cannot be proven (for example, the connection
-dropped mid-dispatch) is recorded as unknown, keeps any created chat link, and
-is never resent automatically. Remote automations and Desktop automations are
-invisible to each other. Scheduling uses the host's local time, and the Remote
-server must stay running.
+Remote connects to Desktop's native `localAutomations` host service, separately
+from App Server JSON-RPC. Both clients manage the same tasks. Desktop owns
+storage, scheduling, permission resolution and execution; Remote has no separate
+task file or scheduler and does not compose thread/turn requests to imitate a run.
+Stopping Remote does not change Desktop's schedules. Desktop must support and
+provide this service; otherwise the panel reports unavailable without fallback.
+
+The editor preserves existing native RRULE text, including timezones, and shows
+run times in the host timezone. Project targets use their native project ID and
+all roots; editing legacy tasks preserves their existing directory list.
+Native environment, notification and auto-archive settings survive edits.
+Existing-chat heartbeats can be edited, paused and deleted here, but their
+manual run button is disabled: use Desktop to confirm current chat permissions.
+
+While visible, the panel refreshes every 30 seconds and reads at most 200 recent
+run records, projecting links and status without archived message bodies.
+It does not claim a complete run archive. Writes are never automatically retried;
+after an uncertain failure, inspect Desktop's task/run state before trying again.
+Native list/history reads have been checked on Windows; real scheduled execution
+and physical iPhone/signed-in macOS acceptance remain separate checks.
 
 Each turn also shows its start and end clock time (HH:MM:SS, with month and
 day when not today) beside the processed duration; a running turn shows only

@@ -21,6 +21,14 @@
   border-bottom: 1px solid var(--line);
 }
 .automations-header strong { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 600; }
+.automations-header strong { flex: 1; }
+.automations-native { padding: 12px 20px 0; color: var(--muted); font-size: 13px; }
+.automations-dialog[open] { animation: automations-enter 160ms ease-out; }
+@keyframes automations-enter {
+  from { opacity: 0; transform: translateY(-5px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .automations-dialog[open] { animation: none; } }
 .automations-error {
   margin: 12px 20px 0;
   padding: 8px 10px;
@@ -63,7 +71,7 @@
   font-size: 12px;
   color: var(--muted);
 }
-.automation-status--active { color: var(--accent-strong); border-color: var(--accent-strong); }
+.automation-status--ACTIVE { color: var(--accent-strong); border-color: var(--accent-strong); }
 .automation-meta { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .automation-prompt {
   margin: 4px 0 0;
@@ -132,3 +140,13 @@
   color: #fff;
 }
 .automations-editor-actions > .automations-save:disabled { opacity: .6; }
+.automations-dialog button:disabled { cursor: default; opacity: .5; }
+@media (max-width: 680px), (pointer: coarse) {
+  .automations-dialog .icon-button { min-width: 44px; min-height: 44px; }
+  .automation-row { flex-wrap: wrap; }
+  .automation-main { flex-basis: 100%; }
+  .automation-actions { margin-left: auto; }
+  .automation-title { flex-wrap: wrap; }
+  .automations-editor-actions > button, .automation-link, .automations-new,
+  .automation-confirm-delete { min-height: 44px; }
+}
