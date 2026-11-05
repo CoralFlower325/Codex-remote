@@ -76,3 +76,9 @@ package. Runtime bundles retain dependency packages' copyright and license files
 
 Web backend updates use the MIT-licensed Node.js `undici` HTTP client to respect
 explicit host proxy environment settings. Its runtime package retains its license.
+
+Native automation transport bundles MIT-licensed Cap'n Web (`capnweb`); its full
+license is retained in the desktop relay bundle. RRULE editing and validation use
+BSD-3-Clause-licensed `rrule`, with its `tslib` dependency. Their unmodified license
+texts are distributed in `public/licenses/`. Neither package schedules Remote
+tasks; Desktop remains the automation owner.

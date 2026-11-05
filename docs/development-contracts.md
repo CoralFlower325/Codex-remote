@@ -71,6 +71,11 @@ Release and privacy policy remains in AGENTS.md.
   remain at least 44px. Command/output text uses the native ui-monospace stack,
   12px/18px, weight 400.
 - Use the desktop's owning App Server for immediate synchronization.
+- Native interfaces and actual Desktop behavior are authoritative. Automations
+  use Desktop's localAutomations host service, with no Remote scheduler/store
+  or composed thread/turn execution fallback. Preserve native targets, RRULEs,
+  environments and notification settings. Never guess live chat permissions,
+  replay uncertain writes or claim unsupported native capabilities.
 - Task list requests include all providers with `modelProviders: []` and
   `useStateDbOnly: true`. Follow native cursors; never assume one page is complete.
 - Keep history bounded and preserve reading position when prepending older pages.

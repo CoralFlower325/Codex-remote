@@ -178,11 +178,12 @@ svg { stroke-width: 1.8; }
 .markdown :not(pre) > code { border: 0; border-radius: 6px; padding: 1px 6px; font-size: .92em; }
 .markdown pre { margin-block: 14px; padding: 12px 14px; font-size: 12px; line-height: 20px; }
 .worked-divider { gap: 8px; margin: 0 0 20px; font-size: 14px; line-height: 21px; }
-.turn-disclosure { display: flex; width: fit-content; max-width: 100%; align-items: center; gap: 5px; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.turn-disclosure { display: flex; flex-wrap: wrap; width: fit-content; max-width: 100%; align-items: center; gap: 5px; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .turn-disclosure:hover { color: var(--ink); }
 .turn-disclosure > svg { flex-shrink: 0; }
 .turn-disclosure > .is-open { transform: rotate(90deg); }
 .turn-duration { font-variant-numeric: tabular-nums; }
+.turn-clock { font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .turn-activity > .activity-group + .message { margin-top: 20px; }
 .turn-activity + .message { margin-top: 20px; }
 .turn-activity > .activity-group:has(+ .activity-group) { margin-bottom: 0; }

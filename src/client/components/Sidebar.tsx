@@ -1,8 +1,8 @@
 import {
-  Archive, ArchiveRestore, Bell, ChevronRight, CircleAlert, FolderOpen, FolderPlus,
+  Archive, ArchiveRestore, Bell, CalendarClock, ChevronRight, CircleAlert, FolderOpen, FolderPlus,
   LoaderCircle, LogOut, MessageSquare, MessageSquareText, Plus, RefreshCw, Search, Wrench, X
 } from 'lucide-react';
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { displayThreadTitle } from '../remote-state';
 import type { RemoteState } from '../useRemote';
 import type { Thread } from '../types';
@@ -13,6 +13,9 @@ import { NotificationSettings } from './NotificationSettings';
 import { AppUpdateDialog } from './AppUpdateDialog';
 import { BackendUpdateDialog } from './BackendUpdateDialog';
 import { clearUpdateReceipt, takeUpdateReceipt } from '../app-update';
+import { PanelBoundary } from './PanelBoundary';
+
+const Automations = lazy(() => import('./Automations').then(module => ({ default: module.Automations })));
 
 interface SidebarProps {
   remote: RemoteState;
@@ -40,6 +43,7 @@ export function Sidebar({
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [automationsOpen, setAutomationsOpen] = useState(false);
   const [backendUpdateOpen, setBackendUpdateOpen] = useState(false);
   const [completedUpdate, setCompletedUpdate] = useState(takeUpdateReceipt);
   const [updateOpen, setUpdateOpen] = useState(() => Boolean(completedUpdate));
@@ -128,6 +132,9 @@ export function Sidebar({
         )}
         <button type="button" className="sidebar-row new-chat-row" onClick={() => onNewTask()}>
           <Plus size={16} /><span>新聊天</span>
+        </button>
+        <button type="button" className="sidebar-row new-chat-row" onClick={() => setAutomationsOpen(true)}>
+          <CalendarClock size={16} /><span>自动任务</span>
         </button>
       </div>
       <div className="sidebar-scroll">
@@ -233,6 +240,8 @@ export function Sidebar({
       )}
       {folderDialogOpen && <WorkspaceFolderDialog remote={remote} onSelect={onNewTask} onClose={() => setFolderDialogOpen(false)} />}
       {notificationsOpen && <NotificationSettings onClose={() => setNotificationsOpen(false)} />}
+      {automationsOpen && <PanelBoundary><Suspense fallback={null}><Automations remote={remote} onClose={() => setAutomationsOpen(false)}
+        onOpenThread={(threadId) => { onSelectThread(threadId); if (layout === 'mobile') onClose(); }} /></Suspense></PanelBoundary>}
       <BackendUpdateDialog open={backendUpdateOpen} onClose={() => setBackendUpdateOpen(false)} />
       {updateOpen && <AppUpdateDialog completed={completedUpdate} onClose={() => {
         setUpdateOpen(false); setCompletedUpdate(null); clearUpdateReceipt();

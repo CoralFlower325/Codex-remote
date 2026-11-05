@@ -46,6 +46,45 @@ export function elapsedTurnMs(turn: TurnTiming, nowMs: number, finalStartedAtMs?
   return endMs == null ? null : Math.max(0, endMs - turn.startedAt * 1000);
 }
 
+export interface TurnClockTimes {
+  startMs: number | null;
+  endMs: number | null;
+}
+
+/** Wall-clock anchors for one native turn, derived only from native timing. */
+export function turnClockTimes(turn: TurnTiming): TurnClockTimes {
+  const startedAt = turn.startedAt != null && Number.isFinite(turn.startedAt) ? turn.startedAt : null;
+  const completedAt = turn.completedAt != null && Number.isFinite(turn.completedAt) ? turn.completedAt : null;
+  const durationMs = turn.durationMs != null && Number.isFinite(turn.durationMs) && turn.durationMs >= 0 ? turn.durationMs : null;
+  const startMs = startedAt != null ? startedAt * 1000
+    : completedAt != null && durationMs != null
+      ? completedAt * 1000 - durationMs : null;
+  const endMs = turn.status === 'inProgress' ? null
+    : completedAt != null ? completedAt * 1000
+    : startMs != null && durationMs != null ? startMs + durationMs : null;
+  return { startMs, endMs };
+}
+
+const clockTimeFormat = new Intl.DateTimeFormat('zh-CN', {
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+});
+
+export function formatTurnClockTime(milliseconds: number, nowMs: number, timeZone?: string): string {
+  if (!Number.isFinite(milliseconds) || !Number.isFinite(nowMs)) return '';
+  if (timeZone) {
+    const date = new Intl.DateTimeFormat('zh-CN', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric' });
+    const clock = new Intl.DateTimeFormat('zh-CN', { timeZone,
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+    return `${date.format(milliseconds) === date.format(nowMs) ? '' : `${date.format(milliseconds)} `}${clock.format(milliseconds)}`;
+  }
+  const date = new Date(milliseconds);
+  const now = new Date(nowMs);
+  const sameDay = date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+  return sameDay ? clockTimeFormat.format(date)
+    : `${date.getMonth() + 1}月${date.getDate()}日 ${clockTimeFormat.format(date)}`;
+}
+
 const durationUnits = (['day', 'hour', 'minute', 'second'] as const).map(unit =>
   new Intl.NumberFormat('zh-CN', { style: 'unit', unit, unitDisplay: 'narrow' }));
 
