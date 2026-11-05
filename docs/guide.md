@@ -793,8 +793,9 @@ While visible, the panel refreshes every 30 seconds and reads at most 200 recent
 run records, projecting links and status without archived message bodies.
 It does not claim a complete run archive. Writes are never automatically retried;
 after an uncertain failure, inspect Desktop's task/run state before trying again.
-Native list/history reads have been checked on Windows; real scheduled execution
-and physical iPhone/signed-in macOS acceptance remain separate checks.
+Native list/history reads and temporary paused-task create/edit/delete have been
+checked on Windows; real scheduled execution and physical iPhone/signed-in macOS
+acceptance remain separate checks.
 
 Each turn also shows its start and end clock time (HH:MM:SS, with month and
 day when not today) beside the processed duration; a running turn shows only
