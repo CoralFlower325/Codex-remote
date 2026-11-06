@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Copy, FileText, GitFork, MoreHorizontal, Pencil } from 'lucide-react';
+import { CalendarClock, Check, ChevronRight, Copy, FileText, GitFork, MoreHorizontal, Pencil } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { memo, useEffect, useId, useMemo, useState } from 'react';
 import type { TimelineEntry, TimelineSection } from '../timeline-model';
@@ -8,6 +8,7 @@ import { itemKey } from '../remote-state';
 import { elapsedTurnMs, formatTurnClockTime, formatWorkDuration, turnClockTimes, type TurnTiming } from '../../shared/turn-timing';
 import { hostNow } from '../host-clock';
 import { userMessageDisplayText } from '../../shared/user-message';
+import { heartbeatResponseText, parseHeartbeatPrompt, parseHeartbeatResponse } from '../../shared/heartbeat';
 import { localImageSource } from '../markdown-media';
 import { copyText } from '../clipboard';
 import { ImagePreview } from './ImagePreview';
@@ -72,7 +73,7 @@ export const ResponseSection = memo(function ResponseSection({
     {answer.map(renderEntry)}
     {showError && <NativeTurnError turn={timing} />}
     {!active && finalIndex >= 0 && <ReplyActions text={section.entries.slice(finalIndex).flatMap(entry =>
-      entry.type === 'message' && entry.item.type === 'agentMessage' ? [entry.item.text] : []).join('\n\n')}
+      entry.type === 'message' && entry.item.type === 'agentMessage' ? [heartbeatResponseText(entry.item.text)] : []).join('\n\n')}
       turnId={section.turnId} onFork={onFork} onError={onError} />}
   </section>;
 });
@@ -160,13 +161,16 @@ export const MessageItem = memo(function MessageItem({ item, showFull = false, o
   const [expanded, setExpanded] = useState(false);
   if (item.type === 'userMessage') {
     const text = userMessageDisplayText(item.content ?? []);
+    const heartbeat = parseHeartbeatPrompt(text);
+    const displayText = heartbeat ? heartbeat.instructions : text;
     const images = (item.content ?? []).filter((entry) => entry.type === 'image' || entry.type === 'localImage');
     const documents = documentReferences(item.content ?? []);
-    const long = text.length > 900 && !showFull;
+    const long = displayText.length > 900 && !showFull;
     return (
       <article className="message message--user" data-user-key={itemKey(item)} data-turn-id={item.turnId}
         data-scroll-anchor={itemKey(item)}>
         <div className="user-message-body">
+          {heartbeat && <div className="automation-run-label"><CalendarClock size={12} aria-hidden="true" />由自动任务发送</div>}
           {images.length > 0 && <div className="user-message-attachments" aria-label={`${images.length} 个图片附件`}>
             {images.map((entry, index) => (
               <ImagePreview key={index} src={localImageSource(entry.path ?? entry.url)} alt={`图片附件 ${index + 1}`} />
@@ -176,7 +180,7 @@ export const MessageItem = memo(function MessageItem({ item, showFull = false, o
             {documents.map(document => <PreviewLink className="user-document-attachment" href={document.path}
               key={document.path} title={document.path}><FileText size={18} aria-hidden="true" /><span>{document.name}</span></PreviewLink>)}
           </div>}
-          {text && <div className="user-message-text">{long && !expanded ? `${text.slice(0, 800)}...` : text}</div>}
+          {displayText && <div className="user-message-text">{long && !expanded ? `${displayText.slice(0, 800)}...` : displayText}</div>}
           {long && (
             <button type="button" className="message-expand" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
               {expanded ? '收起消息' : '展开消息'}
@@ -193,11 +197,14 @@ export const MessageItem = memo(function MessageItem({ item, showFull = false, o
   }
 
   if (item.type === 'agentMessage') {
+    const heartbeat = parseHeartbeatResponse(item.text);
+    const quiet = heartbeat?.decision === 'DONT_NOTIFY';
     return (
-      <article className={`message message--agent${item.phase === 'commentary' ? ' message--commentary' : ''}`}
+      <article className={`message message--agent${item.phase === 'commentary' ? ' message--commentary' : ''}${quiet ? ' message--automation-quiet' : ''}`}
         data-scroll-anchor={itemKey(item)}>
+        {quiet && <div className="automation-run-label automation-run-label--agent"><CalendarClock size={12} aria-hidden="true" />自动任务 · 无需通知</div>}
         <div className="agent-message-body markdown">
-          <MarkdownText text={item.text} assistant />
+          <MarkdownText text={heartbeat ? heartbeat.message : item.text} assistant />
         </div>
       </article>
     );

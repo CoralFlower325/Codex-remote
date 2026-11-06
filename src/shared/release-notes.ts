@@ -2,6 +2,10 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.21', changes: [
+    '自动任务在继续现有聊天中触发的轮次按原生方式显示：触发消息只呈现任务指令正文并标注由自动任务发送，回复只呈现消息正文，不再露出 heartbeat 信封原文；标记为无需通知的回复以安静样式呈现。会话目录、复制回复与完成推送预览同步使用解开后的正文，原始消息不改写。',
+    '正式管理器仍为 0.2.3，无变更；管理器自更新、签名及公证继续暂停。'
+  ] },
   { version: '0.2.20', changes: [
     '新增自动任务：侧栏可创建、编辑、暂停、删除和立即运行，计划支持每小时、每天、工作日、每周和自定义间隔，并可指定项目、模型与推理强度。',
     '自动任务接入 Desktop 原生服务，两端管理同一份任务，存储、调度和执行由 Desktop 负责。保留原生项目全部根目录、计划、执行环境及通知设置；写入结果不确定时不重发。继续现有聊天的任务需在 Desktop 确认权限后手动运行。',

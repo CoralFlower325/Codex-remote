@@ -3,6 +3,7 @@ import path from 'node:path';
 import { Router, type ErrorRequestHandler } from 'express';
 import webPush from 'web-push';
 import { asyncQuestions, questionItemId } from '../shared/async-user-input.js';
+import { heartbeatResponseText } from '../shared/heartbeat.js';
 import type { PushSubscription, VapidKeys } from 'web-push';
 
 interface PushState {
@@ -47,7 +48,7 @@ function replyText(params: Record<string, unknown>): string | null {
       const candidate = recordValue(item);
       if (candidate?.type !== 'agentMessage' || (candidate.phase ?? null) !== phase) continue;
       const text = firstText(candidate.text);
-      if (text) return truncateReply(text);
+      if (text) return truncateReply(heartbeatResponseText(text));
     }
   }
   return null;

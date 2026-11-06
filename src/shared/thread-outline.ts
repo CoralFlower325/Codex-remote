@@ -1,4 +1,5 @@
 import type { TurnTiming } from './turn-timing.js';
+import { heartbeatResponseText, parseHeartbeatPrompt } from './heartbeat.js';
 import { userMessageText } from './user-message.js';
 
 export interface OutlineMessage {
@@ -25,10 +26,11 @@ export function outlineMessages(items: OutlineItem[]): OutlineMessage[] {
     if (item.type === 'userMessage') {
       const prompt = (item.content ?? []).filter(part => part.type === 'text')
         .map(part => userMessageText(part.text ?? '')).join('\n\n');
-      messages.push({ itemId: item.id, prompt: excerpt(prompt) || '\u56fe\u7247', reply: '' });
+      const heartbeat = parseHeartbeatPrompt(prompt);
+      messages.push({ itemId: item.id, prompt: excerpt(heartbeat ? heartbeat.instructions : prompt) || '\u56fe\u7247', reply: '' });
     } else if (item.type === 'agentMessage' && item.phase !== 'commentary' && item.phase !== 'partial_answer') {
       const message = messages.at(-1);
-      if (message) message.reply = excerpt(item.text ?? '');
+      if (message) message.reply = excerpt(heartbeatResponseText(item.text ?? ''));
     }
   }
   return messages;
