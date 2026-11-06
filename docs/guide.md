@@ -790,6 +790,13 @@ Native environment, notification and auto-archive settings survive edits.
 Existing-chat heartbeats can be edited, paused and deleted here, but their
 manual run button is disabled: use Desktop to confirm current chat permissions.
 
+Turns an automation starts in an existing chat render natively, like Desktop:
+the trigger shows only the task instructions with a sent-by-automation label,
+and the reply shows only its message; a reply marked as needing no
+notification renders quietly with a label. The conversation outline and
+completion push previews use the same unwrapped text. Stored messages are
+never rewritten.
+
 While visible, the panel refreshes every 30 seconds and reads at most 200 recent
 run records, projecting links and status without archived message bodies.
 It does not claim a complete run archive. Writes are never automatically retried;
