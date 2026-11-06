@@ -24,7 +24,11 @@ interface Pending {
   reject: (error: Error) => void;
 }
 
-const DEBUG_PORT = Number.parseInt(process.env.CODEX_DESKTOP_DEBUG_PORT?.trim() || '9229', 10);
+const DEFAULT_DEBUG_PORT = 9229;
+const configuredDebugPorts = (process.env.CODEX_DESKTOP_DEBUG_PORT ?? '')
+  .split(',').map(value => Number.parseInt(value.trim(), 10))
+  .filter(port => Number.isInteger(port) && port > 0 && port <= 65_535);
+const DEBUG_PORTS = [...new Set([...configuredDebugPorts, DEFAULT_DEBUG_PORT])];
 const BINDING = '__codexRemoteRelay';
 const INSTALL_RELAY = `(() => {
   if (!window.electronBridge?.sendMessageFromView) return false;
@@ -61,9 +65,13 @@ export class DesktopBridge extends EventEmitter {
   private approvals = new Map<string, { method: string; params: any; nativeId: string | number }>();
   private retryAfter = 0;
   private closed = false;
+  private readonly debugPorts: number[];
+  private activePort: number | null = null;
 
-  constructor(private readonly debugPort = DEBUG_PORT) {
+  constructor(debugPorts: number | number[] = DEBUG_PORTS, private readonly commandTimeoutMs = 5000) {
     super();
+    this.debugPorts = [...new Set(Array.isArray(debugPorts) ? debugPorts : [debugPorts])]
+      .filter(port => Number.isInteger(port) && port > 0 && port <= 65_535);
   }
 
   isConnected(): boolean {
@@ -76,8 +84,8 @@ export class DesktopBridge extends EventEmitter {
     if (this.isConnected()) return true;
     if (Date.now() < this.retryAfter) return false;
     this.connecting = this.open().catch(() => {
-      this.socket?.close();
-      this.socket = null;
+      const socket = this.socket;
+      if (socket) this.disconnectSocket(socket, new Error('Codex Desktop connection failed.'));
       this.retryAfter = Date.now() + 3000;
       return false;
     }).finally(() => { this.connecting = null; });
@@ -85,25 +93,41 @@ export class DesktopBridge extends EventEmitter {
   }
 
   private async open(): Promise<boolean> {
-    const response = await fetch(`http://127.0.0.1:${this.debugPort}/json/list`, {
-      signal: AbortSignal.timeout(1500)
-    });
-    const targets = await response.json() as DebugTarget[];
-    const page = targets.find((target) => target.type === 'page' && target.url === 'app://-/index.html');
-    if (!page) return false;
+    const orderedPorts = this.activePort
+      ? [this.activePort, ...this.debugPorts.filter(port => port !== this.activePort)]
+      : this.debugPorts;
+    let port: number | null = null;
+    let page: DebugTarget | undefined;
+    for (const candidate of orderedPorts) {
+      try {
+        const response = await fetch(`http://127.0.0.1:${candidate}/json/list`, {
+          signal: AbortSignal.timeout(1500)
+        });
+        if (!response.ok) continue;
+        const targets = await response.json() as DebugTarget[];
+        const pages = targets.filter(target => target.type === 'page' && target.url.includes('app://-/index.html'));
+        const match = pages.find(target => target.url === 'app://-/index.html') ??
+          pages.find(target => !target.url.includes('spotlight') && !target.url.includes('avatar-overlay')) ??
+          pages[0];
+        if (!match) continue;
+        port = candidate;
+        page = match;
+        break;
+      } catch {
+        continue;
+      }
+    }
+    if (port === null || !page) return false;
+    if (this.activePort !== port) {
+      console.debug('[desktop-bridge] debug target selected', { port, url: page.url });
+    }
+    this.activePort = port;
     const socket = new WebSocket(page.webSocketDebuggerUrl);
     this.socket = socket;
     socket.on('message', (raw) => this.handleMessage(JSON.parse(String(raw))));
     socket.on('error', () => socket.close());
     socket.on('close', () => {
-      if (this.socket !== socket) return;
-      this.socket = null;
-      const error = new Error('Codex Desktop connection closed.');
-      for (const pending of [...this.commands.values(), ...this.requests.values()]) pending.reject(error);
-      this.commands.clear();
-      this.requests.clear();
-      this.approvals.clear();
-      this.emit('disconnected');
+      this.disconnectSocket(socket, new Error('Codex Desktop connection closed.'));
     });
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => { socket.terminate(); reject(new Error('Desktop connection timed out.')); }, 2000);
@@ -201,7 +225,7 @@ export class DesktopBridge extends EventEmitter {
     }
   }
 
-  private async evaluate(expression: string, timeoutMs = 5000): Promise<any> {
+  private async evaluate(expression: string, timeoutMs = this.commandTimeoutMs): Promise<any> {
     const result = await this.call('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, timeoutMs);
     if (result.exceptionDetails) {
       throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
@@ -211,14 +235,35 @@ export class DesktopBridge extends EventEmitter {
 
   private call(method: string, params: unknown = {}, timeoutMs = 5000): Promise<any> {
     const id = ++this.nextId;
+    const socket = this.socket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error('Codex Desktop is not connected.'));
+    }
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.commands.delete(id); reject(new Error(`Desktop command timed out: ${method}`)); }, timeoutMs);
+      const timer = setTimeout(() => {
+        this.commands.delete(id);
+        const error = new Error(`Desktop command timed out: ${method}`);
+        this.disconnectSocket(socket, error);
+        reject(error);
+      }, timeoutMs);
       this.commands.set(id, {
         resolve: (value) => { clearTimeout(timer); resolve(value); },
         reject: (error) => { clearTimeout(timer); reject(error); }
       });
-      this.socket!.send(JSON.stringify({ id, method, params }));
+      socket.send(JSON.stringify({ id, method, params }));
     });
+  }
+
+  private disconnectSocket(socket: WebSocket, error: Error): void {
+    if (this.socket !== socket) return;
+    this.socket = null;
+    try { socket.close(); } catch { /* Already closed. */ }
+    for (const pending of [...this.commands.values(), ...this.requests.values()]) pending.reject(error);
+    this.commands.clear();
+    this.requests.clear();
+    this.approvals.clear();
+    console.debug('[desktop-bridge] disconnected', { message: error.message });
+    this.emit('disconnected');
   }
 
   private handleMessage(message: any): void {

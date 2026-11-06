@@ -641,7 +641,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     };
     resume();
     return () => { stopped = true; window.clearTimeout(retryTimer); };
-  }, [authenticated, connected, activeThreadId, selectionRevision, showArchived, rpc, openThread]);
+  }, [authenticated, bridgeStatus, connected, activeThreadId, selectionRevision, showArchived, rpc, openThread]);
 
   const prepareEarlierHistory = useCallback(() => {
     const threadId = activeThreadRef.current;

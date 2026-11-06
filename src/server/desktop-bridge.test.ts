@@ -12,7 +12,8 @@ const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); });
 
 async function desktop(pendingRequests: unknown[] = [],
-  automationReply?: (socket: WebSocket, command: any) => void) {
+  automationReply?: (socket: WebSocket, command: any) => void,
+  options: { commandTimeoutMs?: number; hangRequests?: number; additionalPorts?: number[] } = {}) {
   const commands: any[] = [];
   const server = http.createServer((req, res) => {
     if (req.url === '/overlay') { res.writeHead(500); res.end(); return; }
@@ -26,6 +27,8 @@ async function desktop(pendingRequests: unknown[] = [],
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as AddressInfo).port;
   let client: WebSocket;
+  let connected = false;
+  let remainingHangs = options.hangRequests ?? 0;
   const relay = (data: unknown) => client.send(JSON.stringify({
     method: 'Runtime.bindingCalled', params: { name: '__codexRemoteRelay', payload: JSON.stringify(data) }
   }));
@@ -35,12 +38,17 @@ async function desktop(pendingRequests: unknown[] = [],
       const command = JSON.parse(String(raw));
       commands.push(command);
       const expression = command.params?.expression ?? '';
+      if (connected && remainingHangs > 0 && expression.startsWith('window.electronBridge.sendMessageFromView(')) {
+        remainingHangs--;
+        return;
+      }
       if (expression.includes('window.__codexRemoteAutomationRequest(') && automationReply) {
         automationReply(socket, command); return;
       }
       socket.send(JSON.stringify({ id: command.id, result: { result: {
         value: expression.includes('window.__codexRemotePendingRequests ??=') ? pendingRequests : true
       } } }));
+      if (expression.includes('window.__codexRemotePendingRequests ??=')) connected = true;
       if (expression.startsWith('window.electronBridge.sendMessageFromView(')) {
         const message = JSON.parse(expression.slice('window.electronBridge.sendMessageFromView('.length, -1));
         if (message.type === 'mcp-request') {
@@ -55,7 +63,7 @@ async function desktop(pendingRequests: unknown[] = [],
       }
     });
   });
-  const bridge = new DesktopBridge(port);
+  const bridge = new DesktopBridge([...(options.additionalPorts ?? []), port], options.commandTimeoutMs);
   cleanup.push(async () => {
     bridge.shutdown();
     for (const socket of sockets.clients) socket.terminate();
@@ -65,6 +73,22 @@ async function desktop(pendingRequests: unknown[] = [],
 }
 
 describe('desktop RPC transport', () => {
+  it('falls back to the standard debug port when the configured port is stale', async () => {
+    const { bridge } = await desktop([], undefined, { additionalPorts: [1] });
+    expect(await bridge.connect()).toBe(true);
+  });
+
+  it('reconnects after an OPEN DevTools socket stops answering commands', async () => {
+    const { bridge } = await desktop([], undefined, { commandTimeoutMs: 100, hangRequests: 1 });
+    expect(await bridge.connect()).toBe(true);
+    await expect(bridge.request('thread/read', { threadId: 'stale' }))
+      .rejects.toThrow('Desktop command timed out: Runtime.evaluate');
+    expect(bridge.isConnected()).toBe(false);
+    expect(await bridge.connect()).toBe(true);
+    expect(await bridge.request('thread/read', { threadId: 'recovered' })).toEqual({ threadId: 'recovered' });
+    expect(bridge.isConnected()).toBe(true);
+  });
+
   it('shares one connection for concurrent requests and propagates native errors', async () => {
     const { bridge } = await desktop();
     expect(await Promise.all([bridge.connect(), bridge.connect()])).toEqual([true, true]);

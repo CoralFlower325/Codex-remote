@@ -288,12 +288,13 @@ cp .env.example .env
 | `CODEX_BINARY` | 自动发现 | 显式指定内置 Codex CLI 路径 |
 | `CODEX_HOME` | `~/.codex` | Codex 状态和配置目录 |
 | `CODEX_WORKDIR` | 用户主目录 | 默认工作目录 |
-| `CODEX_DESKTOP_DEBUG_PORT` | `9229` | 本地桌面调试端口 |
+| `CODEX_DESKTOP_DEBUG_PORT` | `9229` | 首选本地桌面调试端口，也可用逗号分隔多个候选项 |
 | `TRUST_PROXY` | `1` | 仅信任回环代理；`0` 关闭；其他值为逗号分隔的可信 IP/CIDR |
 | `LIBREOFFICE_PATH` | 探测标准安装位置 | 可选的主机 LibreOffice 程序路径，用于 Office 预览 |
 | `SESSION_DAYS` | `30` | 浏览器会话有效天数 |
 
 使用本地隧道或反向代理时，应保持回环监听。Windows 隧道助手默认转发到 `4545`，改端口时需要同时指定其 `-LocalUrl` 参数。
+配置的桌面调试端口失效时，Remote 还会探测标准端口 `9229`。
 
 Windows 会依次探测应用包、独立安装目录和 `PATH` 中的 CLI；macOS 会探测支持的应用位置、独立安装目录及 `PATH`。发现失败时可设置 `CODEX_BINARY`。
 

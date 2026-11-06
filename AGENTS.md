@@ -26,6 +26,10 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 - Use only Desktop's existing App Server. Never start a standalone fallback,
   stop Desktop, bypass native writer locks or replay uncertain model,
   approval or archive actions. Bridge loss stays offline and reconnects.
+- Probe comma-separated `CODEX_DESKTOP_DEBUG_PORT` candidates plus standard
+  `9229`; prefer the main Codex window over overlays. A command timeout on an
+  OPEN DevTools socket must discard that socket and reconnect instead of leaving
+  every later request attached to a half-dead CDP connection.
 - Follow the existing light, compact native UI. Keep desktop and mobile
   layouts distinct; do not weaken the detailed development contracts.
 - Retain backups, evidence, old chunks and paused AU work. Inventory cleanup
