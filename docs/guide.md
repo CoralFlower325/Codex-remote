@@ -301,12 +301,13 @@ cp .env.example .env
 | `CODEX_BINARY` | Auto-detected | Explicit path to the bundled Codex CLI |
 | `CODEX_HOME` | `~/.codex` | Codex state and configuration directory |
 | `CODEX_WORKDIR` | Home directory | Default working directory |
-| `CODEX_DESKTOP_DEBUG_PORT` | `9229` | Local Desktop debug endpoint |
+| `CODEX_DESKTOP_DEBUG_PORT` | `9229` | Preferred Desktop debug endpoint; comma-separated candidates are also accepted |
 | `TRUST_PROXY` | `1` | Trust loopback proxies only; `0` disables trust; otherwise comma-separated trusted IPs/CIDRs |
 | `LIBREOFFICE_PATH` | Standard install detection | Optional host LibreOffice executable for Office previews |
 | `SESSION_DAYS` | `30` | Browser session lifetime |
 
 Keep `HOST` on loopback when using a local tunnel or reverse proxy. The Windows tunnel helper assumes port `4545` unless you pass its `-LocalUrl` parameter.
+Remote also probes the standard Desktop port `9229` when the configured endpoint is stale.
 
 Codex CLI detection checks Windows app packages, local standalone installations, and `PATH`. On macOS it checks supported app locations, the local standalone installation, and `PATH`. Set `CODEX_BINARY` if auto-detection does not find your installation.
 
