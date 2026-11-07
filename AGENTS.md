@@ -44,7 +44,7 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   An explicit user version takes precedence.
   Remote and the desktop manager have independent versions. Remote's version lives
   in the root package/lockfile; the manager's lives in desktop/package/lockfile.
-  The stable manager is 0.2.3 with Remote 0.2.19; installers remain in
+  The stable manager is independently versioned at 0.2.3; installers remain in
   v0.2.17. Remote-only changes must not increment, rebuild
   or install the manager. Increment the manager patch only for its own changes.
   Manager self-update is paused as 0.2.0AU on archive/manager-0.2.0AU;
