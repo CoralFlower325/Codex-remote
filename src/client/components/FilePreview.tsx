@@ -1,62 +1,70 @@
 import { ArrowUpRight, Check, Copy, Download, RefreshCw, WrapText } from 'lucide-react';
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import hljs from 'highlight.js/lib/common';
-import type { PreviewFile, PreviewTarget } from '../../shared/file-preview';
-import { api } from '../api';
+import type { PreviewTarget } from '../../shared/file-preview';
+import { previewVersionUrl } from '../../shared/file-preview';
 import { copyText } from '../clipboard';
 import { previewLabel } from '../preview-links';
 import { MarkdownText } from './MarkdownText';
 import { PreviewLinks } from './PreviewLinks';
-import { previewDocument } from '../preview-rendering';
+import { useFilePreview } from '../useFilePreview';
 import { PathText, CopyPathButton } from './PathText';
+import type { PdfReading } from './PdfPreview';
 
 const PdfPreview = lazy(() => import('./PdfPreview'));
 
-export default function FilePreview({ target, active }: { target: PreviewTarget; active: boolean }) {
-  const [file, setFile] = useState<PreviewFile | null>(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+export default function FilePreview({ target, active, request = 0 }: {
+  target: PreviewTarget; active: boolean; request?: number
+}) {
+  const [actionError, setError] = useState('');
   const [revision, setRevision] = useState(0);
   const [source, setSource] = useState(false);
   const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [html, setHtml] = useState<string | null>(null);
   const [mediaLoading, setMediaLoading] = useState(true);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const htmlRef = useRef<HTMLIFrameElement>(null);
+  const htmlReading = useRef({ top: 0, left: 0 });
+  const pdfReading = useRef<PdfReading>({ page: 1, zoom: 'fit', top: 0, left: 0 });
   const path = target.kind === 'file' ? target.path : '';
+  const { file, html, error: readError, loading } = useFilePreview(path, active, `${request}:${revision}`);
+  const error = actionError || readError;
   const targetKey = target.kind === 'file' ? `file:${target.path}:${target.line ?? ''}` : `url:${target.url}`;
+  const reading = useRef({ top: 0, left: 0, following: false });
+  const navigated = useRef('');
   useEffect(() => {
-    if (!active) return;
-    if (!path) { setLoading(false); return; }
-    const controller = new AbortController();
-    setLoading(true); setError(''); setFile(null); setHtml(null); setMediaLoading(true);
-    void api<PreviewFile>(`/api/file-preview?${new URLSearchParams({ path })}`, {
-      cache: 'no-store', signal: controller.signal, timeoutMs: 15_000
-    }).then(async result => {
-      if (result.kind === 'html' && result.previewUrl) {
-        const url = new URL(result.previewUrl, window.location.href).href;
-        const content = await api<string>(url, { cache: 'no-store', signal: controller.signal, timeoutMs: 15_000 });
-        if (controller.signal.aborted) return;
-        setHtml(previewDocument(content, url));
-      }
-      if (controller.signal.aborted) return;
-      setFile(result); setLoading(false);
-    })
-      .catch(reason => {
-        if (!controller.signal.aborted) { setError(reason.message); setLoading(false); }
-      });
-    return () => controller.abort();
-  }, [active, path, revision, target]);
-  useEffect(() => { setSource(false); }, [targetKey]);
+    setSource(false); setError('');
+    navigated.current = '';
+  }, [targetKey]);
+  useLayoutEffect(() => {
+    const node = bodyRef.current;
+    if (!node) return;
+    node.scrollTop = reading.current.following ? node.scrollHeight : reading.current.top;
+    node.scrollLeft = reading.current.left;
+  }, [file, active]);
+  const line = target.kind === 'file' ? target.line : undefined;
+  const loaded = Boolean(file);
+  const navigationKey = `${targetKey}:${request}`;
   useEffect(() => {
-    if (target.kind !== 'file' || !target.line || !file) return;
+    if (!active || file?.kind !== 'html') return;
+    const remember = (event: MessageEvent) => {
+      if (event.source !== htmlRef.current?.contentWindow || event.data?.type !== 'preview-scroll') return;
+      const { top, left } = event.data;
+      if (Number.isFinite(top) && Number.isFinite(left)) htmlReading.current = { top, left };
+    };
+    window.addEventListener('message', remember);
+    return () => window.removeEventListener('message', remember);
+  }, [active, file?.kind]);
+  useEffect(() => {
+    if (!active || !line || !loaded || navigated.current === navigationKey) return;
+    navigated.current = navigationKey;
     setSource(true);
     const frame = requestAnimationFrame(() => {
-      const node = bodyRef.current?.querySelector<HTMLElement>(`[data-line="${target.line}"]`);
+      const node = bodyRef.current?.querySelector<HTMLElement>(`[data-line="${line}"]`);
       node?.scrollIntoView({ block: 'center' });
     });
     return () => cancelAnimationFrame(frame);
-  }, [target, file]);
+  }, [active, line, loaded, navigationKey]);
   useEffect(() => {
     if (!copied) return;
     const timer = window.setTimeout(() => setCopied(false), 1500);
@@ -80,7 +88,7 @@ export default function FilePreview({ target, active }: { target: PreviewTarget;
             {copied ? <Check size={15} /> : <Copy size={15} />}</button>
         </>}
         <button type="button" className="icon-button" aria-label="刷新预览" title="刷新预览"
-          onClick={() => setRevision(value => value + 1)}><RefreshCw size={15} /></button>
+          onClick={() => { setError(''); setRevision(value => value + 1); }}><RefreshCw size={15} /></button>
         {href && <>
           {target.kind === 'file' && <a className="icon-button" href={href} download={file?.name} aria-label="下载文件" title="下载文件"><Download size={15} /></a>}
           <a className="icon-button" href={href} target="_blank" rel="noreferrer" aria-label="在新标签页打开" title="在新标签页打开"><ArrowUpRight size={15} /></a>
@@ -92,7 +100,12 @@ export default function FilePreview({ target, active }: { target: PreviewTarget;
     {error && <div className="file-preview-error" role="alert">{error}</div>}
     {!active ? null : loading ? <div className="file-preview-loading" role="status" aria-label="正在加载预览">
       <div className="message-skeleton message-skeleton--long" /><div className="message-skeleton message-skeleton--medium" />
-    </div> : <div className={`file-preview-body${wrap ? ' file-preview--wrap' : ''}`} ref={bodyRef}>
+    </div> : <div className={`file-preview-body${wrap ? ' file-preview--wrap' : ''}`} ref={bodyRef}
+      onScroll={event => {
+        const node = event.currentTarget;
+        reading.current = { top: node.scrollTop, left: node.scrollLeft,
+          following: node.scrollHeight > node.clientHeight && node.scrollHeight - node.clientHeight - node.scrollTop < 8 };
+      }}>
       {target.kind === 'url' ? <iframe key={revision} title={previewLabel(target)} src={target.url}
         sandbox="allow-scripts allow-forms allow-popups" referrerPolicy="no-referrer" />
         : file && (source || file.kind === 'text') && text !== undefined ? <SourceText
@@ -100,15 +113,18 @@ export default function FilePreview({ target, active }: { target: PreviewTarget;
         : file?.kind === 'markdown' ? <PreviewLinks cwd={file.path.replace(/[\\/][^\\/]+$/, '')}>
           <div className="file-preview-markdown markdown"><MarkdownText text={text ?? ''} preserveDocument /></div>
         </PreviewLinks>
-        : file?.kind === 'html' && html !== null ? <iframe key={revision} title={file.name} srcDoc={html}
+        : file?.kind === 'html' && html !== null ? <iframe key={`${revision}:${file.revision ?? html}`} ref={htmlRef} title={file.name} srcDoc={html}
+          onLoad={() => htmlRef.current?.contentWindow?.postMessage({
+            type: 'preview-restore-scroll', ...htmlReading.current
+          }, '*')}
           sandbox="allow-scripts" referrerPolicy="no-referrer" />
         : file?.kind === 'pdf' || file?.kind === 'office' ? <Suspense fallback={<div className="file-preview-loading" role="status">正在加载文档</div>}>
-          <PdfPreview url={file.kind === 'office' ? file.previewUrl! : file.contentUrl} name={file.name}
-            office={file.kind === 'office'} />
+          <PdfPreview url={previewVersionUrl(file.kind === 'office' ? file.previewUrl! : file.contentUrl, `${file.revision ?? ''}-${revision}`)} name={file.name}
+            office={file.kind === 'office'} view={pdfReading} />
         </Suspense>
         : file?.kind === 'image' ? <div className="file-preview-image">
           {mediaLoading && <span role="status">正在加载图片</span>}
-          <img src={file.contentUrl} alt={file.name} onLoad={() => setMediaLoading(false)}
+          <img src={previewVersionUrl(file.contentUrl, `${file.revision ?? ''}-${revision}`)} alt={file.name} onLoad={() => setMediaLoading(false)}
             onError={() => { setMediaLoading(false); setError('图片加载失败，请刷新预览'); }} /></div>
         : file?.kind === 'binary' ? <div className="inspector-empty"><Download size={24} />
           <a href={file.contentUrl} download={file.name}>下载 {file.name}</a></div> : null}

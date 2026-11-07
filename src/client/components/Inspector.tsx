@@ -44,7 +44,7 @@ export function Inspector({ open, thread, items, onClose, layout, view, remote, 
   const [tab, setTab] = useState<string>(view);
   const [openedTools, setOpenedTools] = useState<string[]>(view === 'launcher' ? [] : [view]);
   const [expanded, setExpanded] = useState(false);
-  const [previews, setPreviews] = useState<Array<{ id: string; target: PreviewTarget }>>([]);
+  const [previews, setPreviews] = useState<Array<{ id: string; target: PreviewTarget; request: number }>>([]);
   const inspectorRef = useRef<HTMLElement>(null);
   useEffect(() => { setTab(view); }, [view]);
   useEffect(() => {
@@ -62,7 +62,8 @@ export function Inspector({ open, thread, items, onClose, layout, view, remote, 
     const target = previewRequest.target;
     const id = `preview-${encodeURIComponent(target.kind === 'file' ? target.path : target.url)}`;
     setPreviews(current => current.some(preview => preview.id === id)
-      ? current.map(preview => preview.id === id ? { id, target } : preview) : [...current, { id, target }]);
+      ? current.map(preview => preview.id === id ? { id, target, request: previewRequest.id } : preview)
+      : [...current, { id, target, request: previewRequest.id }]);
     setTab(id);
   }, [previewRequest]);
   useEffect(() => {
@@ -206,7 +207,7 @@ export function Inspector({ open, thread, items, onClose, layout, view, remote, 
           role="tabpanel" id={`file-${preview.id}`} aria-labelledby={`inspector-tab-${preview.id}`}>
           <PanelBoundary key={preview.id}>
             <Suspense fallback={<div className="file-preview-loading" role="status" aria-label="正在加载预览"><div className="message-skeleton message-skeleton--long" /></div>}>
-              <FilePreview target={preview.target} active={open && tab === preview.id} />
+              <FilePreview target={preview.target} active={open && tab === preview.id} request={preview.request} />
             </Suspense>
           </PanelBoundary>
         </div>)}

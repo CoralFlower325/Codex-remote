@@ -316,7 +316,7 @@ app.get(
 app.use(threadRouter({ requireAuth, codexBridge, workspaceSnapshots, pushNotifications,
   localImages, recordQuestions, reportImageFailure, config }));
 
-app.use('/api/file-preview', filePreviewRouter(requireAuth));
+app.use('/api/file-preview', filePreviewRouter(requireAuth, undefined, isAuthenticated));
 app.use('/api/attachments', documentAttachmentRouter(requireAuth, (req, res, next) => {
   if (!req.get('origin') || !allowedOrigins().includes(req.get('origin')!)) {
     res.status(403).json({ error: '不受信任的上传来源。' }); return;

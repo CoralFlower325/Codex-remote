@@ -29,6 +29,8 @@ Remote connects to **Codex Desktop's own App Server**, so your browser and Deskt
 
 Replies render inline and display LaTeX formulas, with horizontal scrolling for
 long equations. The formula renderer and fonts load only when needed.
+The active file preview follows host file saves while preserving reading position;
+PDF and Office updates retain page and zoom. Hidden previews stop watching.
 
 <details>
 <summary><strong>Phone workspace and change review</strong></summary>

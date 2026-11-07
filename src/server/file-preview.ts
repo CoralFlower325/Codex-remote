@@ -1,10 +1,11 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { Router, type RequestHandler, type Response } from 'express';
+import { Router, type Request, type RequestHandler, type Response } from 'express';
 import type { PreviewFile } from '../shared/file-preview.js';
 import { normalizePreviewPath, previewContentUrl } from '../shared/file-preview.js';
 import { OfficePreviews, OfficePreviewError, officeExtensions } from './office-preview.js';
+import { previewRevision, previewWatchRouter } from './preview-watch.js';
 
 const MAX_TEXT_BYTES = 1024 * 1024;
 const images = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.avif', '.svg']);
@@ -17,7 +18,7 @@ export async function readPreviewFile(requestedPath: string): Promise<PreviewFil
   if (!info.isFile()) throw new Error('The selected path is not a file.');
   const extension = path.extname(filePath).toLowerCase();
   const result: PreviewFile = { path: filePath, name: path.basename(filePath), kind: 'text',
-    contentUrl: previewContentUrl(filePath), truncated: false };
+    contentUrl: previewContentUrl(filePath), revision: previewRevision(info), truncated: false };
   if (images.has(extension)) return { ...result, kind: 'image' };
   if (extension === '.pdf') return { ...result, kind: 'pdf' };
   if (officeExtensions.has(extension)) return { ...result, kind: 'office',
@@ -34,7 +35,8 @@ export async function readPreviewFile(requestedPath: string): Promise<PreviewFil
   } finally { await file.close(); }
 }
 
-export function filePreviewRouter(authenticate: RequestHandler, office = new OfficePreviews()): Router {
+export function filePreviewRouter(authenticate: RequestHandler, office = new OfficePreviews(),
+  authorized: (req: Request) => boolean = () => true): Router {
   const router = Router();
   const grants = new Map<string, { directory: string; expires: number }>();
   const sendContent = (res: Response, filePath: string) => {
@@ -65,6 +67,7 @@ export function filePreviewRouter(authenticate: RequestHandler, office = new Off
     sendContent(res, realPath);
   });
   router.use(authenticate);
+  router.use(previewWatchRouter(authorized));
   router.get('/document', async (req, res) => {
     try {
       const pdf = await office.read(normalizePreviewPath(typeof req.query.path === 'string' ? req.query.path : ''));

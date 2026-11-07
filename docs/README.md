@@ -71,6 +71,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 | [代码整理](refactor-acceptance.md) | v0.1.16 基线、独立差分与桌面/手机界面对照 |
 | [Startup](startup-acceptance.md) | Shell, authentication, tasks, chat and connection phases / 启动各阶段 |
 | [History](history-loading-acceptance.md) | Paging, anchors and side chats / 历史分页、阅读锚点与侧聊 |
+| [实时文件预览](live-preview-acceptance.md) | 0.2.22 候选：文件变更、阅读位置、PDF 状态、私有推送及八组视口；真机步骤 |
 | [Previews](session-preview-acceptance.md) | Isolation, attachments and rendering limits / 预览隔离、附件与渲染限制 |
 | [文档预览与可靠性](document-preview-acceptance.md) | 0.2.8 主机 Office 转换、原文件下载、窄屏停止与错误恢复 |
 | [输入草稿与布局](composer-layout-acceptance.md) | 0.2.5 会话草稿、图片预览、末条间距与历史锚点回归 |

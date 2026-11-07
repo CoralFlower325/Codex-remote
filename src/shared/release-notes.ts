@@ -2,6 +2,11 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.22', changes: [
+    '侧栏文件预览随主机文件保存自动更新，合并连续写入，支持原子替换及删除后重建。隐藏标签或页面进入后台时停止监听，返回后读取最新内容。',
+    '后台刷新保留文本和 Markdown 的阅读位置与源码模式；PDF 和 Office 保留页码、缩放，渲染完成后替换画面。读取失败保留上一版并显示错误，支持重试。',
+    '正式管理器仍为 0.2.3，无变更；管理器自更新、签名与公证继续暂停。'
+  ] },
   { version: '0.2.21', changes: [
     '自动任务触发消息显示指令正文并标注来源；回复兼容原生正文、XML 代码块与 CDATA，不再露出 heartbeat 信封，流式接收时隐藏未完成标签。会话目录与复制回复保留可见正文，完成推送使用通知摘要；无需通知的回复安静呈现并停止完成推送。原始消息不改写。',
     '正式管理器仍为 0.2.3，无变更；管理器自更新、签名及公证继续暂停。'

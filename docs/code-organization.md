@@ -17,6 +17,7 @@ This map describes ownership boundaries. It does not change product behavior.
 | Updates | `release.mjs`, `update-inputs.mjs`, `update-prepare.mjs` | Release lookup, input validation and preparation; `updater.mjs` installs; `update-transaction.mjs` owns crash recovery |
 | Manager rendering | `desktop/renderer/main.tsx` | `contract.ts` declares the renderer bridge and state |
 | Runtime delivery | `scripts/package-runtime.mjs` | `runtime-files.mjs` filters staging; `archive-runtime-symbols.mjs` keeps separate CI diagnostics |
+| Live file previews | `src/client/useFilePreview.ts` | `server/preview-watch.ts` owns scoped authenticated revision events; `FilePreview.tsx` and `PdfPreview.tsx` preserve reading state |
 
 Main-chat bounded history, streaming batches and selection cancellation remain
 distinct from side/subagent projections. A side tab closes its ephemeral native
