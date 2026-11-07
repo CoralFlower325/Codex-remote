@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-11-03.
+Last reconciled: 2026-11-07.
 
 ## Authority
 
@@ -15,13 +15,20 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-Remote 0.2.19 pairs with unchanged manager 0.2.3; manager installers remain
-in v0.2.17. Tag v0.2.19 identifies functional source `ec7c2c1a50aa12041b96bcc3856cd34d2514c425`.
-Three-platform CI 41607126694 and two-platform runtime CI 41607561784 pass;
-four formal attachments and distribution copies match complete size, SHA-256
-and manifest source. The installed origin and public shell report 0.2.19,
-matching assets and ready Desktop transport. Both Workers are synchronized.
-The manager plan passes and packaging is skipped because its version is unchanged.
+Remote 0.2.21 pairs with unchanged manager 0.2.3; manager installers remain
+in v0.2.17. Tag v0.2.21 identifies functional source
+`9a58ada18c9b13b6a4edfaa238212e1104f576e1`.
+The [PR #10 review](pr-10-review.md) records functional checks;
+the [download procedure](update-downloads.md#维护分发服务) records the current
+release and distribution verification. Release publication, download distribution
+and host installation are separate states.
+
+Read-only checks on 2026-11-07 still found Remote 0.2.19 on the Windows
+installation and its public endpoint, both using build
+`assets/index-UWut_q-j.js` and ready Desktop transport. This release closeout
+does not install or restart that host or update its frontend edge.
+Consult the installation's own acceptance record before a separately authorized
+upgrade. Never describe published 0.2.21 as already installed.
 
 Remote now uses only Desktop's existing App Server. Bridge loss stays offline
 and reconnects; it must never start a standalone server or replay uncertain
