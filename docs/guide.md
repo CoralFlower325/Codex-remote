@@ -630,6 +630,20 @@ Website URLs use the browser's network. Host-only `localhost` development
 servers are not proxied to a remote phone by this feature.
 
 Only the active preview loads content; hiding it releases its document renderer.
+The active local file subscribes to host changes, including atomic save and
+delete/recreate. Changes coalesce into reads at most once per 400ms (2s for Office);
+this is not a guarantee of conversion or network latency. Background refresh
+keeps the last readable version, source/wrap mode and scroll position.
+Text readers already at the bottom follow appended content; other readers stay
+in place. PDF/Office retain page and zoom, clamp a removed page to the new last
+page, and swap the canvas after rendering. HTML reloads its sandbox and restores
+scroll; scripts, forms and other page state restart. Only the selected file itself
+is watched, not linked assets or external URLs. Hidden tabs and background pages
+stop subscriptions and abandoned reads; reopening checks for changes.
+Errors retain the last version with a visible message. Transient read failures
+retry up to three times; Refresh retries explicitly. Deleting and restoring the
+file recovers automatically. Authentication revocation closes the event stream.
+Events contain revision identifiers only and do not cache file content.
 Local HTML is fetched before iframe rendering so request failures are visible,
 and reopening renews its resource grant. Preview metadata and HTML reads time out
 after 15 seconds; Refresh retries them. Failed preview modules show a reload

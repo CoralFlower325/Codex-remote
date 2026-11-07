@@ -23,12 +23,15 @@ the [download procedure](update-downloads.md#维护分发服务) records the cur
 release and distribution verification. Release publication, download distribution
 and host installation are separate states.
 
-Read-only checks on 2026-11-07 still found Remote 0.2.19 on the Windows
-installation and its public endpoint, both using build
-`assets/index-UWut_q-j.js` and ready Desktop transport. This release closeout
-does not install or restart that host or update its frontend edge.
-Consult the installation's own acceptance record before a separately authorized
-upgrade. Never describe published 0.2.21 as already installed.
+The separately authorized Windows upgrade on 2026-11-07 installed formal Remote
+0.2.21 and its matching public frontend. Local/public checks identify
+`assets/index-BzEoI_da.js` and ready Desktop transport. Private data and old chunks
+remain preserved; the manager stays 0.2.3. Consult the installation's own current
+acceptance record for deployment evidence.
+
+The next functional candidate is 0.2.22 for live file previews. Source validation
+and a pull request do not publish or install that candidate. Report the completed
+batch before publication/deployment, following the operator's approval boundary.
 
 Remote now uses only Desktop's existing App Server. Bridge loss stays offline
 and reconnects; it must never start a standalone server or replay uncertain

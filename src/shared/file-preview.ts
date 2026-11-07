@@ -8,8 +8,13 @@ export interface PreviewFile {
   kind: 'text' | 'markdown' | 'html' | 'image' | 'pdf' | 'office' | 'binary';
   contentUrl: string;
   previewUrl?: string;
+  revision?: string;
   text?: string;
   truncated: boolean;
+}
+
+export function previewVersionUrl(url: string, revision: string | undefined): string {
+  return revision ? `${url}${url.includes('?') ? '&' : '?'}revision=${encodeURIComponent(revision)}` : url;
 }
 
 export function normalizePreviewPath(value: string): string {

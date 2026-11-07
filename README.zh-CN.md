@@ -29,6 +29,8 @@ Remote 连接 **Codex Desktop 自己的 App Server**，让浏览器与桌面共�
 
 回复支持行内和独立 LaTeX 公式，长公式可横向滚动；公式渲染器与字体按需加载。
 
+侧栏当前文件随主机保存自动更新，保留阅读位置；PDF 和 Office 更新保留页码与缩放。隐藏预览后停止监听。
+
 <details>
 <summary><strong>手机工作区与代码审阅</strong></summary>
 
