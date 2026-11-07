@@ -15,23 +15,30 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-Remote 0.2.21 pairs with unchanged manager 0.2.3; manager installers remain
-in v0.2.17. Tag v0.2.21 identifies functional source
-`9a58ada18c9b13b6a4edfaa238212e1104f576e1`.
-The [PR #10 review](pr-10-review.md) records functional checks;
-the [download procedure](update-downloads.md#维护分发服务) records the current
+Remote 0.2.22 pairs with unchanged manager 0.2.3; manager installers remain
+in v0.2.17. Tag v0.2.22 identifies functional source
+`139affce9c29517a36188db22e4fd228c86c2636`, merged through PR #12.
+The [live-preview acceptance](live-preview-acceptance.md) records this batch;
+the [PR #10 review](pr-10-review.md) retains the preceding functional checks.
+The [download procedure](update-downloads.md#维护分发服务) records the current
 release and distribution verification. Release publication, download distribution
 and host installation are separate states.
 
-The separately authorized Windows upgrade on 2026-11-07 installed formal Remote
-0.2.21 and its matching public frontend. Local/public checks identify
-`assets/index-BzEoI_da.js` and ready Desktop transport. Private data and old chunks
+The authorized Windows upgrade on 2026-11-07 installed formal Remote
+0.2.22 and its matching public frontend. Local/public checks identify
+`assets/index-CMnycR24.js` and ready Desktop transport. Private data and old chunks
 remain preserved; the manager stays 0.2.3. Consult the installation's own current
 acceptance record for deployment evidence.
 
-The next functional candidate is 0.2.22 for live file previews. Source validation
-and a pull request do not publish or install that candidate. Report the completed
-batch before publication/deployment, following the operator's approval boundary.
+Live file previews are published and installed. Main CI `42335330164` and runtime
+CI `42335449436` passed; four official attachments, both archive file manifests,
+and four complete distribution downloads were verified. The first Windows runtime
+attempt hit two existing five-second test timeouts; the unchanged source passed
+on rerun. This does not resolve the historical native-worker crash.
+Installed compiled preview routes passed synthetic write and atomic-save checks.
+Physical-device and sustained real Office conversion acceptance remain separate.
+Source validation alone does not establish publication or installation; retain
+the operator's approval boundary for subsequent batches.
 
 Remote now uses only Desktop's existing App Server. Bridge loss stays offline
 and reconnects; it must never start a standalone server or replay uncertain
