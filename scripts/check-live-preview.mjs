@@ -74,6 +74,9 @@ try {
     await write('live.png', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4xoAAAAASUVORK5CYII=', 'base64'));
     const context = await browser.newContext({ viewport: { width: size.width, height: size.height },
       deviceScaleFactor: size.deviceScaleFactor, isMobile: size.mobile, hasTouch: size.mobile });
+    await context.addInitScript(() => Object.defineProperty(navigator, 'clipboard', {
+      configurable: true, value: { writeText: async text => { window.previewCopied = text; } }
+    }));
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${origin}/?${new URLSearchParams({ directory })}`);
@@ -233,7 +236,17 @@ try {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
         assert.equal(conversions, started + 2);
-        await page.locator('canvas[data-rendered="true"]').waitFor();
+        let copied = '';
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const copy = page.locator('.pdf-toolbar button').last();
+          if (await copy.isEnabled()) {
+            await copy.click();
+            copied = await page.evaluate(() => window.previewCopied ?? '');
+            if (copied.includes('Version 4 Page 2')) break;
+          }
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        assert.ok(copied.includes('Version 4 Page 2'), `Latest Office content: ${copied}`);
         assert.equal(await number.inputValue(), '2');
         assert.equal(await zoom.inputValue(), '1.25');
       }
