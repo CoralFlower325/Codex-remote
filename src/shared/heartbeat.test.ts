@@ -27,15 +27,17 @@ describe('heartbeat prompt envelopes', () => {
     });
   });
 
-  it('parses an envelope without the optional metadata elements', () => {
+  it('requires the native timestamp but allows an absent automation id', () => {
     expect(parseHeartbeatPrompt('<heartbeat><instructions>检查状态</instructions></heartbeat>'))
+      .toBeNull();
+    expect(parseHeartbeatPrompt('<heartbeat><current_time_iso>2026-11-07T00:00:00Z</current_time_iso><instructions>检查状态</instructions></heartbeat>'))
       .toEqual({ automationId: null, instructions: '检查状态' });
-    expect(parseHeartbeatPrompt('<heartbeat>\n<automation_id>a-1</automation_id>\n<instructions>检查状态</instructions>\n</heartbeat>'))
+    expect(parseHeartbeatPrompt('<heartbeat><instructions>检查状态</instructions><current_time_iso>2026-11-07T00:00:00Z</current_time_iso><automation_id>a-1</automation_id></heartbeat>'))
       .toEqual({ automationId: 'a-1', instructions: '检查状态' });
   });
 
   it('keeps instruction markup and headings verbatim', () => {
-    const parsed = parseHeartbeatPrompt('<heartbeat><instructions># 标题\n使用 <b> 标签说明。</instructions></heartbeat>');
+    const parsed = parseHeartbeatPrompt('<heartbeat><current_time_iso>2026-11-07T00:00:00Z</current_time_iso><instructions># 标题\n使用 <b> 标签说明。</instructions></heartbeat>');
     expect(parsed?.instructions).toBe('# 标题\n使用 <b> 标签说明。');
   });
 
@@ -54,7 +56,8 @@ describe('heartbeat response envelopes', () => {
     expect(parseHeartbeatResponse(responseEnvelope)).toEqual({
       automationId: 'v10-20',
       decision: 'NOTIFY',
-      message: '训练正常推进：已完成第 25 轮，最近日志 00:28:03，无可见 OOM。'
+      message: '训练正常推进：已完成第 25 轮，最近日志 00:28:03，无可见 OOM。',
+      visibleText: ''
     });
   });
 
@@ -64,14 +67,46 @@ describe('heartbeat response envelopes', () => {
     expect(parseHeartbeatResponse(text)).toEqual({
       automationId: 'a-1',
       decision: 'DONT_NOTIFY',
-      message: '状态未变：<b>第 3 轮</b> 仍在运行。'
+      message: '状态未变：<b>第 3 轮</b> 仍在运行。',
+      visibleText: ''
     });
   });
 
   it('rejects non-envelopes and the prompt envelope', () => {
     expect(parseHeartbeatResponse('普通回复')).toBeNull();
     expect(parseHeartbeatResponse(promptEnvelope)).toBeNull();
-    expect(parseHeartbeatResponse('<heartbeat><decision>NOTIFY</decision><message></message></heartbeat>')).toBeNull();
+    expect(parseHeartbeatResponse('<heartbeat><decision>UNKNOWN</decision><message>Do not hide me</message></heartbeat>')).toBeNull();
+    expect(parseHeartbeatResponse('<heartbeat><decision>NOTIFY</decision><message>Unclosed')).toBeNull();
+  });
+
+  it('preserves visible prose and removes a trailing XML code block like Desktop', () => {
+    const text = `Visible **update**.\n\n\`\`\`xml\n${responseEnvelope}\n\`\`\``;
+    expect(parseHeartbeatResponse(text)?.visibleText).toBe('Visible **update**.');
+    expect(heartbeatResponseText(text)).toBe('Visible **update**.');
+    expect(heartbeatResponseText(`Before.\n${responseEnvelope}\nAfter.`)).toBe('Before.\n\nAfter.');
+  });
+
+  it('unwraps CDATA and accepts native case-insensitive decisions', () => {
+    const text = '<HEARTBEAT><decision> notify </decision><message><![CDATA[**Done** < 3]]></message></HEARTBEAT>';
+    expect(parseHeartbeatResponse(text)).toMatchObject({ decision: 'NOTIFY', message: '**Done** < 3' });
+    expect(heartbeatResponseText(`\`\`\`xml\n${text}\n\`\`\``)).toBe('**Done** < 3');
+  });
+
+  it('uses the last envelope decision and accepts an empty quiet message', () => {
+    const quiet = '<heartbeat><decision>DONT_NOTIFY</decision><message></message></heartbeat>';
+    expect(parseHeartbeatResponse(`${responseEnvelope}\n${quiet}`)).toMatchObject({
+      decision: 'DONT_NOTIFY', message: '', visibleText: ''
+    });
+    expect(heartbeatResponseText(quiet)).toBe('');
+  });
+
+  it('hides incomplete envelopes only in a known streaming heartbeat turn', () => {
+    for (const suffix of ['<', '<heart', '<heartbeat>', '<heartbeat><decision>NOT']) {
+      const text = `Update.\n\`\`\`xml\n${suffix}`;
+      expect(heartbeatResponseText(text, true)).toBe('Update.');
+      expect(heartbeatResponseText(text)).toBe(text);
+    }
+    expect(heartbeatResponseText('Compare x < y.', true)).toBe('Compare x < y.');
   });
 
   it('projects reply text for previews and copies', () => {

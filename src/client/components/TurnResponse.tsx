@@ -22,7 +22,7 @@ import { documentReferences } from '../../shared/document-input';
 import { PreviewLink } from './PreviewLinks';
 
 export const ResponseSection = memo(function ResponseSection({
-  section, timing, finalStartedAtMs, finalAnswer, hasTrace, showError, open, onToggleTurn, active, threadIdle = false, onInteract, onFork, onError
+  section, timing, finalStartedAtMs, finalAnswer, hasTrace, showError, open, onToggleTurn, active, heartbeatTurn = false, threadIdle = false, onInteract, onFork, onError
 }: {
   section: TimelineSection;
   timing: TurnTiming | undefined;
@@ -33,6 +33,7 @@ export const ResponseSection = memo(function ResponseSection({
   open: boolean;
   onToggleTurn: (turnId: string) => void;
   active: boolean;
+  heartbeatTurn?: boolean;
   threadIdle?: boolean;
   onInteract: () => void;
   onFork: ((turnId: string) => Promise<void>) | undefined;
@@ -59,7 +60,7 @@ export const ResponseSection = memo(function ResponseSection({
     : entry.type === 'event' ? isSubagentItem(entry.item)
       ? entry.key === firstAgentKey ? <SubagentRows items={agentItems} key={entry.key} /> : null
       : <ActivityItem item={entry.item} running={false} key={entry.key} />
-    : <MessageItem item={entry.item} key={entry.key} />;
+    : <MessageItem item={entry.item} streamingHeartbeat={active && heartbeatTurn} key={entry.key} />;
   return <section className="turn-response" data-turn-id={section.turnId} data-scroll-anchor={`response-${section.key}`}>
     {section.showTiming && (timing || active || completed) && <div className="worked-divider">
       {completed && hasTrace && section.turnId ? <button type="button" className="turn-disclosure" aria-expanded={open} aria-controls={bodyId}
@@ -155,8 +156,8 @@ export function TurnDuration({ timing, active, finalStartedAtMs }: {
   </>;
 }
 
-export const MessageItem = memo(function MessageItem({ item, showFull = false, onEdit }: {
-  item: ThreadItem; showFull?: boolean; onEdit?: ((item: UserMessage) => void) | undefined;
+export const MessageItem = memo(function MessageItem({ item, showFull = false, streamingHeartbeat = false, onEdit }: {
+  item: ThreadItem; showFull?: boolean; streamingHeartbeat?: boolean; onEdit?: ((item: UserMessage) => void) | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
   if (item.type === 'userMessage') {
@@ -199,12 +200,14 @@ export const MessageItem = memo(function MessageItem({ item, showFull = false, o
   if (item.type === 'agentMessage') {
     const heartbeat = parseHeartbeatResponse(item.text);
     const quiet = heartbeat?.decision === 'DONT_NOTIFY';
+    const displayText = heartbeatResponseText(item.text, streamingHeartbeat);
+    if (!displayText && streamingHeartbeat) return null;
     return (
       <article className={`message message--agent${item.phase === 'commentary' ? ' message--commentary' : ''}${quiet ? ' message--automation-quiet' : ''}`}
         data-scroll-anchor={itemKey(item)}>
         {quiet && <div className="automation-run-label automation-run-label--agent"><CalendarClock size={12} aria-hidden="true" />自动任务 · 无需通知</div>}
         <div className="agent-message-body markdown">
-          <MarkdownText text={heartbeat ? heartbeat.message : item.text} assistant />
+          <MarkdownText text={displayText} assistant />
         </div>
       </article>
     );

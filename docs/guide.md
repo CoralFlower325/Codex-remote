@@ -791,11 +791,15 @@ Existing-chat heartbeats can be edited, paused and deleted here, but their
 manual run button is disabled: use Desktop to confirm current chat permissions.
 
 Turns an automation starts in an existing chat render natively, like Desktop:
-the trigger shows only the task instructions with a sent-by-automation label,
-and the reply shows only its message; a reply marked as needing no
-notification renders quietly with a label. The conversation outline and
-completion push previews use the same unwrapped text. Stored messages are
-never rewritten.
+the trigger shows only the task instructions with a sent-by-automation label.
+Replies preserve visible prose outside the heartbeat envelope, falling back to
+its message when there is no other prose; plain XML, fenced XML and CDATA are
+supported. In known active heartbeat turns, incomplete envelope tags stay hidden.
+The conversation outline and reply copying use that display projection.
+A reply marked as needing no notification renders quietly with a label and
+does not send a completion push. Other heartbeat completion pushes use the
+notification message, falling back to visible prose. Stored messages are never
+rewritten.
 
 While visible, the panel refreshes every 30 seconds and reads at most 200 recent
 run records, projecting links and status without archived message bodies.

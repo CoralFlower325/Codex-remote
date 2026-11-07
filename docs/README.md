@@ -64,6 +64,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
+| [PR #10 自动任务消息复核](pr-10-review.md) | 0.2.21 候选：原生信封、通知决策、流式标签及八视口合成验收；尚未发布部署 |
 | [PR #8 原生自动任务复核](pr-8-review.md) | 0.2.20 候选：原生服务桥接、回合时刻、八视口合成检查；真实执行与真机待验收，不代表已发布部署 |
 | [PR #7 后续与真机步骤](review-followup-acceptance.md) | 已发布 0.2.19：终端 cwd、多根目录、Windows 预览路径、说明与路径复制；原生 App Server 占用修复，iPhone/macOS 待验收 |
 | [Muse 核对与 PR #7](pr-7-review.md) | 0.2.18 侧聊归属、同步竞态、移动布局、历史错误及登录/归档修复 |

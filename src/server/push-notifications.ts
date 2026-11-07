@@ -3,7 +3,7 @@ import path from 'node:path';
 import { Router, type ErrorRequestHandler } from 'express';
 import webPush from 'web-push';
 import { asyncQuestions, questionItemId } from '../shared/async-user-input.js';
-import { heartbeatResponseText } from '../shared/heartbeat.js';
+import { parseHeartbeatResponse } from '../shared/heartbeat.js';
 import type { PushSubscription, VapidKeys } from 'web-push';
 
 interface PushState {
@@ -48,7 +48,7 @@ function replyText(params: Record<string, unknown>): string | null {
       const candidate = recordValue(item);
       if (candidate?.type !== 'agentMessage' || (candidate.phase ?? null) !== phase) continue;
       const text = firstText(candidate.text);
-      if (text) return truncateReply(heartbeatResponseText(text));
+      if (text) return text;
     }
   }
   return null;
@@ -200,8 +200,11 @@ export class PushNotifications {
       : turn.status === 'interrupted' ? '\u4efb\u52a1\u5df2\u505c\u6b62'
       : turn.status === 'failed' ? '\u4efb\u52a1\u6267\u884c\u5931\u8d25' : null;
     if (status) {
+      const response = turn.status === 'completed' ? replyText(params) : null;
+      const heartbeat = response ? parseHeartbeatResponse(response) : null;
+      if (heartbeat?.decision === 'DONT_NOTIFY') return;
       const title = await this.conversationTitle(threadId, params);
-      const reply = turn.status === 'completed' ? replyText(params) : null;
+      const reply = response ? truncateReply(heartbeat ? heartbeat.message || heartbeat.visibleText : response) : null;
       await this.notify({
         title, body: reply ? `${status}：${reply}` : status, tag: `codex-turn-${threadId}`,
         url: `/?thread=${encodeURIComponent(threadId)}`, threadId

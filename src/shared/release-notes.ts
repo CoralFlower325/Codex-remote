@@ -3,7 +3,7 @@ export interface ReleaseNote { version: string; changes: string[] }
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
   { version: '0.2.21', changes: [
-    '自动任务在继续现有聊天中触发的轮次按原生方式显示：触发消息只呈现任务指令正文并标注由自动任务发送，回复只呈现消息正文，不再露出 heartbeat 信封原文；标记为无需通知的回复以安静样式呈现。会话目录、复制回复与完成推送预览同步使用解开后的正文，原始消息不改写。',
+    '自动任务触发消息显示指令正文并标注来源；回复兼容原生正文、XML 代码块与 CDATA，不再露出 heartbeat 信封，流式接收时隐藏未完成标签。会话目录与复制回复保留可见正文，完成推送使用通知摘要；无需通知的回复安静呈现并停止完成推送。原始消息不改写。',
     '正式管理器仍为 0.2.3，无变更；管理器自更新、签名及公证继续暂停。'
   ] },
   { version: '0.2.20', changes: [

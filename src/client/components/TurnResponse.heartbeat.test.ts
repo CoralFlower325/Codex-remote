@@ -58,4 +58,20 @@ describe('automation heartbeat rendering', () => {
     expect(html).toContain('普通回复');
     expect(html).not.toContain('无需通知');
   });
+
+  it('preserves visible reply prose around a fenced envelope without repeating its notification message', () => {
+    const text = 'Visible **update**.\n\n```xml\n<heartbeat><decision>NOTIFY</decision>' +
+      '<message>Notification preview only.</message></heartbeat>\n```';
+    const html = render({ type: 'agentMessage', id: 'a4', turnId: 'turn', phase: 'final_answer', text } as ThreadItem);
+    expect(html).toContain('Visible <strong>update</strong>.');
+    expect(html).not.toContain('Notification preview only.');
+    expect(html).not.toContain('heartbeat');
+  });
+
+  it('does not flash an incomplete envelope in a streaming heartbeat turn', () => {
+    const item = { type: 'agentMessage', id: 'a5', turnId: 'turn', phase: 'final_answer',
+      text: '<heartbeat><decision>NOT' } as ThreadItem;
+    expect(renderToStaticMarkup(createElement(MessageItem, { item, streamingHeartbeat: true }))).toBe('');
+    expect(render(item)).toContain('&lt;heartbeat&gt;');
+  });
 });
