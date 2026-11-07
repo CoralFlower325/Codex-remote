@@ -194,6 +194,39 @@ describe('private standard Web Push subscriptions', () => {
     });
   });
 
+  it('does not deliver a completed DONT_NOTIFY heartbeat or read title metadata', async () => {
+    const send = vi.spyOn(webPush, 'sendNotification').mockResolvedValue(sent);
+    const { directory } = create();
+    const readThread = vi.fn();
+    const notifications = new PushNotifications(directory, 'https://remote.example.test', readThread);
+    notifications.subscribe(subscription());
+    notifications.watch('main');
+    const text = '```xml\n<heartbeat><decision>DONT_NOTIFY</decision><message><![CDATA[Quiet status]]></message></heartbeat>\n```';
+    await notifications.notifyTurn({ threadId: 'main', turn: { id: 'quiet', status: 'completed',
+      items: [{ type: 'agentMessage', phase: 'final_answer', text }] } });
+    expect(send).not.toHaveBeenCalled();
+    expect(readThread).not.toHaveBeenCalled();
+    // Failure delivery must survive a stale quiet reply in the failed turn.
+    await notifications.notifyTurn({ threadId: 'main', thread: { name: 'Task' },
+      turn: { id: 'failed', status: 'failed', items: [{ type: 'agentMessage', text }] } });
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it('uses heartbeat notification text rather than visible prose or an earlier reply', async () => {
+    const send = vi.spyOn(webPush, 'sendNotification').mockResolvedValue(sent);
+    const { notifications } = create();
+    notifications.subscribe(subscription());
+    notifications.watch('main');
+    await notifications.notifyTurn({ threadId: 'main', thread: { name: 'Task' },
+      turn: { id: 'notify', status: 'completed', items: [
+        { type: 'agentMessage', phase: 'final_answer', text: 'Older reply' },
+        { type: 'agentMessage', phase: 'final_answer', text: 'Full visible update.\n```xml\n<heartbeat>' +
+          '<decision>NOTIFY</decision><message><![CDATA[Short notification]]></message></heartbeat>\n```' }
+      ] } });
+    expect(send).toHaveBeenCalledOnce();
+    expect(JSON.parse(send.mock.calls[0]![1] as string).body).toBe('\u4efb\u52a1\u5df2\u5b8c\u6210\uff1aShort notification');
+  });
+
   it('falls back to the native thread title and truncates long replies by Unicode characters', async () => {
     const send = vi.spyOn(webPush, 'sendNotification').mockResolvedValue(sent);
     const readThread = vi.fn(async () => ({ thread: { name: '来自桌面的任务' } }));

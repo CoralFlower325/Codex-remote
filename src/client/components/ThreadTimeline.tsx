@@ -13,6 +13,7 @@ import { isReadableHistoryItem } from '../history-prefetch';
 import { NativeTurnError } from './NativeTurnError';
 import { ResponseSection, MessageItem, TurnDuration } from './TurnResponse';
 import type { UserMessage } from '../message-edit';
+import { parseHeartbeatPrompt } from '../../shared/heartbeat';
 export { MarkdownText } from './MarkdownText';
 
 interface ThreadTimelineProps {
@@ -106,6 +107,10 @@ export function ThreadTimeline({
     previousSectionsRef.current.flatMap(section => section.entries)), [items, activeTurnId]);
   const sections = useMemo(() => buildTimelineSections(entries, previousSectionsRef.current), [entries]);
   const responses = useMemo(() => timelineTurnResponses(sections), [sections]);
+  const heartbeatTurns = useMemo(() => new Set(items.flatMap(item =>
+    item.type === 'userMessage' && item.turnId && parseHeartbeatPrompt(
+      item.content.filter(part => part.type === 'text').map(part => part.text ?? '').join('\n'))
+      ? [item.turnId] : [])), [items]);
   const [expandedTurns, setExpandedTurns] = useState<Set<string>>(() => new Set());
   const toggleTurn = useCallback((turnId: string) => {
     setExpandedTurns(previous => {
@@ -519,6 +524,7 @@ export function ThreadTimeline({
             showError={responses.get(section.turnId ?? '')?.lastResponseKey === section.key}
             open={expandedTurns.has(section.turnId ?? '')} onToggleTurn={toggleTurn}
             active={section.turnId === activeTurnId} threadIdle={threadIdle}
+             heartbeatTurn={heartbeatTurns.has(section.turnId ?? '')}
             onInteract={preserveActivityPosition} key={section.key}
             onFork={onFork} onError={onActionError} />
       )}
