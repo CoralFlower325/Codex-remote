@@ -36,10 +36,11 @@ interface ThreadTimelineProps {
   newerHistoryCursor?: string | null;
   loadingLaterHistory?: boolean;
   revealingHistory?: boolean;
-  onLoadLater?: () => Promise<void>;
+  onLoadLater?: (beforeCommit?: BeforeHistoryCommit) => Promise<void>;
   onRevealHistory?: (turnId: string, itemId: string) => Promise<boolean>;
   onCancelHistoryReveal?: () => void;
   onReturnToLatest?: () => Promise<void>;
+  onHistoryReading?: (threadId: string, reading: boolean) => void;
   onFork?: (turnId: string) => Promise<void>;
   onActionError?: (error: unknown) => void;
   editableMessageId?: string | undefined;
@@ -70,6 +71,7 @@ export function ThreadTimeline({
   onRevealHistory,
   onCancelHistoryReveal,
   onReturnToLatest,
+  onHistoryReading,
   onFork,
   onActionError,
   editableMessageId,
@@ -172,7 +174,14 @@ export function ThreadTimeline({
       if (laterAttemptRef.current === key) return;
       laterAttemptRef.current = key;
       laterPendingRef.current = true;
-      void onLoadLater().catch(error => onActionError?.(error)).finally(() => {
+      void onLoadLater(async () => {
+        if (!mountedRef.current || !await scrollActivityRef.current!.waitForIdle()) return false;
+        if (!mountedRef.current || navigatingRef.current || navigationAnchorRef.current ||
+            document.visibilityState !== 'visible') return false;
+        const inner = innerRef.current;
+        if (inner && !stickToBottomRef.current) readingAnchorRef.current = captureReadingAnchor(stream, inner);
+        return true;
+      }).catch(error => onActionError?.(error)).finally(() => {
         laterPendingRef.current = false;
         // React can commit the new cursor before this promise settles.
         // Recheck the current page, whose attempt key prevents idle retries.
@@ -215,7 +224,8 @@ export function ThreadTimeline({
     readingAnchorRef.current = null;
     stream.scrollTop = stream.scrollHeight;
     previousScrollTopRef.current = stream.scrollTop;
-  }, []);
+    onHistoryReading?.(threadId, false);
+  }, [onHistoryReading, threadId]);
   const releaseTailAfterReading = useCallback(() => {
     const stream = streamRef.current;
     const inner = innerRef.current;
@@ -240,6 +250,7 @@ export function ThreadTimeline({
     navigationAnchorRef.current = null;
     readingAnchorRef.current = null;
     stickToBottomRef.current = false;
+    onHistoryReading?.(threadId, true);
     window.requestAnimationFrame(() => {
       const stream = streamRef.current;
       if (!stream) return;
@@ -247,10 +258,11 @@ export function ThreadTimeline({
       const nearBottom = !loadingEarlierRef.current && !viewingHistory &&
         stream.scrollHeight - stream.scrollTop - stream.clientHeight < 140;
       stickToBottomRef.current = nearBottom;
+      onHistoryReading?.(threadId, !nearBottom);
       setAwayFromBottom(!nearBottom);
       rememberReadingPosition();
     });
-  }, [rememberReadingPosition, releaseTailAfterReading, viewingHistory]);
+  }, [rememberReadingPosition, releaseTailAfterReading, viewingHistory, onHistoryReading, threadId]);
   const atEarlierBoundary = () => {
     const top = streamRef.current?.scrollTop ?? Infinity;
     return top <= 64 || continuationTopRef.current !== null && top <= continuationTopRef.current + 1;
@@ -291,6 +303,7 @@ export function ThreadTimeline({
       stickToBottomRef.current = true;
       readingAnchorRef.current = null;
       setAwayFromBottom(false);
+      onHistoryReading?.(threadId, false);
     }
     if (stream && wantsEarlierRef.current && atEarlierBoundary()) loadEarlier();
   };
@@ -304,6 +317,7 @@ export function ThreadTimeline({
       earlierBoundaryRef.current = null;
       continuationTopRef.current = null;
       scrollActivityRef.current!.cancel();
+      onHistoryReading?.(threadId, false);
     };
   }, [threadId]);
 
@@ -432,6 +446,7 @@ export function ThreadTimeline({
         loadLaterRef.current();
         navigationAnchorRef.current = null;
         wantsEarlierRef.current = event.deltaY < 0;
+        if (event.deltaY < 0) onHistoryReading?.(threadId, true);
         if (!wantsEarlierRef.current) continuationTopRef.current = null;
         if (event.deltaY < 0 && !loadingEarlierRef.current) earlierAttemptRef.current = null;
         scrollActivityRef.current!.activity();
@@ -442,6 +457,7 @@ export function ThreadTimeline({
         navigationAnchorRef.current = null;
         scrollActivityRef.current!.startTouch(event.touches[0]?.clientY ?? null);
         stickToBottomRef.current = false;
+        onHistoryReading?.(threadId, true);
         rememberReadingPosition();
       }}
       onTouchMove={event => {
@@ -493,6 +509,7 @@ export function ThreadTimeline({
         stickToBottomRef.current =
           !loadingEarlierRef.current && !viewingHistory && !wantsEarlierRef.current &&
           stream.scrollHeight - stream.scrollTop - stream.clientHeight <= 4;
+        onHistoryReading?.(threadId, !stickToBottomRef.current);
         setAwayFromBottom(!stickToBottomRef.current);
         if (!readingFrameRef.current) readingFrameRef.current = requestAnimationFrame(() => {
           readingFrameRef.current = 0;

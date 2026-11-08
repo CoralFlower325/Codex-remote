@@ -35,6 +35,10 @@ import type { BeforeHistoryCommit } from './history-scroll';
 import { markStartup } from './startup';
 import { parseThreadGoal, goalUpdateParams, type GoalUpdate } from './goal';
 import { replaceInterruptedMessage, type UserMessage } from './message-edit';
+import { useErrorNotices } from './error-notices';
+import { actionIntent, clearActionIntents } from './action-intents';
+import { clearComposerDraftContext } from './composer-drafts';
+import { applyHistoryWindow, historyPageQuery } from './history-window-controller';
 
 interface PendingRpc {
   resolve: (value: unknown) => void;
@@ -46,6 +50,7 @@ interface PendingServerResponse {
   resolve: () => void;
   reject: (error: Error) => void;
   timeout: number;
+  promise: Promise<void>;
 }
 
 interface UseRemoteOptions {
@@ -103,7 +108,9 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const [verifiedThreadId, setVerifiedThreadId] = useState<string | null>(null);
   const [timedThreadId, setTimedThreadId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
-  const [lastError, setLastError] = useState<string | null>(null);
+  const { errors, lastError, setLastError, dismissError, resolveError } = useErrorNotices();
+  const [threadResumeError, setThreadResumeError] = useState<string | null>(null);
+  const resumeFailureRef = useRef<string | null>(null);
   const [messageEditPending, setMessageEditPending] = useState(false);
   const messageEditRef = useRef(false);
   const editSelectionRef = useRef(0);
@@ -118,6 +125,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const olderHistoryCursorRef = useRef<string | null>(null);
   const newerHistoryCursorRef = useRef<string | null>(null);
   const viewingHistoryRef = useRef(false);
+  const historyReadingRef = useRef({ threadId: '', reading: false });
   const pendingRevealRef = useRef<{ version: number; wasViewing: boolean } | null>(null);
   const turnsCursorRef = useRef<string | null>(null);
   const turnTimingsRef = useRef(turnTimings);
@@ -177,7 +185,13 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   verifiedThreadRef.current = verifiedThreadId;
   timedThreadRef.current = timedThreadId;
   historySnapshotRef.current = historySnapshot;
-  authExpiredRef.current = onAuthExpired;
+  authExpiredRef.current = () => { clearComposerDraftContext(); clearActionIntents(); onAuthExpired?.(); };
+
+  useEffect(() => {
+    if (!activeThreadId || activeThread?.id === activeThreadId) return;
+    const listed = threads.find(thread => thread.id === activeThreadId);
+    if (listed) setActiveThread(provisionalThread(listed));
+  }, [activeThreadId, activeThread?.id, threads]);
 
   const rpc = useCallback(<T,>(method: ClientRpcMethod, params: unknown = {}): Promise<T> => {
     if (/^(turn\/|thread\/queue\/|review\/)/.test(method)) prioritizeInteraction();
@@ -186,14 +200,24 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       return Promise.reject(new Error('Remote connection is not ready.'));
     }
     const id = randomUUID();
+    const intent = actionIntent(method, params);
     return new Promise<T>((resolve, reject) => {
       const timer = window.setTimeout(() => {
         if (!pendingRef.current.has(id)) return;
         pendingRef.current.delete(id);
-        reject(new Error(`Request timed out: ${method}`));
+        reject(new Error(intent ? '操作结果尚未确认，请先核对 Desktop 中的记录；重新连接不会重发此操作。' : `请求超时：${method}`));
       }, 120_000);
-      pendingRef.current.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
-      socket.send(JSON.stringify({ type: 'rpc', id, method, params }));
+      pendingRef.current.set(id, { resolve: (value) => { intent?.complete(); resolve(value as T); }, reject: error => {
+        if (intent && !('code' in error)) reject(new Error(
+          '操作结果尚未确认，可能已经执行。请先核对 Desktop 中的记录；重新连接不会重发此操作。', { cause: error }));
+        else { intent?.complete(); reject(error); }
+      }, timer });
+      try { socket.send(JSON.stringify({ type: 'rpc', id, method, params, ...(intent ? { actionId: intent.id } : {}) })); }
+      catch (error) {
+        window.clearTimeout(timer);
+        pendingRef.current.delete(id);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   }, []);
 
@@ -228,9 +252,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   }, [authenticated, restartTaskRead]);
 
   const fetchHistoryPage = useCallback(async (threadId: string, before: string | null = null, direction: 'before' | 'after' = 'before') => {
-    const query = new URLSearchParams({ threadId, limit: before === null ? '40' : '100' });
-    if (before !== null) query.set(direction, before);
-    if (before !== null && direction === 'before') query.set('conversation', '1');
+    const query = historyPageQuery(threadId, before, direction);
     return historyRequestsRef.current.get<ThreadHistoryPage>(`/api/thread/history?${query.toString()}`);
   }, []);
 
@@ -593,7 +615,8 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   );
 
   useEffect(() => {
-    if (!authenticated || !connected || !activeThreadId || showArchived) {
+    setThreadResumeError(null);
+    if (!authenticated || !connected || bridgeStatus.status !== 'ready' || !activeThreadId || showArchived) {
       setThreadReady(false);
       return;
     }
@@ -623,6 +646,9 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         resumedThreadRef.current = { threadId, version, socket };
         setActiveThread(current => current?.id === threadId ? { ...current, ...thread } : current);
         setThreadReady(true);
+        setThreadResumeError(null);
+        resolveError(resumeFailureRef.current);
+        resumeFailureRef.current = null;
         // The initial read can finish before the native subscription is attached.
         if (!viewingHistoryRef.current) {
           const opening = openingThreadRef.current;
@@ -635,13 +661,15 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       }).catch(error => {
         if (!currentSelection()) return;
         resumeError = error instanceof Error ? error.message : String(error);
+        resumeFailureRef.current = resumeError;
+        setThreadResumeError(resumeError);
         setLastError(resumeError);
         if (attempts < 3 && !isThreadWriterConflict(error)) retryTimer = window.setTimeout(resume, 500 * 2 ** (attempts - 1));
       });
     };
     resume();
     return () => { stopped = true; window.clearTimeout(retryTimer); };
-  }, [authenticated, bridgeStatus, connected, activeThreadId, selectionRevision, showArchived, rpc, openThread]);
+  }, [authenticated, bridgeStatus.status, connected, activeThreadId, selectionRevision, showArchived, rpc, openThread]);
 
   const prepareEarlierHistory = useCallback(() => {
     const threadId = activeThreadRef.current;
@@ -719,10 +747,16 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         turnTimingsRef.current = next;
         return next;
       });
-      setItems((current) => mergeOlderHistoryItems(olderItems, current));
-      olderHistoryCursorRef.current = page.nextCursor;
+      const window = applyHistoryWindow(mergeOlderHistoryItems(olderItems, itemsRef.current), 'older',
+        { older: page.nextCursor, newer: newerHistoryCursorRef.current });
+      itemsRef.current = window.items;
+      setItems(window.items);
+      olderHistoryCursorRef.current = window.older;
+      newerHistoryCursorRef.current = window.newer;
       earlierPageRef.current.clear();
-      setHasMoreHistory(page.nextCursor !== null);
+      setHasMoreHistory(window.older !== null);
+      setHasNewerHistory(window.newer !== null);
+      if (window.newer !== null) { viewingHistoryRef.current = true; setViewingHistory(true); }
     } catch (error) {
       if (version === selectionVersionRef.current && !isAbortedRequest(error)) {
         setLastError(error instanceof Error ? error.message : String(error));
@@ -735,7 +769,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     }
   }, [prepareEarlierHistory]);
 
-  const loadLaterHistory = useCallback(async () => {
+  const loadLaterHistory = useCallback(async (beforeCommit?: BeforeHistoryCommit) => {
     const threadId = activeThreadRef.current;
     const cursor = newerHistoryCursorRef.current;
     const version = selectionVersionRef.current;
@@ -744,12 +778,18 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     setLoadingLaterHistory(true);
     try {
       const page = await fetchHistoryPage(threadId, cursor, 'after');
+      if (beforeCommit && !await beforeCommit()) return;
       if (version !== selectionVersionRef.current || threadId !== activeThreadRef.current) return;
       const later = page.items.map(entry => ({ ...entry.item, turnId: entry.turnId,
         startedAtMs: entry.startedAtMs, completedAtMs: entry.completedAtMs }));
-      setItems(current => mergeLatestHistoryItems(current, later));
-      newerHistoryCursorRef.current = page.nextCursor;
-      setHasNewerHistory(page.nextCursor !== null);
+      const window = applyHistoryWindow(mergeLatestHistoryItems(itemsRef.current, later), 'newer',
+        { older: olderHistoryCursorRef.current, newer: page.nextCursor });
+      itemsRef.current = window.items;
+      setItems(window.items);
+      olderHistoryCursorRef.current = window.older;
+      newerHistoryCursorRef.current = window.newer;
+      setHasMoreHistory(window.older !== null);
+      setHasNewerHistory(window.newer !== null);
     } catch (error) {
       if (version === selectionVersionRef.current && !isAbortedRequest(error)) {
         setLastError(error instanceof Error ? error.message : String(error));
@@ -761,6 +801,30 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       }
     }
   }, [fetchHistoryPage]);
+
+  const setHistoryReading = useCallback((threadId: string, reading: boolean) => {
+    if (activeThreadRef.current === threadId) historyReadingRef.current = { threadId, reading };
+  }, []);
+
+  useEffect(() => {
+    if (items.length <= 800 || viewingHistoryRef.current) return;
+    const reading = historyReadingRef.current.threadId === activeThreadRef.current && historyReadingRef.current.reading;
+    const window = applyHistoryWindow(items, reading ? 'older' : 'newer',
+      { older: olderHistoryCursorRef.current, newer: newerHistoryCursorRef.current }, 800, !reading);
+    if (!window.trimmed) return;
+    olderHistoryCursorRef.current = window.older;
+    itemsRef.current = window.items;
+    setItems(window.items);
+    setHasMoreHistory(window.older !== null);
+    if (reading && window.newer !== null) {
+      newerHistoryCursorRef.current = window.newer;
+      setHasNewerHistory(true);
+      viewingHistoryRef.current = true;
+      setViewingHistory(true);
+    }
+    const turns = new Set(window.items.map(item => item.turnId));
+    setTurnTimings(current => Object.fromEntries(Object.entries(current).filter(([id]) => turns.has(id))));
+  }, [items]);
 
   const revealHistory = useCallback(async (turnId: string, itemId: string): Promise<boolean> => {
     const threadId = activeThreadRef.current;
@@ -1003,16 +1067,20 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       newThreadsRef.current.add(result.thread.id);
       let thread = { ...result.thread, permissionProfile: permissionProfileId(result) };
       if (options.effort || options.collaborationMode) {
-        await rpc('thread/settings/update', {
-          threadId: thread.id,
-          ...(options.effort ? { effort: options.effort } : {}),
-          ...(options.collaborationMode ? { collaborationMode: options.collaborationMode } : {})
-        });
-        thread = {
-          ...thread,
-          ...(options.effort ? { reasoningEffort: options.effort } : {}),
-          ...(options.collaborationMode ? { collaborationMode: options.collaborationMode } : {})
-        };
+        try {
+          await rpc('thread/settings/update', {
+            threadId: thread.id,
+            ...(options.effort ? { effort: options.effort } : {}),
+            ...(options.collaborationMode ? { collaborationMode: options.collaborationMode } : {})
+          });
+          thread = {
+            ...thread,
+            ...(options.effort ? { reasoningEffort: options.effort } : {}),
+            ...(options.collaborationMode ? { collaborationMode: options.collaborationMode } : {})
+          };
+        } catch {
+          setLastError('聊天已经创建，附加设置未确认。已保留此聊天；首轮发送仍会携带所选模型档位，不会另建聊天。');
+        }
       }
       setThreads((current) => dedupeThreads([...current, thread]));
       editSelectionRef.current += 1;
@@ -1345,18 +1413,19 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
 
     const key = requestKey(request.requestId);
     const existing = pendingServerResponsesRef.current.get(key);
-    if (existing) {
-      window.clearTimeout(existing.timeout);
-      existing.reject(new Error('A newer approval response replaced this request.'));
-      pendingServerResponsesRef.current.delete(key);
-    }
+    if (existing) return existing.promise;
 
-    return new Promise<void>((resolve, reject) => {
+    let finish!: () => void;
+    let fail!: (error: Error) => void;
+    const promise = new Promise<void>((resolve, reject) => { finish = resolve; fail = reject; });
+    {
+      const resolve = finish;
+      const reject = fail;
       const timeout = window.setTimeout(() => {
         pendingServerResponsesRef.current.delete(key);
         reject(new Error('Approval response was not acknowledged.'));
       }, 10_000);
-      pendingServerResponsesRef.current.set(key, { resolve, reject, timeout });
+      pendingServerResponsesRef.current.set(key, { resolve, reject, timeout, promise });
       try {
         socket.send(
           JSON.stringify({
@@ -1370,7 +1439,8 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         pendingServerResponsesRef.current.delete(key);
         reject(error instanceof Error ? error : new Error(String(error)));
       }
-    });
+    }
+    return promise;
   }, []);
 
   useEffect(() => {
@@ -1456,7 +1526,6 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         setConnected(true);
         setConnectionError(false);
         markStartup('connected');
-        setLastError(null);
         watchThread(activeThreadRef.current);
         const initial = !initializedRef.current;
         if (!initial && !message.resumed) {
@@ -1611,7 +1680,8 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       if (pending) {
         window.clearTimeout(pending.timer);
         pendingRef.current.delete(message.id);
-        pending.reject(new Error(nativeRpcErrorMessage(message.error)));
+        pending.reject(Object.assign(new Error(nativeRpcErrorMessage(message.error)),
+          Number.isInteger(message.error.code) ? { code: message.error.code } : {}));
       }
       return;
     }
@@ -1953,6 +2023,10 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     threadReady: threadReady && verifiedThreadId === activeThreadId && timedThreadId === activeThreadId &&
       historySnapshot === null,
     showArchived,
+    threadResumeError,
+    retryThreadResume: () => { setThreadResumeError(null); setSelectionRevision(value => value + 1); },
+    errors,
+    dismissError,
     lastError,
     messageEditPending,
     editInterruptedMessage,
@@ -1966,6 +2040,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     revealHistory,
     cancelHistoryReveal,
     returnToLatest,
+    setHistoryReading,
     closeThread,
     createThread,
     isNewThread: activeThreadId ? newThreadsRef.current.has(activeThreadId) : false,

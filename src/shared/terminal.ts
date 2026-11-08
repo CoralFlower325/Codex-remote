@@ -9,7 +9,7 @@ export interface TerminalInfo {
 }
 
 export type TerminalClientMessage =
-  | { type: 'terminal.open'; cwd?: string; startAtCwd?: boolean }
+  | { type: 'terminal.open'; cwd?: string; startAtCwd?: boolean; sessionId?: string }
   | { type: 'terminal.create' }
   | { type: 'terminal.attach'; sessionId: string }
   | { type: 'terminal.input'; sessionId: string; data: string }

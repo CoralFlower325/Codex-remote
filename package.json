@@ -1,6 +1,6 @@
 {
   "name": "codex-remote",
-  "version": "0.2.22",
+  "version": "0.2.23",
   "private": true,
   "type": "module",
   "description": "Responsive remote control UI for the Codex desktop app.",
@@ -39,6 +39,10 @@
     "manager:dist": "npm run manager:build && npm --prefix desktop run dist --",
     "runtime:pack": "node scripts/package-runtime.mjs",
     "runtime:prune": "node scripts/prune-runtime.mjs",
+    "check:browser": "node scripts/run-acceptance.mjs browser",
+    "check:windows-worker": "node scripts/run-acceptance.mjs windows-worker",
+    "check:signed-runtime": "node scripts/check-signed-runtime.mjs",
+    "check:release": "node scripts/check-release-readiness.mjs",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.manager.json",
     "test": "vitest run",
     "test:watch": "vitest"

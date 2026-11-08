@@ -115,7 +115,8 @@ Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
 remains pending.
 
-Remote **0.2.21** pairs with stable manager **0.2.3** (unchanged; installers in v0.2.17). Install the new manager
+Source candidate Remote **0.2.23** pairs with manager **0.2.4**; this batch is not published or installed.
+The last installed versions remain separately recorded in the deployment acceptance. Install a formally published manager
 manually over 0.2.0, select the same host directory and retry; updating Remote
 cannot replace the old manager's bundled updater. [Manager downloads](docs/update-downloads.md)
 use the project's public distribution, with official GitHub alternatives.
@@ -136,7 +137,7 @@ HTTP status codes and Codex retry state. See [runtime errors](docs/native-runtim
 - **Handle native questions.** Explicit answers work in main and temporary chats. Pending badges reflect observed questions; they are not a complete search of unread history.
 - **Keep context close.** Preview unsent images above the input; images and skills stay with their draft when switching chats. Inspect files, PR attachments, outputs and sources beside the conversation. Summary coverage depends on the native resource metadata provided.
 - **Review document outputs.** Preview Word, Excel and PowerPoint files as pages when LibreOffice is installed on the host; download the unchanged original from the same panel. See [formats and limits](docs/guide.md#file-and-web-previews).
-- **Choose when to update.** An already current check leaves the page intact. Frontend updates show release notes before confirmation; main-chat text drafts survive, while temporary chats, unsent images and skill selections clear.
+- **Choose when to update.** An already current check leaves the page intact. Frontend updates show release notes before confirmation. Main-chat drafts retain text, ready document references, skills and bounded image data; unrecoverable attachments show a notice. Temporary chats remain in memory.
 - **Update the connected host.** Settings can check and update the Windows x64 or Apple Silicon Remote backend, show its version and live progress, then refresh the matching web client. See [remote updates](docs/web-backend-update.md).
 - **Keep native conversation context.** A skill can be sent on its own and remains visible in both clients. Steering keeps the work timer at the first response and preserves the native turn start.
 - **Receive device notifications.** Opt into completed-task, question and approval Web Push. Payloads include titles and bounded reply/question previews; they may appear on a lock screen.

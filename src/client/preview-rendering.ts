@@ -1,3 +1,5 @@
+import { previewPolicy } from '../shared/preview-security';
+
 export function previewPixelRatio(width: number, height: number, deviceRatio: number): number {
   return Math.min(deviceRatio || 1, Math.sqrt(8_000_000 / (width * height)),
     8192 / Math.max(width, height));
@@ -5,8 +7,10 @@ export function previewPixelRatio(width: number, height: number, deviceRatio: nu
 
 export function previewDocument(html: string, url: string): string {
   const document = new DOMParser().parseFromString(html, 'text/html');
-  const base = document.querySelector('base[href]') ?? document.createElement('base');
-  base.setAttribute('href', new URL(base.getAttribute('href') || '.', url).href);
+  document.querySelectorAll('base, meta[http-equiv="Content-Security-Policy" i], meta[http-equiv="refresh" i]')
+    .forEach(node => node.remove());
+  const base = document.createElement('base');
+  base.setAttribute('href', new URL('.', url).href);
   document.head.prepend(base);
   const scroll = document.createElement('script');
   scroll.textContent = `(() => {
@@ -20,5 +24,9 @@ export function previewDocument(html: string, url: string): string {
     });
   })();`;
   document.head.prepend(scroll);
+  const policy = document.createElement('meta');
+  policy.httpEquiv = 'Content-Security-Policy';
+  policy.content = previewPolicy(url);
+  document.head.prepend(policy);
   return `${document.doctype ? new XMLSerializer().serializeToString(document.doctype) : ''}\n${document.documentElement.outerHTML}`;
 }

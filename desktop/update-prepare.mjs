@@ -7,6 +7,7 @@ import { createUpdateProgress, updateError } from './update-progress.mjs';
 import { runtimeNames, validateManifest, downloadAsset, unpackRuntime, sourceHash } from './runtime-package.mjs';
 import { pendingUpdate } from './update-transaction.mjs';
 import { compareVersions, versionPattern } from './release.mjs';
+import { verifyRelease } from './release-signature.mjs';
 import { regularFile, planFiles, hash, buildFileNames, runtimeNode, nodeToolchain,
   withNetworkRetry, removePreparation, mergeBuildInputs, installDependencies, npmCommand } from './update-inputs.mjs';
 
@@ -32,6 +33,14 @@ export async function prepareUpdate(directory, release, progress, execute = run,
     const names = runtimeNames(release.version);
     const manifestAsset = release.assets?.find((asset) => asset.name === names.manifest);
     const archiveAsset = release.assets?.find((asset) => asset.name === names.archive);
+    const identityAsset = manifestAsset ?? release.assets?.find(asset =>
+      /^codex-remote-runtime-[\d.]+-(?:win32|darwin)-(?:x64|arm64)\.json$/.test(asset.name));
+    if (!identityAsset || identityAsset.size > 8 * 1024 * 1024) throw new Error('正式签名清单尚未发布完整，已阻止未认证更新。');
+    const identityFile = path.join(stage, 'release-identity.json');
+    await downloadAsset(identityAsset, identityFile, options);
+    const identity = verifyRelease(JSON.parse(await fs.readFile(identityFile, 'utf8')), options.trustedKeys);
+    if (identity.repository !== 'CoralFlower325/Codex-remote' || identity.version !== release.version ||
+        !/^[a-f0-9]{40}$/.test(identity.commit)) throw new Error('签名版本与所选发布不匹配。');
     if (manifestAsset || archiveAsset) {
       if (!manifestAsset || !archiveAsset) throw new Error('当前平台的运行包尚未发布完整，请稍后重新检查更新。');
       report.start('fetch');
@@ -41,7 +50,9 @@ export async function prepareUpdate(directory, release, progress, execute = run,
         await fs.rm(manifestFile, { force: true });
         await downloadAsset(manifestAsset, manifestFile, options);
       }, report);
-      const manifest = validateManifest(JSON.parse(await fs.readFile(manifestFile, 'utf8')), release);
+      const manifest = validateManifest(verifyRelease(JSON.parse(await fs.readFile(manifestFile, 'utf8')),
+        options.trustedKeys), release);
+      if (manifest.commit !== identity.commit) throw new Error('源码提交与发布者签名不一致，已阻止更新。');
       report.finish('fetch');
       report.start('compare');
       const baseline = manifest.baselines[info.version];
@@ -110,6 +121,7 @@ export async function prepareUpdate(directory, release, progress, execute = run,
     { env: commandEnvironment(), timeout: 180_000, onLine: report.output }), report);
     await git(['checkout', '--detach', release.tag]);
     const commit = await git(['rev-parse', 'HEAD']);
+    if (commit.trim() !== identity.commit) throw new Error('源码提交与发布者签名不一致，已阻止更新。');
     const pkg = JSON.parse(await fs.readFile(path.join(stage, 'package.json'), 'utf8'));
     if (pkg.name !== 'codex-remote' || pkg.version !== release.version) throw new Error('Release version mismatch.');
     report.finish('fetch');

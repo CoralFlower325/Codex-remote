@@ -36,6 +36,8 @@ jobs:
           path: output/runtime-symbols/*
           if-no-files-found: ignore
       - run: npm run runtime:pack
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
       - name: Validate packaged runtime
         run: node scripts/verify-runtime-package.mjs
       - uses: actions/upload-artifact@v4

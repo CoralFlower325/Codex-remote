@@ -116,7 +116,11 @@ Release and privacy policy remains in AGENTS.md.
 - Reply links open lazy inspector preview tabs. Resolve relative files against
   the owning chat's cwd, retain native line suffixes, and keep preview content
   out of public caches. HTML runs without same-origin privileges; its short-lived
-  resource grant is read-only and confined to the document's directory.
+  resource grant permits the selected HTML and allowlisted static media/script/style
+  assets in that directory. Deny hidden files, config/private paths and data documents;
+  an opaque HTML origin alone does not prevent fetch-based exfiltration.
+  Apply restrictive CSP before any srcdoc script: no connections, frames, workers,
+  forms or external assets. Preserve inline scripts and safe local assets.
   Never expose the Remote session to generated HTML. Resolve HTML grant resources
   against their real directory and reject symlink/junction escapes.
   Office previews use optional host LibreOffice conversion to temporary PDF,
@@ -237,12 +241,16 @@ Release and privacy policy remains in AGENTS.md.
   Display legacy skill-only inputs without rewriting persisted history.
   Keep collaboration mode synchronized through resume/settings notifications.
   Keep main-chat image/skill drafts in workspace memory per chat, including
-  pending file reads/sends across navigation. Persist text only; reload discards
-  unsent images/skills. Show removable image previews above the input.
+  pending file reads/sends across navigation. Persist ready document references,
+  skill selections and bounded image data URLs in tab-scoped session storage,
+  up to 2 MiB per draft and 4 MiB shared for 24 hours. Explain omitted/unrecoverable
+  attachments instead of silently dropping them. Clear private context on logout
+  or expired authentication; temporary side chats stay memory-only.
+  Show removable image previews above the input.
 - Native async question messages preserve their questions and native index IDs. Submit
   explicit answers using the persisted Desktop reply envelope, directly steering an
   active turn with expectedTurnId or starting an idle turn; never queue these replies.
-  Keep first-option defaults unsent until the user clicks submit, allow custom text,
+  Start every question unanswered, require explicit choices or custom text,
   and retain failed drafts. Folded history command/tool bodies load only on expansion
   through authenticated native thread/items/read; preserve full prose, question
   payloads, file diffs for review, item identities and pagination cursors.
@@ -305,6 +313,19 @@ Release and privacy policy remains in AGENTS.md.
   Password/device administration uses local IPC and stdin, never HTTP routes or
   command-line secrets. Password changes invalidate all sessions; revoke live
   WS/SSE/terminal access as well as later requests. Store private device metadata.
+  New passwords require 12–256 characters and reject obvious repeated/common
+  values; existing hashes remain usable. Default bearer lifetime is seven days
+  with 24-hour idle expiry. Strict incoming checks enforce revocation immediately;
+  outgoing event bursts share successful checks for at most one second.
+  Distributed login failures have a rolling global budget and a reserved local
+  recovery slot; do not claim this provides network DDoS protection.
+  LAN access requires configured TLS or explicit cleartext consent. Windows
+  firewall rules use Private/Domain profiles and LocalSubnet, never Public/Any.
+  Native write intents carry durable IDs. Cache confirmed results, persist
+  uncertainty before native dispatch and never replay unknown operations after
+  reconnect/restart. Explicit user verification is required before a fresh attempt.
+  Do not put message payloads in intent fingerprints or expose ledger contents
+  through public diagnostics.
 - Windows Tunnel tasks run the owned Node supervisor. Restart exited cloudflared
   after one second, backing off repeated crashes to five seconds. Poll readiness
   every two seconds and wake on native address/availability events. Rebuild only
@@ -323,6 +344,10 @@ Release and privacy policy remains in AGENTS.md.
   socket reconnection. Only closing a terminal tab or stopping Remote ends it.
   Keep the xterm renderer lazy, output outside React chat state, and replay from
   bounded headless terminal snapshots. Terminal keys must retain shell behavior.
+  Cap active sessions without silently terminating shells. Restore the selected
+  session on reconnect and let the first attached viewer own shared PTY geometry.
+  Isolate native PTYs in owned child processes: a worker crash ends that terminal
+  visibly without restarting it or replaying input.
 - Side chats use the shared transport and native ephemeral start/fork, created
   only on first send. Ephemeral forks cannot use `deferGoalContinuation`.
   Subscribe to all open side threads, batch their events separately from main

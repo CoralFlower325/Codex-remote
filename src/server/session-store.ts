@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { config } from './config.js';
 
 export interface DeviceSession {
   id: string;
@@ -52,6 +53,7 @@ export function sessionRegistered(dataDir: string, sid: string, generation: stri
     fs.existsSync(path.join(folder, `${id}.revoked`))) return false;
   try {
     const file = path.join(folder, `${id}.json`);
+    if (Date.now() - fs.statSync(file).mtimeMs > config.sessionIdleHours * 60 * 60_000) return false;
     // Touch metadata separately from revocation so concurrent reads cannot revive a device.
     if (Date.now() - fs.statSync(file).mtimeMs > 60_000) fs.utimesSync(file, new Date(), new Date());
   } catch { return false; }
@@ -69,7 +71,11 @@ export function listDeviceSessions(dataDir: string, generation: string): DeviceS
     if (!record || record.generation !== generation || record.expiresAt <= Date.now() ||
       fs.existsSync(path.join(folder, `${id}.revoked`))) return [];
     const { generation: _generation, ...visible } = record;
-    return [{ ...visible, lastSeenAt: fs.statSync(path.join(folder, name)).mtimeMs }];
+    try {
+      const lastSeenAt = fs.statSync(path.join(folder, name)).mtimeMs;
+      if (Date.now() - lastSeenAt > config.sessionIdleHours * 60 * 60_000) return [];
+      return [{ ...visible, lastSeenAt }];
+    } catch { return []; }
   }).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
 }
 

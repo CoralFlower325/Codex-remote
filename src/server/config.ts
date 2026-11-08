@@ -1,6 +1,5 @@
 import 'dotenv/config';
 
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,6 +12,7 @@ export interface AppConfig {
   allowedOrigins: string[];
   trustProxy: false | string[];
   sessionDays: number;
+  sessionIdleHours: number;
   dataDir: string;
   authFile: string;
   secretFile: string;
@@ -22,6 +22,9 @@ export interface AppConfig {
   codexBinaryCandidates: string[];
   lanPort: number;
   lanOrigins: string[];
+  lanCertificate: string | null;
+  lanKey: string | null;
+  lanAllowHttp: boolean;
 }
 
 function newestDirectories(directory: string, accept: (name: string) => boolean): string[] {
@@ -82,22 +85,9 @@ function resolveCodexBinary(candidates: string[]): string {
   const explicit = process.env.CODEX_BINARY?.trim();
   if (explicit) return explicit;
 
-  for (const candidate of candidates) {
-    if (canExecuteCodex(candidate)) return candidate;
-  }
-
-  return candidates.at(-1) ?? 'codex';
-}
-
-function canExecuteCodex(candidate: string): boolean {
-  if (!fs.existsSync(candidate) && !candidate.includes(path.sep)) return true;
-  if (!fs.existsSync(candidate)) return false;
-  const result = spawnSync(candidate, ['--version'], {
-    stdio: 'ignore',
-    timeout: 3000,
-    windowsHide: true
-  });
-  return !result.error && result.status === 0;
+  // Desktop owns execution; locating its optional binary must not spawn processes
+  // or delay authentication at module import time.
+  return candidates.find(candidate => fs.existsSync(candidate)) ?? candidates.at(-1) ?? 'codex';
 }
 
 function parseOrigins(value: string | undefined): string[] {
@@ -116,7 +106,7 @@ const lanAddresses = Object.values(os.networkInterfaces()).flat().filter(
   (address): address is os.NetworkInterfaceInfo => Boolean(address && !address.internal && address.family === 'IPv4'));
 const lanOrigins = lanPort ? [...new Set([
   ...(process.env.LAN_ADDRESS ? [process.env.LAN_ADDRESS] : []), ...lanAddresses.map(address => address.address)
-])].map(address => `http://${address}:${lanPort}`) : [];
+])].map(address => `${process.env.LAN_CERT_FILE && process.env.LAN_KEY_FILE ? 'https' : 'http'}://${address}:${lanPort}`) : [];
 
 export const config: AppConfig = {
   host: process.env.HOST?.trim() || '127.0.0.1',
@@ -125,8 +115,12 @@ export const config: AppConfig = {
   allowedOrigins: [...new Set([...(publicOrigin ? [publicOrigin] : []), ...parseOrigins(process.env.ALLOWED_ORIGINS), ...lanOrigins])],
   lanPort,
   lanOrigins,
+  lanCertificate: process.env.LAN_CERT_FILE?.trim() || null,
+  lanKey: process.env.LAN_KEY_FILE?.trim() || null,
+  lanAllowHttp: process.env.LAN_ALLOW_HTTP === '1',
   trustProxy: proxyTrust(),
-  sessionDays: Math.max(1, Number.parseInt(process.env.SESSION_DAYS?.trim() || '30', 10)),
+  sessionDays: Math.min(30, Math.max(1, Number.parseInt(process.env.SESSION_DAYS?.trim() || '7', 10) || 7)),
+  sessionIdleHours: Math.min(168, Math.max(1, Number.parseInt(process.env.SESSION_IDLE_HOURS?.trim() || '24', 10) || 24)),
   dataDir,
   authFile: path.join(dataDir, 'auth.json'),
   secretFile: path.join(dataDir, 'session-secret'),

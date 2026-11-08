@@ -88,7 +88,8 @@ if (!fs.existsSync(path.join(process.env.DATA_DIR?.trim() || 'data', 'auth.json'
 }
 NODE
 
-if [[ ! -f "$PLIST" ]]; then
+if [[ ! -f "$PLIST" ]] ||
+  [[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$PLIST")" != "$ROOT_DIR/scripts/background-service.mjs" ]]; then
   bash "$ROOT_DIR/scripts/install-service.sh" --no-start
 fi
 launchctl enable "$SERVICE"

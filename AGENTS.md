@@ -50,6 +50,10 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Manager self-update is paused as 0.2.0AU on archive/manager-0.2.0AU;
   keep AU self-update out of the stable manager and formal releases. Preserve AU history,
   artifacts and receipts; Mac signing/notarization remains a resume checkpoint.
+  Runtime manifest authentication is separate: all new runtime releases require
+  Ed25519 publisher signatures verified against pinned public keys. Source
+  fallback must match a signed release commit; never bypass missing signatures.
+  Candidate source is Remote 0.2.23 / manager 0.2.4, pending publication approval.
 - After completing and validating project changes, push the public repository
   by default unless the user explicitly asks not to. Never push the separate
   private deployment checkout or its runtime data.

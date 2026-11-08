@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { pendingUpdate, recoverPendingUpdate, acquireUpdateLock, recordUpdate } from './update-transaction.mjs';
+import { pendingUpdate, recoverPendingUpdate, acquireUpdateLock, recordUpdate, processStartIdentity } from './update-transaction.mjs';
 
 const temporary = [];
 async function write(root, name, value) {
@@ -114,4 +114,86 @@ describe('durable interrupted update recovery', () => {
     expect(await pendingUpdate(root)).toBeNull();
     expect(await fs.readFile(path.join(root, 'package.json'), 'utf8')).toBe('old');
   });
+
+  it('recovers a damaged primary journal from its durable checksummed mirror', async () => {
+    const { root, stage } = await fixture();
+    await interrupt(root, stage, 'source');
+    const journal = path.join(root, 'output', 'manager-update', 'active.json');
+    await fs.writeFile(journal, '{"truncated":');
+    expect((await pendingUpdate(root)).phase).toBe('installing');
+    await recoverPendingUpdate(root, { stop: vi.fn(), start: vi.fn(), verify: vi.fn() });
+    expect(await pendingUpdate(root)).toBeNull();
+    expect(await fs.readFile(path.join(root, 'package.json'), 'utf8')).toBe('old');
+  });
+
+  it('detects valid JSON corruption by checksum and can recover when one journal is missing', async () => {
+    const { root, stage } = await fixture();
+    await interrupt(root, stage, 'source', false);
+    const directory = path.join(root, 'output', 'manager-update');
+    const primary = path.join(directory, 'active.json');
+    const data = JSON.parse(await fs.readFile(primary, 'utf8'));
+    data.wasRunning = true;
+    await fs.writeFile(primary, JSON.stringify(data));
+    expect((await pendingUpdate(root)).wasRunning).toBe(false);
+    await fs.rm(primary);
+    expect((await pendingUpdate(root)).wasRunning).toBe(false);
+    await recoverPendingUpdate(root, { stop: vi.fn(), start: vi.fn(), verify: vi.fn() });
+  });
+
+  it('selects the newer mirror if a crash interrupts the second journal write', async () => {
+    const { root, stage } = await fixture();
+    await interrupt(root, stage, 'source', false);
+    const transaction = await pendingUpdate(root);
+    const rename = fs.rename.bind(fs);
+    const spy = vi.spyOn(fs, 'rename').mockImplementation(async (from, to) => {
+      if (to === path.join(root, 'output', 'manager-update', 'active.json')) throw new Error('Interrupted primary write');
+      return rename(from, to);
+    });
+    try { await expect(recordUpdate(root, transaction, 'verifying')).rejects.toThrow('Interrupted'); }
+    finally { spy.mockRestore(); }
+    const recovered = await pendingUpdate(root);
+    expect(recovered.phase).toBe('verifying');
+    expect(recovered.journalSequence).toBe(transaction.journalSequence + 1);
+  });
+
+  it('preserves both corrupt journals and all recovery evidence without touching service', async () => {
+    const { root, stage } = await fixture();
+    await interrupt(root, stage, 'source');
+    const directory = path.join(root, 'output', 'manager-update');
+    await fs.writeFile(path.join(directory, 'active.json'), 'damaged primary');
+    await fs.writeFile(path.join(directory, 'active.mirror.json'), 'damaged mirror');
+    const stop = vi.fn();
+    await expect(recoverPendingUpdate(root, { stop })).rejects.toThrow('preserved');
+    expect(stop).not.toHaveBeenCalled();
+    expect(await fs.readFile(path.join(directory, 'active.json'), 'utf8')).toBe('damaged primary');
+    expect(await fs.readFile(path.join(directory, 'active.mirror.json'), 'utf8')).toBe('damaged mirror');
+    expect(await fs.readFile(path.join(root, 'package.json'), 'utf8')).toBe('new');
+  });
+
+  it('uses operating-system process start identity to detect PID reuse without stealing a live lock', async () => {
+    const { root } = await fixture();
+    const identity = await processStartIdentity(process.pid);
+    expect(identity).toBeTypeOf('string');
+    const release = await acquireUpdateLock(root);
+    await expect(acquireUpdateLock(root)).rejects.toThrow();
+    await release();
+    const file = path.join(root, 'output', 'manager-update', 'lock.json');
+    await fs.writeFile(file, JSON.stringify({ pid: process.pid, processStart: 'old-process-start', token: 'old' }));
+    const releaseReused = await acquireUpdateLock(root);
+    const replacement = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(replacement.processStart).toBe(identity);
+    await fs.writeFile(file, JSON.stringify({ ...replacement, token: 'different-owner' }));
+    await releaseReused();
+    expect(JSON.parse(await fs.readFile(file, 'utf8')).token).toBe('different-owner');
+  }, 15_000);
+
+  it('preserves a live lock if its process identity cannot be checked', async () => {
+    const { root } = await fixture();
+    const release = await acquireUpdateLock(root);
+    const identify = vi.fn().mockResolvedValueOnce('current').mockRejectedValueOnce(new Error('Access denied'));
+    await expect(acquireUpdateLock(root, identify)).rejects.toThrow('Access denied');
+    expect(identify).toHaveBeenCalledTimes(2);
+    await expect(acquireUpdateLock(root)).rejects.toThrow();
+    await release();
+  }, 15_000);
 });

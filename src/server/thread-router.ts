@@ -5,7 +5,8 @@ import type { PushNotifications } from './push-notifications.js';
 import type { LocalImages } from './local-images.js';
 import { permissionProfileId, type PermissionProfile, type PermissionSettings } from '../shared/permissions.js';
 import { isTaskThread } from '../shared/thread-source.js';
-import { readConversationHistoryPage, readThreadHistoryAround, readThreadHistoryPage, readThreadOutline } from './thread-history.js';
+import { readConversationHistoryPage, readThreadHistoryAround, readThreadHistoryPage, readThreadOutline,
+  readThreadHistoryFromItem } from './thread-history.js';
 import { readThreadTimings } from './thread-open.js';
 import { readThreadSummaryPage } from './thread-summary.js';
 import { withReadDeadline } from './bootstrap.js';
@@ -74,14 +75,22 @@ export function threadRouter({ requireAuth, codexBridge, workspaceSnapshots,
         res.status(400).json({ error: 'threadId is required.' });
         return;
       }
-      const direction = typeof req.query.after === 'string' ? 'asc' : 'desc';
+      const direction = typeof req.query.after === 'string' || typeof req.query.afterItem === 'string' ? 'asc' : 'desc';
       const cursor = typeof req.query.after === 'string' ? req.query.after : typeof req.query.before === 'string' ? req.query.before : null;
       const limitValue =
         typeof req.query.limit === 'string' ? Number.parseInt(req.query.limit, 10) : 200;
       const limit = Number.isFinite(limitValue) ? Math.min(400, Math.max(1, limitValue)) : 200;
       res.setHeader('Cache-Control', 'no-store');
       const request = (method: import('../shared/protocol.js').ClientRpcMethod, params: unknown) => codexBridge.request(method, params);
-      const result = await withReadDeadline(cursor && direction === 'desc' && req.query.conversation === '1'
+      const item = req.query.afterItem ?? req.query.beforeItem;
+      if (item !== undefined && (typeof item !== 'string' || !item || item.length > 1024 ||
+          typeof req.query.turnId !== 'string' || !req.query.turnId || req.query.turnId.length > 1024 ||
+          req.query.afterItem !== undefined && req.query.beforeItem !== undefined)) {
+        res.status(400).json({ error: 'A single item anchor and turnId are required.' }); return;
+      }
+      const result = await withReadDeadline(typeof item === 'string'
+        ? readThreadHistoryFromItem(request, threadId, req.query.turnId as string, item, limit, direction)
+        : cursor && direction === 'desc' && req.query.conversation === '1'
         ? readConversationHistoryPage(request, threadId, cursor, Math.min(limit, 100))
         : readThreadHistoryPage(request, threadId, cursor, limit, direction));
       recordQuestions(threadId, result.items.map(entry => entry.item));

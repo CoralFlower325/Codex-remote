@@ -77,10 +77,10 @@ sockets.on('connection', (socket, request) => {
       actions.push({ method: m.method, params: p });
       if (p.cwd && rejectNextRoot) {
         rejectNextRoot = false;
-        return send(socket, { type: 'rpc.error', id: m.id, error: { message: 'Synthetic root change rejected' } });
+        return send(socket, { type: 'rpc.error', id: m.id, error: { code: -32000, message: 'Synthetic root change rejected' } });
       }
       const thread = threads.find(t => t.id === p.threadId);
-      if (p.cwd && !roots.includes(p.cwd)) return send(socket, { type: 'rpc.error', id: m.id, error: { message: 'Invalid root' } });
+      if (p.cwd && !roots.includes(p.cwd)) return send(socket, { type: 'rpc.error', id: m.id, error: { code: -32602, message: 'Invalid root' } });
       if (p.cwd) thread.cwd = p.cwd;
       result = {};
     }
@@ -112,7 +112,7 @@ if (process.argv.includes('--serve')) {
   process.once('SIGTERM', () => { void close().then(() => process.exit()); });
 } else {
   const { chromium } = await import(process.env.REMOTE_PLAYWRIGHT_MODULE ?? '../desktop/node_modules/playwright/index.mjs');
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const browser = await chromium.launch({ channel: process.env.REMOTE_BROWSER_CHANNEL ?? 'chrome', headless: true });
   const output = 'output/playwright/review-followup';
   await fs.mkdir(output, { recursive: true });
   const results = [];
@@ -145,13 +145,17 @@ if (process.argv.includes('--serve')) {
         await page.getByRole('button', { name: '\u9690\u85cf\u7ec8\u7aef', exact: true }).click();
         await page.getByRole('button', { name: '\u7ec8\u7aef', exact: true }).click();
         await page.waitForFunction(root => document.querySelector('.terminal-directory')?.textContent?.includes(root), roots[0]);
+        await page.waitForFunction(() => document.querySelectorAll('.terminal-tabs [role="tab"]').length > 0);
         const previousTabs = await page.locator('.terminal-tabs [role="tab"]').count();
+        const previousSessions = terminals.list(terminals.open(roots[1])).map(session => session.id);
         await picker.selectOption(roots[0]);
         await page.waitForFunction(root => document.querySelector('.workspace-path')?.textContent === root, roots[0]);
         await picker.selectOption(roots[1]);
         await page.waitForFunction(root => document.querySelector('.workspace-path')?.textContent === root, roots[1]);
         await page.waitForFunction(root => document.querySelector('.terminal-directory')?.textContent?.includes(root), roots[1]);
+        await page.waitForFunction(count => document.querySelectorAll('.terminal-tabs [role="tab"]').length === count, previousTabs + 1);
         assert.equal(await page.locator('.terminal-tabs [role="tab"]').count(), previousTabs + 1);
+        assert(previousSessions.every(id => terminals.list(terminals.open(roots[1])).some(session => session.id === id)));
         await page.locator('.terminal-tabs [role="tab"]').first().click();
         await page.waitForFunction(root => document.querySelector('.terminal-directory')?.textContent?.includes(root), roots[0]);
         await page.locator('.terminal-tabs [role="tab"]').last().click();
@@ -159,7 +163,9 @@ if (process.argv.includes('--serve')) {
         await page.getByRole('button', { name: '\u9690\u85cf\u7ec8\u7aef', exact: true }).click();
         await page.getByRole('button', { name: '\u7ec8\u7aef', exact: true }).click();
         await page.waitForFunction(root => document.querySelector('.terminal-directory')?.textContent?.includes(root), roots[1]);
+        await page.waitForFunction(count => document.querySelectorAll('.terminal-tabs [role="tab"]').length === count, previousTabs + 1);
         assert.equal(await page.locator('.terminal-tabs [role="tab"]').count(), previousTabs + 1);
+        assert(previousSessions.every(id => terminals.list(terminals.open(roots[1])).some(session => session.id === id)));
       }
       await context.request.post(`${origin}/fixture/reject-root`);
       await picker.selectOption(roots[0]);
@@ -210,7 +216,7 @@ if (process.argv.includes('--serve')) {
       await page.getByRole('menuitemradio').filter({ hasText: 'Synthetic model description' }).waitFor();
       await page.screenshot({ path: `${output}/model-${viewport.name}.png` });
       await page.keyboard.press('Escape');
-      await page.keyboard.press('Control+n');
+      await page.keyboard.press('Alt+n');
       await page.locator('.home-view').waitFor();
       await page.getByRole('button', { name: '\u7ec8\u7aef', exact: true }).click();
       await page.locator('.terminal-directory-notice').filter({ hasText: '\u5df2\u56de\u9000' }).waitFor();

@@ -4,7 +4,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { WebSocketServer } from 'ws';
-import { chromium } from '../desktop/node_modules/playwright/index.mjs';
+const { chromium } = await import(process.env.REMOTE_PLAYWRIGHT_MODULE ??
+  '../desktop/node_modules/playwright/index.mjs');
 
 const app = express(), server = http.createServer(app), sockets = new WebSocketServer({ server });
 const pkg = JSON.parse(await fs.readFile('package.json', 'utf8'));
@@ -85,7 +86,7 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 if (process.argv.includes('--serve')) {
   console.log(origin);
 } else {
-  const browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const browser = await chromium.launch({ channel: process.env.REMOTE_BROWSER_CHANNEL ?? 'chrome', headless: true });
   const directory = 'output/playwright/web-update-029';
   await fs.mkdir(directory, { recursive: true });
   const results = [];

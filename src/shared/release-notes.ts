@@ -2,6 +2,13 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.23', changes: [
+    '修复 Desktop 桥接异常帧、审批并发与消息确认丢失问题；原生操作增加持久化防重复记录，结果不确定时先核对记录，禁止自动重发。',
+    '补齐会话恢复重试、显式问题选择、排队与引导切换、草稿附件和技能恢复、自动任务计划编辑；限制底部待处理区域及长历史窗口，保留分页和阅读位置。',
+    '收紧 HTML 预览、鉴权与局域网入口，增加登录总量限制和闲置过期；终端使用独立进程并限制资源，日志自动轮转。',
+    '管理器 0.2.4：更新清单验证发布者签名，更新锁识别进程身份，事务双份记录可恢复。新密码要求 12–256 个字符；管理器自更新与 macOS 公证仍暂停。',
+    '真实 iPhone 与已登录 macOS 需单独验收；原生 PTY 上游崩溃根因仍待诊断，本版以进程隔离避免拖垮服务。'
+  ] },
   { version: '0.2.22', changes: [
     '侧栏文件预览随主机文件保存自动更新，合并连续写入，支持原子替换及删除后重建。隐藏标签或页面进入后台时停止监听，返回后读取最新内容。',
     '后台刷新保留文本和 Markdown 的阅读位置与源码模式；PDF 和 Office 保留页码、缩放，渲染完成后替换画面。读取失败保留上一版并显示错误，支持重试。',

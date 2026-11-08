@@ -2,7 +2,7 @@ import type { ClientRpcMethod } from './rpc-methods.js';
 export type { ClientRpcMethod } from './rpc-methods.js';
 
 export type ClientMessage =
-  | { type: 'rpc'; id: string; method: ClientRpcMethod; params?: unknown }
+  | { type: 'rpc'; id: string; method: ClientRpcMethod; params?: unknown; actionId?: string }
   | { type: 'server.request.respond'; requestId: string | number; result?: unknown; error?: unknown }
   | { type: 'thread.watch'; threadId: string | null; additionalThreadIds?: string[] }
   | { type: 'sync.resume'; epoch: string | null; after: number; threadId: string | null; additionalThreadIds?: string[] }

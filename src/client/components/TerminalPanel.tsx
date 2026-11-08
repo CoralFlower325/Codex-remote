@@ -128,7 +128,6 @@ export default function TerminalPanel({ cwd, onClose, startAtCwd = false, onDire
       if (ready && attachedId) send({ type: 'terminal.input', sessionId: attachedId, data });
     });
     terminal.attachCustomKeyEventHandler((event) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'j') return false;
       if (event.ctrlKey && event.key.toLowerCase() === 'c' && terminal.hasSelection()) {
         if (event.type === 'keydown') void copyText(terminal.getSelection()).catch(error =>
           setError(error instanceof Error ? error.message : String(error)));
@@ -141,7 +140,9 @@ export default function TerminalPanel({ cwd, onClose, startAtCwd = false, onDire
       onSocket: (next) => { socket = next; },
       onOpen: () => {
         setError(null); setStatus('连接中');
-        send({ type: 'terminal.open', ...(cwd ? { cwd } : {}), ...(requireSelectedDirectory ? { startAtCwd: true } : {}) });
+        send({ type: 'terminal.open', ...(cwd ? { cwd } : {}),
+          ...(attachedId ? { sessionId: attachedId } : {}),
+          ...(requireSelectedDirectory ? { startAtCwd: true } : {}) });
       },
       onMessage,
       onDisconnect: () => {

@@ -1,5 +1,5 @@
 import { LoaderCircle, MessageSquareText } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { pendingQuestionGroups, type QuestionGroup } from '../async-questions';
 import { serializeQuestionReplies } from '../../shared/async-user-input';
 import type { ThreadItem } from '../types';
@@ -30,9 +30,12 @@ export function QuestionCard({ group, disabled, onSubmit, onError }: {
   const [working, setWorking] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const answerFor = (id: string, options: string[] | null) => answers[id] ?? options?.[0] ?? '';
+  const submitting = useRef(false);
+  const answerFor = (id: string, _options: string[] | null) => answers[id] ?? '';
   const submit = async () => {
-    if (disabled || working || submitted) return;
+    if (disabled || submitting.current || submitted ||
+      group.questions.some(question => !answerFor(question.id, question.options).trim())) return;
+    submitting.current = true;
     setWorking(true); setError(null);
     console.debug('[async-questions] submitting', { count: group.questions.length });
     try {
@@ -44,7 +47,7 @@ export function QuestionCard({ group, disabled, onSubmit, onError }: {
       console.warn('[async-questions] answer failed');
       setError(error instanceof Error ? error.message : '回答未确认送达，请检查连接和会话记录。');
       onError(error);
-    } finally { setWorking(false); }
+    } finally { submitting.current = false; setWorking(false); }
   };
   if (submitted) return <div className="approval-card" role="status">回答已提交</div>;
   return <div className="approval-card">

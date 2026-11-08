@@ -4,6 +4,7 @@ import { WebSocket } from 'ws';
 import { NativeRpcError } from '../shared/native-error.js';
 import { readFile } from 'node:fs/promises';
 import { automationMethods, type AutomationMethod } from '../shared/automation-schedule.js';
+import { isAllowedRpcMethod, rpcMethods } from '../shared/rpc-methods.js';
 
 interface DebugTarget {
   type: string;
@@ -30,6 +31,19 @@ const configuredDebugPorts = (process.env.CODEX_DESKTOP_DEBUG_PORT ?? '')
   .filter(port => Number.isInteger(port) && port > 0 && port <= 65_535);
 const DEBUG_PORTS = [...new Set([...configuredDebugPorts, DEFAULT_DEBUG_PORT])];
 const BINDING = '__codexRemoteRelay';
+const responseDeadline = Number(process.env.CODEX_DESKTOP_RPC_TIMEOUT_MS);
+const DEFAULT_RESPONSE_TIMEOUT = Number.isFinite(responseDeadline) && responseDeadline >= 1000 && responseDeadline <= 120_000
+  ? responseDeadline : 30_000;
+const record = (value: unknown): value is Record<string, any> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+const identifier = (value: unknown): value is string | number =>
+  typeof value === 'string' && value.length > 0 && value.length <= 1024 ||
+  typeof value === 'number' && Number.isSafeInteger(value);
+
+function transportError(method: string, error: Error): Error {
+  if (error instanceof NativeRpcError || isAllowedRpcMethod(method) && rpcMethods[method] === 'read') return error;
+  return new Error('与 Desktop 的连接中断或响应超时，操作结果无法确认。请先核对会话或原生运行记录，不要直接重复提交。', { cause: error });
+}
 const INSTALL_RELAY = `(() => {
   if (!window.electronBridge?.sendMessageFromView) return false;
   window.__codexRemotePendingRequests ??= new Map();
@@ -39,10 +53,10 @@ const INSTALL_RELAY = `(() => {
   window.__codexRemoteRelayListener = (event) => {
     const data = event.data;
     if (!data || data.hostId !== 'local') return;
-    if (data.type === 'mcp-request') {
+    if (data.type === 'mcp-request' && data.request && data.request.id != null) {
       window.__codexRemotePendingRequests.set(data.request.id, data.request);
     }
-    if (data.type === 'mcp-notification' && data.method === 'serverRequest/resolved') {
+    if (data.type === 'mcp-notification' && data.method === 'serverRequest/resolved' && data.params) {
       window.__codexRemotePendingRequests.delete(data.params.requestId);
     }
     if (data.type === 'mcp-notification' ||
@@ -63,12 +77,14 @@ export class DesktopBridge extends EventEmitter {
   private commands = new Map<number, Pending>();
   private requests = new Map<string, Pending>();
   private approvals = new Map<string, { method: string; params: any; nativeId: string | number }>();
+  private approvalClaims = new Set<string>();
   private retryAfter = 0;
   private closed = false;
   private readonly debugPorts: number[];
   private activePort: number | null = null;
 
-  constructor(debugPorts: number | number[] = DEBUG_PORTS, private readonly commandTimeoutMs = 5000) {
+  constructor(debugPorts: number | number[] = DEBUG_PORTS, private readonly commandTimeoutMs = 5000,
+    private readonly responseTimeoutMs = DEFAULT_RESPONSE_TIMEOUT) {
     super();
     this.debugPorts = [...new Set(Array.isArray(debugPorts) ? debugPorts : [debugPorts])]
       .filter(port => Number.isInteger(port) && port > 0 && port <= 65_535);
@@ -122,9 +138,15 @@ export class DesktopBridge extends EventEmitter {
       console.debug('[desktop-bridge] debug target selected', { port, url: page.url });
     }
     this.activePort = port;
-    const socket = new WebSocket(page.webSocketDebuggerUrl);
+    const socket = new WebSocket(page.webSocketDebuggerUrl, { maxPayload: 16 * 1024 * 1024 });
     this.socket = socket;
-    socket.on('message', (raw) => this.handleMessage(JSON.parse(String(raw))));
+    socket.on('message', (raw) => {
+      if (this.socket !== socket) return;
+      try { this.handleMessage(JSON.parse(String(raw))); }
+      catch {
+        this.disconnectSocket(socket, new Error('Desktop 桥接收到无效数据，已断开并等待重新连接。'));
+      }
+    });
     socket.on('error', () => socket.close());
     socket.on('close', () => {
       this.disconnectSocket(socket, new Error('Codex Desktop connection closed.'));
@@ -148,12 +170,12 @@ export class DesktopBridge extends EventEmitter {
     const id = `codex-remote:${randomUUID()}`;
     const result = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.requests.delete(id);
-        reject(new Error(`Desktop request timed out: ${method}`));
-      }, 120_000);
+        const socket = this.socket;
+        if (socket) this.disconnectSocket(socket, new Error('Desktop 响应超时，请重新连接后核对状态。'));
+      }, this.responseTimeoutMs);
       this.requests.set(id, {
         resolve: (value) => { clearTimeout(timer); resolve(value); },
-        reject: (error) => { clearTimeout(timer); reject(error); }
+        reject: (error) => { clearTimeout(timer); reject(transportError(method, error)); }
       });
     });
     // Use the desktop's owning App Server for visible and background tasks alike.
@@ -194,13 +216,22 @@ export class DesktopBridge extends EventEmitter {
   async respondToServerRequest(requestId: string, result?: unknown, error?: unknown): Promise<void> {
     const approval = this.approvals.get(requestId);
     if (!approval) throw new Error('Approval request is no longer active.');
-    await this.evaluate(`window.electronBridge.sendMessageFromView(${JSON.stringify({
-      type: 'mcp-response',
-      hostId: 'local',
-      threadId: approval.params?.threadId,
-      response: { id: approval.nativeId, ...(error ? { error } : { result: result ?? {} }) }
-    })})`);
-    this.approvals.delete(requestId);
+    if (!this.isConnected()) throw new Error('Desktop 未连接，请先恢复连接。');
+    if (this.approvalClaims.has(requestId)) throw new Error('这项审批已提交或正在确认，请在 Desktop 核对结果，不要重复操作。');
+    // Claim before yielding. An interrupted response must not be replayed by a
+    // second viewer or by a restored pending-request snapshot.
+    this.approvalClaims.add(requestId);
+    try {
+      await this.evaluate(`window.electronBridge.sendMessageFromView(${JSON.stringify({
+        type: 'mcp-response',
+        hostId: 'local',
+        threadId: approval.params?.threadId,
+        response: { id: approval.nativeId, ...(error ? { error } : { result: result ?? {} }) }
+      })})`);
+      this.approvals.delete(requestId);
+    } catch (cause) {
+      throw new Error('审批结果无法确认，请在 Desktop 核对处理，不要重复提交。', { cause });
+    }
   }
 
   async getStatus(): Promise<DesktopWindowStatus> {
@@ -267,7 +298,10 @@ export class DesktopBridge extends EventEmitter {
   }
 
   private handleMessage(message: any): void {
-    if (message.id) {
+    if (!record(message)) throw new Error('Invalid CDP message.');
+    if (message.id !== undefined) {
+      if (!Number.isSafeInteger(message.id) || message.error !== undefined &&
+        (!record(message.error) || typeof message.error.message !== 'string')) throw new Error('Invalid CDP response.');
       const pending = this.commands.get(message.id);
       this.commands.delete(message.id);
       if (message.error) pending?.reject(new Error(message.error.message));
@@ -278,12 +312,19 @@ export class DesktopBridge extends EventEmitter {
       this.socket?.close();
       return;
     }
-    if (message.method !== 'Runtime.bindingCalled' || message.params.name !== BINDING) return;
+    if (message.method !== 'Runtime.bindingCalled') return;
+    if (!record(message.params) || typeof message.params.name !== 'string') throw new Error('Invalid binding event.');
+    if (message.params.name !== BINDING) return;
+    if (typeof message.params.payload !== 'string') throw new Error('Invalid binding payload.');
     const data = JSON.parse(message.params.payload);
+    if (!record(data)) throw new Error('Invalid relay payload.');
     if (data.type === 'mcp-notification') {
+      if (typeof data.method !== 'string' || data.params !== undefined && !record(data.params)) throw new Error('Invalid notification.');
       if (data.method === 'serverRequest/resolved') {
+        if (!identifier(data.params?.requestId)) throw new Error('Invalid resolved request.');
         const requestId = `desktop:${data.params.requestId}`;
         this.approvals.delete(requestId);
+        this.approvalClaims.delete(requestId);
         this.emit('resolved', requestId);
       }
       this.emit('event', { method: data.method, params: data.params });
@@ -291,8 +332,10 @@ export class DesktopBridge extends EventEmitter {
     }
     if (data.type === 'mcp-request') {
       this.retainApproval(data.request);
-    } else {
+    } else if (data.type === 'mcp-response') {
       const response = data.message;
+      if (!record(response) || !identifier(response.id) || response.error !== undefined &&
+        (!record(response.error) || typeof response.error.message !== 'string')) throw new Error('Invalid native response.');
       const pending = this.requests.get(String(response.id));
       this.requests.delete(String(response.id));
       if (response.error) pending?.reject(new NativeRpcError(response.error));
@@ -301,6 +344,8 @@ export class DesktopBridge extends EventEmitter {
   }
 
   private retainApproval(request: { id: string | number; method: string; params: unknown }): void {
+    if (!record(request) || !identifier(request.id) || typeof request.method !== 'string' ||
+      !record(request.params)) throw new Error('Invalid approval request.');
     const requestId = `desktop:${request.id}`;
     this.approvals.set(requestId, { method: request.method, params: request.params, nativeId: request.id });
     this.emit('server-request', { requestId, method: request.method, params: request.params });

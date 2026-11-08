@@ -68,6 +68,41 @@ export function validAutomationRule(rule: string): boolean {
   try { rrulestr(rule); return true; } catch { return false; }
 }
 
+export function automationSchedulePreset(rule: string): AutomationSchedule {
+  const custom: AutomationSchedule = { kind: 'custom', rrule: rule };
+  try {
+    const parsed = rrulestr(rule);
+    if (!(parsed instanceof RRule) || /DTSTART|TZID|EXDATE|RDATE/i.test(rule)) return custom;
+    const options = parsed.origOptions;
+    if (Object.entries(options).some(([key, value]) => value != null &&
+      !['freq', 'interval', 'byhour', 'byminute', 'bysecond', 'byweekday'].includes(key))) return custom;
+    const one = (value: number | number[] | null | undefined, fallback: number) =>
+      value == null ? fallback : Array.isArray(value) ? value.length === 1 ? value[0] ?? NaN : NaN : value;
+    const hour = one(options.byhour, 0);
+    const minute = one(options.byminute, 0);
+    const second = one(options.bysecond, 0);
+    if (!Number.isInteger(hour) || !Number.isInteger(minute) || second !== 0) return custom;
+    if (options.freq === RRule.MINUTELY && options.byhour == null && options.byminute == null &&
+      options.bysecond == null && options.byweekday == null) {
+      return { kind: 'interval', everyMinutes: options.interval ?? 1 };
+    }
+    if ((options.interval ?? 1) !== 1) return custom;
+    if (options.byminute == null || options.bysecond == null) return custom;
+    if (options.freq === RRule.HOURLY && options.byhour == null && options.byweekday == null) {
+      return { kind: 'hourly', minute };
+    }
+    if (options.byhour == null) return custom;
+    const time = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    if (options.freq === RRule.DAILY && options.byweekday == null) return { kind: 'daily', time };
+    if (options.freq !== RRule.WEEKLY) return custom;
+    const days = (Array.isArray(options.byweekday) ? options.byweekday : [options.byweekday])
+      .map(day => typeof day === 'number' ? day : day && typeof day === 'object' && day.n == null ? day.weekday : NaN);
+    if (days.length === 1 && Number.isInteger(days[0])) return { kind: 'weekly', weekday: (days[0]! + 1) % 7, time };
+    if ([...new Set(days)].sort().join(',') === '0,1,2,3,4') return { kind: 'weekdays', time };
+    return custom;
+  } catch { return custom; }
+}
+
 export function automationScheduleSummary(rule: string): string {
   try {
     const parsed = rrulestr(rule);

@@ -23,6 +23,6 @@ try {
   process.stdout.write(JSON.stringify({ supported: true, passwordConfigured: isPasswordConfigured(), ...authenticatedDevices() }));
 } catch {
   // Never echo request bodies or password values through command errors.
-  process.stderr.write('本机认证操作未完成，请确认密码至少 6 位且认证记录可读写。');
+  process.stderr.write('本机认证操作未完成，请确认新密码至少 12 位且认证记录可读写。');
   process.exitCode = 1;
 }

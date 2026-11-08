@@ -18,6 +18,13 @@ This map describes ownership boundaries. It does not change product behavior.
 | Manager rendering | `desktop/renderer/main.tsx` | `contract.ts` declares the renderer bridge and state |
 | Runtime delivery | `scripts/package-runtime.mjs` | `runtime-files.mjs` filters staging; `archive-runtime-symbols.mjs` keeps separate CI diagnostics |
 | Live file previews | `src/client/useFilePreview.ts` | `server/preview-watch.ts` owns scoped authenticated revision events; `FilePreview.tsx` and `PdfPreview.tsx` preserve reading state |
+| Write identity | `client/action-intents.ts`, `server/action-ledger.ts` | `shared/action-policy.ts` selects native writes; `side-chat-actions.ts` retains the original ephemeral operation |
+| History bounds | `client/history-window.ts`, `history-window-controller.ts` | `useRemote.ts` owns selection and native cursors; `ThreadTimeline.tsx` owns reading anchors and interaction idleness |
+| API boundary | `server/api-boundary.ts` | Default authentication, exact public exceptions, real HTTP regression tests |
+| Preview resource policy | `shared/preview-security.ts` | `server/file-preview.ts` checks lexical and real paths; `client/preview-rendering.ts` installs CSP before scripts |
+| Terminal isolation | `server/terminal-process.ts`, `terminal-worker.ts` | `terminal-manager.ts` owns lifetime/limits; only the worker loads the native PTY |
+| Publisher trust | `desktop/release-signature.mjs`, `release-keys.mjs` | `package-runtime.mjs` signs; `update-prepare.mjs` validates runtime and source fallback |
+| Bounded service output | `scripts/rotating-log.mjs` | `background-service.mjs`, Windows host and tunnel supervisor capture owned output |
 
 Main-chat bounded history, streaming batches and selection cancellation remain
 distinct from side/subagent projections. A side tab closes its ephemeral native

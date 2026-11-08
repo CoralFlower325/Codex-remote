@@ -6,6 +6,7 @@ import { c as archive } from 'tar';
 import { prepareUpdate } from './update-prepare.mjs';
 import { buildFileNames, mergeBuildInputs } from './update-inputs.mjs';
 import { runtimeNames, sha256, sourceHash } from './runtime-package.mjs';
+import { signedFixture, signedSourceRelease } from '../scripts/test-release-signing.mjs';
 
 const temporary = [];
 async function directory() {
@@ -44,7 +45,8 @@ async function fixture({ baseline = true, baseFiles = {}, targetFiles = {} } = {
     files: Object.fromEntries(Object.entries(bytes).map(([name, text]) => [name, {
       size: Buffer.byteLength(text), sha256: sha256(Buffer.from(text)), mode: 0o644 }])),
     archive: { size: archiveBytes.length, sha256: sha256(archiveBytes) } };
-  const names = runtimeNames('0.2.9'), manifestBytes = Buffer.from(JSON.stringify(manifest));
+  const { signed, keys } = signedFixture(manifest);
+  const names = runtimeNames('0.2.9'), manifestBytes = Buffer.from(JSON.stringify(signed));
   const assets = [[names.manifest, manifestBytes], [names.archive, archiveBytes]].map(([name, body]) => ({
     name, size: body.length, digest: `sha256:${sha256(body)}`,
     browser_download_url: `https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.9/${name}`
@@ -59,7 +61,8 @@ async function fixture({ baseline = true, baseFiles = {}, targetFiles = {} } = {
   const fetcher = vi.fn(async (url) => new Response(url.endsWith('.json') ? manifestBytes : archiveBytes));
   const states = [];
   const progress = (_message, state) => states.push(state);
-  return { root, execute, fetcher, states, progress, release: { tag: 'v0.2.9', version: '0.2.9', assets } };
+  return { root, execute, fetcher, states, progress, trustedKeys: keys, manifest: signed, manifestBytes,
+    release: { tag: 'v0.2.9', version: '0.2.9', assets } };
 }
 afterEach(async () => {
   for (const root of temporary.splice(0)) await fs.rm(root, { recursive: true, force: true });
@@ -71,7 +74,8 @@ describe('runtime preparation input classification', () => {
       const item = await fixture({ baseFiles: { [relative]: 'old official\n' },
         targetFiles: { [relative]: 'new official\n' } });
       await write(item.root, relative, 'new official\r\n');
-      const prepared = await prepareUpdate(item.root, item.release, item.progress, item.execute, { fetcher: item.fetcher });
+      const prepared = await prepareUpdate(item.root, item.release, item.progress, item.execute,
+        { fetcher: item.fetcher, trustedKeys: item.trustedKeys });
       temporary.push(prepared.stage);
       expect(prepared.mode).toBe('runtime');
       expect(prepared.plan.some((entry) => entry.relative === relative)).toBe(false);
@@ -89,11 +93,12 @@ describe('runtime preparation input classification', () => {
         ? JSON.stringify({ name: 'codex-remote', version: '0.2.7', scripts: { private: 'private command' } })
         : 'private build configuration';
       await write(item.root, relative, local);
-      await expect(prepareUpdate(item.root, item.release, item.progress, item.execute, { fetcher: item.fetcher }))
+      await expect(prepareUpdate(item.root, item.release, item.progress, item.execute,
+        { fetcher: item.fetcher, trustedKeys: item.trustedKeys }))
         .rejects.toMatchObject({ cause: { message: 'Synthetic source preparation stop.' } });
       expect(await fs.readFile(path.join(item.root, relative), 'utf8')).toBe(local);
       expect(item.states.map((state) => state.detail).join('\n')).toContain(relative);
-      expect(item.fetcher).toHaveBeenCalledOnce();
+      expect(item.fetcher).toHaveBeenCalledTimes(2);
     });
 
   it('keeps a standard installation on runtime despite Finder and AppleDouble metadata', async () => {
@@ -101,7 +106,8 @@ describe('runtime preparation input classification', () => {
     const metadata = ['scripts/.DS_Store', 'src/nested/._main.ts',
       'public/__MACOSX/asset', 'scripts/._directory/nested'];
     for (const name of metadata) await write(item.root, name, 'mac metadata');
-    const prepared = await prepareUpdate(item.root, item.release, item.progress, item.execute, { fetcher: item.fetcher });
+    const prepared = await prepareUpdate(item.root, item.release, item.progress, item.execute,
+      { fetcher: item.fetcher, trustedKeys: item.trustedKeys });
     temporary.push(prepared.stage);
     expect(prepared.mode).toBe('runtime');
     expect(item.execute.mock.calls.some(([command]) => command === 'git')).toBe(false);
@@ -130,7 +136,8 @@ describe('runtime preparation input classification', () => {
     const item = await fixture();
     if (kind === 'modified') await write(item.root, 'src/main.ts', 'SECRET_LOCAL_CONTENT');
     else await fs.rm(path.join(item.root, 'src/main.ts'));
-    await expect(prepareUpdate(item.root, item.release, item.progress, item.execute, { fetcher: item.fetcher }))
+    await expect(prepareUpdate(item.root, item.release, item.progress, item.execute,
+      { fetcher: item.fetcher, trustedKeys: item.trustedKeys }))
       .rejects.toMatchObject({ cause: { message: 'Synthetic source preparation stop.' } });
     const details = item.states.map((state) => state.detail).join('\n');
     expect(details).toContain('src/main.ts');
@@ -141,7 +148,8 @@ describe('runtime preparation input classification', () => {
   it('bounds added customization diagnostics and retains every local file', async () => {
     const item = await fixture();
     for (let i = 0; i < 12; i++) await write(item.root, `src/custom-${String(i).padStart(2, '0')}.ts`, 'private code');
-    await expect(prepareUpdate(item.root, item.release, item.progress, item.execute, { fetcher: item.fetcher }))
+    await expect(prepareUpdate(item.root, item.release, item.progress, item.execute,
+      { fetcher: item.fetcher, trustedKeys: item.trustedKeys }))
       .rejects.toMatchObject({ cause: { message: 'Synthetic source preparation stop.' } });
     const detail = item.states.find((state) => state.detail.includes('src/custom-'))?.detail;
     expect(detail).toContain('src/custom-07.ts');
@@ -152,13 +160,54 @@ describe('runtime preparation input classification', () => {
     expect((await buildFileNames(item.root)).filter((name) => name.startsWith('src/custom-'))).toHaveLength(12);
   });
 
-  it.each(['assets', 'baseline'])('explains absent %s before selecting the source route', async (reason) => {
-    const item = await fixture({ baseline: reason !== 'baseline' });
-    if (reason === 'assets') item.release.assets = [];
-    await expect(prepareUpdate(item.root, item.release, item.progress, item.execute, { fetcher: item.fetcher }))
+  it('explains an absent baseline before selecting the authenticated source route', async () => {
+    const item = await fixture({ baseline: false });
+    await expect(prepareUpdate(item.root, item.release, item.progress, item.execute,
+      { fetcher: item.fetcher, trustedKeys: item.trustedKeys }))
       .rejects.toMatchObject({ cause: { message: 'Synthetic source preparation stop.' } });
     const details = item.states.map((state) => state.detail).join('\n');
-    expect(details).toContain(reason === 'assets' ? `${process.platform}/${process.arch}` : '0.2.7');
-    expect(item.fetcher).toHaveBeenCalledTimes(reason === 'assets' ? 0 : 1);
+    expect(details).toContain('0.2.7');
+    expect(item.fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects absent signed assets without falling back to unauthenticated source or changing live files', async () => {
+    const item = await fixture();
+    await expect(prepareUpdate(item.root, { ...item.release, assets: [] }, item.progress, item.execute,
+      { fetcher: item.fetcher, trustedKeys: item.trustedKeys })).rejects.toThrow('签名');
+    expect(item.execute).not.toHaveBeenCalled();
+    expect(item.fetcher).not.toHaveBeenCalled();
+    expect(await fs.readFile(path.join(item.root, 'dist-server/server/index.js'), 'utf8')).toBe('old server');
+    expect(item.states.at(-1).status).toBe('failed');
+  });
+
+  it.each(['missing', 'tampered', 'untrusted'])('blocks a %s manifest before runtime execution or live changes', async kind => {
+    const item = await fixture();
+    let manifest = item.manifest;
+    if (kind === 'missing') { const { signature: _signature, ...unsigned } = manifest; manifest = unsigned; }
+    if (kind === 'tampered') manifest = { ...manifest, archive: { ...manifest.archive, sha256: '0'.repeat(64) } };
+    const bytes = Buffer.from(JSON.stringify(manifest));
+    const release = { ...item.release, assets: item.release.assets.map(asset => asset.name.endsWith('.json')
+      ? { ...asset, size: bytes.length, digest: `sha256:${sha256(bytes)}` } : asset) };
+    const fetcher = vi.fn(async () => new Response(bytes));
+    await expect(prepareUpdate(item.root, release, item.progress, item.execute,
+      { fetcher, trustedKeys: kind === 'untrusted' ? {} : item.trustedKeys })).rejects.toThrow('签名');
+    expect(item.execute).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(await fs.readFile(path.join(item.root, 'dist-server/server/index.js'), 'utf8')).toBe('old server');
+    expect(JSON.parse(await fs.readFile(path.join(item.root, 'package.json'), 'utf8')).version).toBe('0.2.7');
+  });
+
+  it('blocks a source tag whose commit differs from its authenticated release identity before any build', async () => {
+    const item = await fixture();
+    const identity = signedSourceRelease('0.2.9');
+    const execute = vi.fn(async (command, args) => {
+      expect(command).toBe('git');
+      return args[2] === 'rev-parse' ? 'b'.repeat(40) : '';
+    });
+    await expect(prepareUpdate(item.root, identity.release, item.progress, execute, identity.options))
+      .rejects.toThrow('提交与发布者签名不一致');
+    expect(execute.mock.calls.map(([, args]) => args[2])).toEqual(['init', 'remote', 'fetch', 'checkout', 'rev-parse']);
+    expect(await fs.readFile(path.join(item.root, 'dist-server/server/index.js'), 'utf8')).toBe('old server');
+    expect(JSON.parse(await fs.readFile(path.join(item.root, 'package.json'), 'utf8')).version).toBe('0.2.7');
   });
 });

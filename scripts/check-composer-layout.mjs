@@ -118,7 +118,7 @@ sockets.on('connection', socket => {
 const directory = 'output/playwright/composer-028';
 await fs.mkdir(directory, { recursive: true });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await chromium.launch({ channel: process.env.REMOTE_BROWSER_CHANNEL ?? 'chrome', headless: true });
 const results = [];
 try {
   for (const size of JSON.parse(await fs.readFile('scripts/acceptance-viewports.json', 'utf8'))) {
@@ -261,7 +261,17 @@ try {
     await page.locator('.composer-image-remove').first().click();
     await select('b'); await select('a');
     assert.equal(await page.locator('.composer-image').count(), 4);
-    assert.equal(await page.evaluate(() => Object.values(sessionStorage).some(v => /data:image/.test(v))), false);
+    const savedContext = await page.evaluate(() => sessionStorage.getItem('composer-context:v1'));
+    assert(savedContext && savedContext.length * 2 <= 4 * 1024 * 1024);
+    assert.equal(JSON.parse(savedContext).a.attachments.length, 4);
+    assert.equal(await page.evaluate(() => sessionStorage.getItem('draft:a')), 'Retry draft');
+    await page.waitForFunction(() => new URL(location.href).searchParams.get('thread') === 'a');
+    await page.reload();
+    await page.locator('.message-stream').getByText('A short final reply.', { exact: true }).waitFor();
+    await page.waitForFunction(() => !document.querySelector('.composer textarea')?.disabled);
+    assert.equal(await input.inputValue(), 'Retry draft');
+    assert.equal(await page.locator('.composer-image').count(), 4);
+    assert(await page.locator('.composer-image img').first().evaluate(img => img.complete && img.naturalWidth > 0));
     // Real native notifications, separate from browser transport recovery.
     if (await page.locator('.error-banner button').count()) await page.locator('.error-banner button').click();
     event('turn/started', { turn: { id: 'runtime-error', status: 'inProgress', startedAt: Math.floor(Date.now() / 1000) - 2 } });

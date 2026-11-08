@@ -1,5 +1,6 @@
-import { CircleAlert, FileCode2, LoaderCircle, MessageSquareText, ShieldCheck } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { CircleAlert, Copy, FileCode2, LoaderCircle, MessageSquareText, ShieldCheck } from 'lucide-react';
+import { useRef, useState, type ReactNode } from 'react';
+import { copyText } from '../clipboard';
 
 import { approvalDecisions, commandApprovalOptions, permissionApprovalResponse, type PermissionDecision } from '../approval';
 import type { ServerRequest } from '../types';
@@ -31,13 +32,17 @@ function ApprovalCard({
   onError: (error: unknown) => void;
 }) {
   const [working, setWorking] = useState(false);
+  const responding = useRef(false);
   const respond = async (result: unknown) => {
+    if (responding.current) return;
+    responding.current = true;
     setWorking(true);
     try {
       await onRespond(request, result);
     } catch (error) {
       onError(error);
     } finally {
+      responding.current = false;
       setWorking(false);
     }
   };
@@ -107,10 +112,17 @@ function ApprovalCard({
     <div className="approval-card">
       <ApprovalHeading
         icon={<CircleAlert size={17} />}
-        title={request.method}
-        description="这个请求暂时没有专用交互界面，请回到桌面端处理。"
+        title="需要在 Desktop 处理"
+        description="此审批类型尚未适配。请在主机的 Codex Desktop 中处理，Remote 会同步结果。"
       />
-      <pre className="approval-command">{JSON.stringify(request.params, null, 2)}</pre>
+      <details className="approval-details">
+        <summary>请求详情</summary>
+        <code>{request.method}</code>
+        <pre className="approval-command">{JSON.stringify(request.params, null, 2).slice(0, 20_000)}</pre>
+      </details>
+      <button type="button" className="secondary-button" onClick={() => {
+        void copyText(JSON.stringify({ method: request.method, params: request.params }, null, 2)).catch(onError);
+      }}><Copy size={14} />复制请求</button>
     </div>
   );
 }

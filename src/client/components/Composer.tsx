@@ -1,7 +1,7 @@
 import {
   ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, Eye, Folder,
   LoaderCircle, ShieldAlert, ShieldCheck, Square, X, Plus, Mic, MessageSquare, Sparkles, ListTodo,
-  FileText, RotateCw
+  FileText, RotateCw, CornerDownRight, ListEnd
 } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
@@ -14,7 +14,7 @@ import { composerKeyboardAction, insertComposerNewline } from '../composer-keybo
 import { SlashMenu } from './SlashMenu';
 import { ImagePreview } from './ImagePreview';
 import { useComposerDraft } from './ComposerDrafts';
-import { submittedComposerDraft } from '../composer-drafts';
+import { submittedComposerDraft, type ComposerInput } from '../composer-drafts';
 import { retainDocuments, uploadDocument } from '../document-attachments';
 import { PreviewLink } from './PreviewLinks';
 
@@ -35,13 +35,14 @@ interface ComposerProps {
   draftKey?: string;
   temporary?: boolean;
   queueMessages?: boolean;
+  onQueueModeChange?: (enabled: boolean) => void;
   initialInput?: { text: string; attachments: ComposerAttachment[]; skills: SkillInfo[] };
   disabled?: boolean;
   placeholder?: string;
   onProjectChange?: (projectId: string) => void;
   onModelChange: (model: string) => void | Promise<void>;
   onEffortChange: (effort: string) => void | Promise<void>;
-  onSubmit: (text: string, attachments: ComposerAttachment[], skills: SkillInfo[]) => Promise<void>;
+  onSubmit: (text: string, attachments: ComposerAttachment[], skills: SkillInfo[], submitted?: ComposerInput) => Promise<void>;
   onCommand: (command: SlashCommandId, argument: string) => Promise<void>;
   loadSkills: () => Promise<SkillsResult>;
   skillScope: string;
@@ -57,10 +58,11 @@ export function Composer({
   projects = [], selectedProjectId = '', activeTurnId, focusRequest = 0, insertRequest,
   draftKey = variant, disabled = false, placeholder, onProjectChange,
   onModelChange, onEffortChange, onSubmit, onStop, onError, contextUsage,
-  onCommand, loadSkills, skillScope, hasSavedThread, mode, temporary = false, initialInput, queueMessages = false
+  onCommand, loadSkills, skillScope, hasSavedThread, mode, temporary = false, initialInput, queueMessages = false,
+  onQueueModeChange
 }: ComposerProps) {
   const controlId = useId();
-  const { text: draft, attachments, skills: selectedSkills, sending, owner } = useComposerDraft(draftKey, temporary, initialInput);
+  const { text: draft, attachments, skills: selectedSkills, sending, owner, recoveryNotice } = useComposerDraft(draftKey, temporary, initialInput);
   const setDraft = (text: string) => owner.update(current => ({ ...current, text }));
   const setSending = (sending: boolean) => owner.update(current => ({ ...current, sending }));
   const setAttachments = (change: ComposerAttachment[] | ((current: ComposerAttachment[]) => ComposerAttachment[])) =>
@@ -420,7 +422,7 @@ export function Composer({
     setSending(true);
     try {
       await retainDocuments(submitted.attachments);
-      await onSubmit(text, submitted.attachments, submitted.skills);
+      await onSubmit(text, submitted.attachments, submitted.skills, submitted);
       owner.update(current => submittedComposerDraft(current, submitted));
     } catch (error) {
       onError(error);
@@ -532,6 +534,10 @@ export function Composer({
         </>,
         document.body
       )}
+      {recoveryNotice && <div className="draft-recovery-notice" role="status">
+        <span>{recoveryNotice}</span><button type="button" className="icon-button" title="关闭提示" aria-label="关闭草稿提示"
+          onClick={() => owner.update(current => ({ ...current, recoveryNotice: undefined }))}><X size={13} /></button>
+      </div>}
       <div className="composer">
         {(attachments.length > 0 || selectedSkills.length > 0) && <div className="composer-context-tray">
           {selectedSkills.map((skill) => <div className="composer-context-chip" key={skill.path}>
@@ -623,7 +629,7 @@ export function Composer({
           placeholder={placeholder ?? (activeTurnId ? '补充要求' : variant === 'home' ? '有什么需要处理？' : '继续向 Codex 提问')}
           rows={1}
         />
-        <div className="composer-toolbar">
+        <div className={`composer-toolbar${activeTurnId && onQueueModeChange ? ' composer-toolbar--send-mode' : ''}`}>
           <div className="composer-toolbar-left">
             <button type="button" className="composer-circle-button composer-add" aria-label="添加图片或 PDF" title="添加图片或 PDF"
               disabled={sending || disabled} onClick={() => fileRef.current?.click()}><Plus size={15} /></button>
@@ -662,6 +668,12 @@ export function Composer({
             <span className="composer-turn-slot" data-thread-navigation-slot={variant === 'thread' ? '' : undefined} />
           </div>
           <div className="composer-submit">
+            {activeTurnId && onQueueModeChange && <div className="composer-send-mode" role="group" aria-label="发送方式">
+              <button type="button" aria-pressed={queueMessages} title="本轮结束后发送" aria-label="排队发送"
+                disabled={sending || disabled} onClick={() => onQueueModeChange(true)}><ListEnd size={15} /></button>
+              <button type="button" aria-pressed={!queueMessages} title="立即引导当前轮次" aria-label="立即引导"
+                disabled={sending || disabled} onClick={() => onQueueModeChange(false)}><CornerDownRight size={15} /></button>
+            </div>}
             {contextPercent !== null && <span className="context-usage" role="img" tabIndex={0}
               aria-label={`上下文已用 ${Math.round(contextPercent)}%`}
               title={`上下文已用 ${Math.round(contextPercent)}%\n${usedTokens?.toLocaleString()} / ${contextWindow?.toLocaleString()} tokens`}
@@ -685,7 +697,8 @@ export function Composer({
                 attachments.some(attachment => attachment.kind === 'document' && Boolean(attachment.status)) || sending || disabled}
                  onClick={() => void submit()} aria-label={activeTurnId ? queueMessages ? '加入队列' : '发送补充要求' : '发送任务'}
                  title={activeTurnId ? queueMessages ? '加入队列' : '发送补充要求' : '发送任务'}>
-                {sending ? <LoaderCircle size={17} className="spin" /> : <ArrowUp size={18} />}
+                {sending ? <LoaderCircle size={17} className="spin" /> : activeTurnId && queueMessages
+                  ? <ListEnd size={18} /> : activeTurnId ? <CornerDownRight size={18} /> : <ArrowUp size={18} />}
               </button>
             )}
           </div>

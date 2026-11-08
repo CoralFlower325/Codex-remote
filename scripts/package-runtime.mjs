@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { c as archive } from 'tar';
 import { runtimeNames, runtimePath, sha256, runtimeRepository, sourceHash } from '../desktop/runtime-package.mjs';
 import { runtimeFile } from './runtime-files.mjs';
+import { signRelease, verifyRelease } from '../desktop/release-signature.mjs';
 
 const git = (...args) => execFileSync('git', args, { maxBuffer: 16 * 1024 * 1024 }).toString('utf8').trim();
 export function treeSources(ref) {
@@ -70,9 +71,12 @@ export async function packageRuntime(root, output) {
       commit: git('rev-parse', 'HEAD'), platform: process.platform, arch: process.arch,
       node: process.versions.node, sources, baselines, files,
       archive: { size: bytes.length, sha256: sha256(bytes) } };
-    await fs.writeFile(path.join(output, names.manifest), JSON.stringify(manifest), 'utf8');
+    if (!process.env.RELEASE_SIGNING_KEY) throw new Error('缺少 RELEASE_SIGNING_KEY，禁止生成未签名运行包。');
+    const signed = signRelease(manifest, process.env.RELEASE_SIGNING_KEY);
+    verifyRelease(signed);
+    await fs.writeFile(path.join(output, names.manifest), JSON.stringify(signed), 'utf8');
     console.log(`Packaged ${names.archive} (${bytes.length} bytes)`);
-    return manifest;
+    return signed;
   } finally { await fs.rm(stage, { recursive: true, force: true }); }
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

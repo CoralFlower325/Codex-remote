@@ -97,6 +97,11 @@ async function settle() {
   for (let pass = 0; pass < 10; pass++) { await Promise.resolve(); scope.render(); }
 }
 
+function synchronizeConnection() {
+  connection.options.onMessage({ type: 'bridge.status', status: 'ready' });
+  connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+}
+
 const goal = { threadId: thread.id, objective: 'Synthetic goal', status: 'active', tokenBudget: null,
   tokensUsed: 10, timeUsedSeconds: 5, createdAt: 1, updatedAt: 10 };
 const queued = { id: 'q', clientUserMessageId: 'u', input: [{ type: 'text', text: 'Synthetic steering', text_elements: [] }] };
@@ -128,6 +133,59 @@ function fixture(fetcher: typeof fetch, authenticated = true) {
 const json = (body: unknown) => Promise.resolve({ ok: true, text: async () => JSON.stringify(body) } as Response);
 
 describe('thread dock load ordering', () => {
+  it.each([true, false])('bounds live growth while preserving a reading window (reading: %s)', async reading => {
+    const records = Array.from({ length: 800 }, (_, index) => ({
+      turnId: index < 400 ? 'previous' : 'running', item: {
+        type: 'agentMessage', id: `record-${index}`, text: `Record ${index}`
+      }
+    }));
+    const f = fixture(path => String(path).includes('/thread/open?') ? json({
+      result: { thread }, items: records, turns: [], activeTurnId: 'running', turnsCursor: null, nextCursor: 'older'
+    }) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    f.remote.setHistoryReading(thread.id, reading);
+    connection.options.onMessage({ type: 'event', method: 'item/started', params: {
+      threadId: thread.id, turnId: 'running', item: { type: 'agentMessage', id: 'record-new', text: 'Live addition' }
+    } });
+    await settle();
+    expect(f.remote.items.length).toBeLessThanOrEqual(800);
+    if (reading) {
+      expect(f.remote.items.map(item => item.id)).toEqual(records.map(record => record.item.id));
+      expect(f.remote.viewingHistory).toBe(true);
+      expect(f.remote.hasNewerHistory).toBe(true);
+    } else {
+      expect(f.remote.items.at(-1)?.id).toBe('record-new');
+      expect(f.remote.viewingHistory).toBe(false);
+    }
+    expect(f.remote.hasMoreHistory).toBe(true);
+  });
+
+  it('retains a created chat when optional settings fail and sends the first turn to that same chat', async () => {
+    const f = fixture(() => new Promise(() => {}));
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    const created = { ...thread, id: 'created-once', status: { type: 'idle' } };
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type !== 'rpc') return;
+      calls.push(message);
+      connection.options.onMessage(message.method === 'thread/settings/update'
+        ? { type: 'rpc.error', id: message.id, error: { code: -32000, message: 'Synthetic settings rejected' } }
+        : { type: 'rpc.result', id: message.id, result: message.method === 'thread/start'
+          ? { thread: created } : message.method === 'turn/start'
+            ? { turn: { id: 'first-turn', status: 'inProgress' } } : { data: [], nextCursor: null } });
+    } });
+    const result = await f.remote.createThread({ effort: 'high' });
+    await settle();
+    expect(result.id).toBe(created.id);
+    expect(f.remote.activeThreadId).toBe(created.id);
+    expect(f.remote.lastError).toContain('聊天已经创建');
+    expect(calls.filter(call => call.method === 'thread/start')).toHaveLength(1);
+    await f.remote.sendTurn(created.id, 'First request', { effort: 'high' });
+    await settle();
+    expect(calls.filter(call => call.method === 'thread/start')).toHaveLength(1);
+    expect(calls.find(call => call.method === 'turn/start')?.params).toMatchObject({ threadId: created.id, effort: 'high' });
+  });
+
   it('renders goal and steering before a stalled realtime connection or history read completes', async () => {
     const fetcher = vi.fn<typeof fetch>((path) => String(path).includes('/dock/goal') ? json({ goal })
       : String(path).includes('/dock/queue') ? json({ data: [queued] }) : new Promise(() => {}));
@@ -213,7 +271,7 @@ function elements(tree: any): any[] {
 }
 
 describe('native question interaction', () => {
-  it('preselects the first option but waits for explicit submission, preserves multiline drafts on failure', async () => {
+  it('requires explicit choices and preserves multiline drafts on failure', async () => {
     const onSubmit = vi.fn().mockRejectedValueOnce(new Error('Disconnected')).mockResolvedValueOnce(undefined);
     const onError = vi.fn();
     let card: any;
@@ -224,15 +282,24 @@ describe('native question interaction', () => {
     ] }, disabled: false, onSubmit, onError }); };
     scope.render();
     expect(onSubmit).not.toHaveBeenCalled();
-    expect(elements(card).find(node => node.props?.['aria-pressed'])?.props.children.props.children).toBe('A');
+    expect(elements(card).some(node => node.props?.['aria-pressed'] === true)).toBe(false);
     const inputs = elements(card).filter(node => node.type === 'textarea');
     inputs[1]!.props.onChange({ target: { value: 'First line\nSecond line' } });
     scope.render();
     expect(onSubmit).not.toHaveBeenCalled(); // A newline in a free-text answer is never send.
     let button = elements(card).find(node => node.props?.className === 'primary-button');
-    expect(button.props.disabled).toBe(false);
+    expect(button.props.disabled).toBe(true);
     button.props.onClick(); await settle();
+    expect(onSubmit).not.toHaveBeenCalled();
+    elements(card).find(node => node.props?.className === 'choice-button')!.props.onClick();
+    scope.render();
+    button = elements(card).find(node => node.props?.className === 'primary-button');
+    expect(button.props.disabled).toBe(false);
+    button.props.onClick();
+    button.props.onClick(); // Both callbacks can run before React commits the disabled state.
+    await settle();
     expect(onError).toHaveBeenCalledOnce();
+    expect(onSubmit).toHaveBeenCalledOnce();
     expect(elements(card).filter(node => node.type === 'textarea')[1]!.props.value).toBe('First line\nSecond line');
     button = elements(card).find(node => node.props?.className === 'primary-button');
     button.props.onClick(); await settle();
@@ -379,7 +446,7 @@ describe('cached history verification', () => {
       if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
         result: message.method === 'thread/resume' ? { thread } : { data: [] } });
     } });
-    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    synchronizeConnection();
     await settle(); await settle();
     const mountedItems = f.remote.items;
     const mountedThread = f.remote.activeThread;
@@ -405,7 +472,7 @@ describe('cached history verification', () => {
       connection.options.onMessage({ type: 'rpc.result', id: message.id,
         result: message.method === 'thread/resume' ? { thread: { ...thread, model: 'native-model' } } : { data: [] } });
     } });
-    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    synchronizeConnection();
     await settle();
     expect(resumes).toHaveLength(1);
     expect(f.remote.items).toEqual([]);
@@ -440,7 +507,7 @@ describe('cached history verification', () => {
       connection.options.onMessage({ type: 'rpc.result', id: message.id,
         result: message.method === 'thread/resume' ? { thread } : { data: [] } });
     } });
-    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    synchronizeConnection();
     await settle(); await settle();
     expect(f.remote.loadingThread).toBe(false);
     expect(f.remote.items.at(-1)?.id).toBe('a');
@@ -466,7 +533,7 @@ describe('cached history verification', () => {
           error: { message: 'thread-store conflict: thread synthetic already has an active writer' } }
         : { type: 'rpc.result', id: message.id, result: { data: [] } });
     } });
-    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    synchronizeConnection();
     await settle();
     await vi.advanceTimersByTimeAsync(2_000); await settle();
     expect(methods.filter(method => method === 'thread/resume')).toHaveLength(1);
@@ -495,7 +562,7 @@ describe('cached history verification', () => {
       connection.options.onMessage({ type: 'rpc.result', id: message.id,
         result: message.method === 'thread/resume' ? { thread } : { data: [] } });
     } });
-    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    synchronizeConnection();
     await settle();
     await vi.advanceTimersByTimeAsync(500); await settle();
     await vi.advanceTimersByTimeAsync(1000); await settle();
@@ -517,7 +584,7 @@ describe('cached history verification', () => {
       if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
         result: message.method === 'thread/resume' ? { thread: { ...thread, model: 'old-model' } } : { data: [] } });
     } });
-    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    synchronizeConnection();
     await settle();
     pending.shift()!(await json(page)); await settle();
     if (liveUpdate) {
@@ -546,7 +613,7 @@ describe('cached history verification', () => {
           result: { thread: { ...thread, model: 'old-model' } } });
       else connection.options.onMessage({ type: 'rpc.result', id: message.id, result: { data: [] } });
     } });
-    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    synchronizeConnection();
     await settle();
     connection.options.onMessage({ type: 'event', method: 'thread/settings/updated',
       params: { threadId: thread.id, threadSettings: { model: 'new-model' } } });
@@ -570,7 +637,7 @@ describe('cached history verification', () => {
       if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
         result: message.method === 'thread/resume' ? { thread } : { data: [] } });
     } });
-    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    synchronizeConnection();
     await settle(); await settle();
     expect(f.remote.historySnapshot).toBe('failed');
     expect(f.remote.threadReady).toBe(false);
@@ -589,7 +656,7 @@ describe('cached history verification', () => {
       if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
         result: message.method === 'thread/resume' ? { thread } : { data: [] } });
     } });
-    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    synchronizeConnection();
     await settle(); await settle();
     expect(f.remote.loadingThread).toBe(false);
     expect(f.remote.items.at(-1)?.id).toBe('a');
@@ -634,7 +701,7 @@ describe('cached history verification', () => {
       if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
         result: message.method === 'thread/resume' ? { thread } : { data: [] } });
     } });
-    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    synchronizeConnection();
     await settle(); await settle();
     expect(reads).toBe(2);
     expect(f.remote.items.at(-1)?.id).toBe('new-answer');
@@ -667,7 +734,7 @@ describe('cached history verification', () => {
       if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
         result: message.method === 'thread/resume' ? { thread } : { data: [] } });
     } });
-    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    synchronizeConnection();
     await settle();
     connection.options.onMessage({ type: 'event', method: 'turn/completed', params: { threadId: thread.id } });
     await settle();
@@ -704,7 +771,7 @@ describe('cached history verification', () => {
       if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
         result: message.method === 'thread/resume' ? { thread } : { data: [] } });
     } });
-    connection.options.onMessage({ type: 'sync.ready', epoch: 'synthetic', sequence: 0, resumed: true });
+    synchronizeConnection();
     await settle(); await settle();
     const baseline = reads;
     await vi.advanceTimersByTimeAsync(16_000);

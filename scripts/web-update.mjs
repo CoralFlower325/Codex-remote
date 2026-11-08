@@ -14,10 +14,10 @@ import { fetchRelease } from './web-update-network.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const scripts = ['web-update-worker.mjs', 'web-update-state.mjs', 'web-update-service.mjs',
   'web-update-service-windows.ps1', 'web-update-service-macos.sh', 'web-update-launch-windows.ps1',
-  'web-update-network.mjs'];
+  'web-update-network.mjs', 'background-service.mjs', 'rotating-log.mjs'];
 const libraries = ['updater.mjs', 'update-prepare.mjs', 'update-inputs.mjs', 'update-transaction.mjs',
   'update-progress.mjs', 'runtime-package.mjs', 'controller.mjs', 'process.mjs', 'release.mjs',
-  'release-source.mjs', 'release-network.mjs'];
+  'release-source.mjs', 'release-network.mjs', 'release-signature.mjs', 'release-keys.mjs'];
 
 async function copyDependencies(root, job) {
   const copied = new Map();

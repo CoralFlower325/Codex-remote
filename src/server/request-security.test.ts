@@ -42,13 +42,32 @@ it('reserves concurrent login work before hashing and limits repeated failures',
     if ('retryAfter' in result) throw new Error('Unexpected limit');
     return result.finish;
   };
-  const a = begin('a'), b = begin('a'), c = begin('c'), d = begin('d');
+  const a = begin('a'), b = begin('a'), c = begin('c');
   expect(budget.begin('a')).toHaveProperty('retryAfter');
   expect(budget.begin('other')).toHaveProperty('retryAfter');
-  a(false); a(false); b(false); c(true); d(true);
+  const recovery = budget.begin('direct-local', Date.now(), true);
+  expect(recovery).toHaveProperty('finish');
+  if ('finish' in recovery) recovery.finish(true);
+  a(false); a(false); b(false); c(true);
   for (let i = 0; i < 3; i++) begin('a')(false);
   expect(budget.begin('a')).toEqual({ retryAfter: 100 });
   vi.advanceTimersByTime(100_000);
   begin('a')(true);
   expect(budget.begin('a')).toHaveProperty('finish');
+});
+
+it('bounds distributed failures without blocking the reserved direct-local recovery path', () => {
+  vi.useFakeTimers();
+  const budget = new LoginBudget();
+  for (let i = 0; i < 30; i++) {
+    const attempt = budget.begin(`source-${i}`);
+    expect(attempt).toHaveProperty('finish');
+    if ('finish' in attempt) attempt.finish(false);
+  }
+  expect(budget.begin('new-source')).toHaveProperty('retryAfter');
+  const local = budget.begin('direct-local', Date.now(), true);
+  expect(local).toHaveProperty('finish');
+  if ('finish' in local) local.finish(true);
+  vi.advanceTimersByTime(60_001);
+  expect(budget.begin('new-source')).toHaveProperty('finish');
 });
