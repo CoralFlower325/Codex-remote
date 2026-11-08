@@ -1,7 +1,7 @@
 {
   "name": "codex-remote-manager",
   "productName": "Codex Remote Manager",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "type": "module",
   "main": "main.mjs",
@@ -52,8 +52,18 @@
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["arm64"] },
-        { "target": "zip", "arch": ["arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
       ],
       "icon": "assets/app.png",
       "category": "public.app-category.developer-tools"

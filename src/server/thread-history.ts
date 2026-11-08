@@ -32,6 +32,26 @@ export async function readThreadHistoryPage(
   };
 }
 
+export async function readThreadHistoryFromItem(
+  request: Request, threadId: string, turnId: string, itemId: string,
+  limit = 100, direction: 'asc' | 'desc' = 'desc'
+) {
+  // Item anchors are scoped to one turn. Resolve a native string cursor before
+  // dropping that filter, otherwise paging would stop at every turn boundary.
+  const list = (params: Record<string, unknown>) => request('thread/items/list', { threadId, ...params }) as
+    Promise<{ data: Entry[]; nextCursor: string | null; backwardsCursor?: string | null }>;
+  const opposite = direction === 'asc' ? 'desc' : 'asc';
+  let seed = await list({ turnId, cursor: { type: 'item', itemId }, sortDirection: opposite, limit: 1 });
+  let cursor = seed.nextCursor ?? seed.backwardsCursor;
+  if (!seed.data.length) {
+    seed = await list({ turnId, sortDirection: direction, limit: 1 });
+    cursor = seed.backwardsCursor ?? seed.nextCursor;
+  }
+  if (!cursor) return { items: compactHistoryEntries(direction === 'desc' ? [...seed.data].reverse() : seed.data),
+    nextCursor: null, activeTurnId: null, turns: [], turnsCursor: null };
+  return readThreadHistoryPage(request, threadId, cursor, limit, direction);
+}
+
 export async function readThreadOutline(request: Request, threadId: string, cursor: string | null) {
   const result = await request('thread/turns/list', {
     threadId, limit: 100, itemsView: 'summary', ...(cursor ? { cursor } : {})

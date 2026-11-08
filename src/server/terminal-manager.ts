@@ -5,14 +5,15 @@ import path from 'node:path';
 
 import headless from '@xterm/headless';
 import serializer from '@xterm/addon-serialize';
-import nodePty, { type IPty, type IDisposable } from 'node-pty';
+import type { IDisposable } from 'node-pty';
 
 import type { TerminalInfo, TerminalServerMessage } from '../shared/terminal.js';
 import { terminalCwdIntegration, terminalReportedCwd } from './terminal-cwd.js';
+import { spawnTerminal, type TerminalPty } from './terminal-process.js';
 
 interface Session {
   info: TerminalInfo;
-  pty: IPty;
+  pty: TerminalPty;
   screen: InstanceType<typeof headless.Terminal>;
   serialize: InstanceType<typeof serializer.SerializeAddon>;
   listeners: Set<(message: TerminalServerMessage) => void>;
@@ -20,6 +21,7 @@ interface Session {
   pendingBytes: number;
   paused: boolean;
   closed: boolean;
+  sizeOwner: ((message: TerminalServerMessage) => void) | null;
   cwdTimer: ReturnType<typeof setTimeout>;
   disposeIntegration: () => void;
 }
@@ -44,7 +46,8 @@ export class TerminalManager {
   private readonly workspaces = new Map<string, TerminalWorkspace>();
   private nextTitle = 1;
 
-  constructor(private readonly defaultCwd = os.homedir()) {}
+  constructor(private readonly defaultCwd = os.homedir(),
+    private readonly limits = { sessions: 32, perWorkspace: 8, workspaces: 64 }) {}
 
   open(cwd = this.defaultCwd): TerminalWorkspace {
     const resolved = fs.realpathSync.native(path.resolve(cwd));
@@ -52,6 +55,10 @@ export class TerminalManager {
     const key = process.platform === 'win32' ? resolved.toLowerCase() : resolved;
     let workspace = this.workspaces.get(key);
     if (!workspace) {
+      for (const [id, value] of this.workspaces) {
+        if (!value.sessions.size && !value.listeners.size) this.workspaces.delete(id);
+      }
+      if (this.workspaces.size >= this.limits.workspaces) throw new Error('终端工作区数量已达上限，请关闭不用的终端。');
       workspace = { cwd: resolved, sessions: new Map(), activeSessionId: null, listeners: new Set() };
       this.workspaces.set(key, workspace);
     }
@@ -63,14 +70,18 @@ export class TerminalManager {
   }
 
   create(workspace: TerminalWorkspace): string {
+    const count = [...this.workspaces.values()].reduce((total, entry) => total + entry.sessions.size, 0);
+    if (count >= this.limits.sessions || workspace.sessions.size >= this.limits.perWorkspace) {
+      throw new Error('终端会话数量已达上限，请先结束不用的终端；现有 shell 会保持运行。');
+    }
     const shell = terminalShell();
     const integration = terminalCwdIntegration(shell.file, shell.args);
     const screen = new headless.Terminal({ cols: 80, rows: 24, scrollback: 1000, allowProposedApi: true });
     const serialize = new serializer.SerializeAddon();
     screen.loadAddon(serialize);
-    let pty: IPty;
+    let pty: TerminalPty;
     try {
-      pty = nodePty.spawn(shell.file, integration.args, {
+      pty = spawnTerminal(shell.file, integration.args, {
         name: 'xterm-256color', cols: 80, rows: 24, cwd: workspace.cwd,
         useConptyDll: process.platform === 'win32',
         env: { ...process.env, ...integration.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }
@@ -86,7 +97,7 @@ export class TerminalManager {
       info: { id, title, cwd: workspace.cwd, initialCwd: workspace.cwd,
         cwdStatus: integration.supported ? 'pending' : 'unavailable', shell: shell.file, exitCode: null },
       pty, screen, serialize, listeners: new Set(), disposables: [],
-      pendingBytes: 0, paused: false, closed: false,
+      pendingBytes: 0, paused: false, closed: false, sizeOwner: null,
       disposeIntegration: integration.dispose,
       cwdTimer: setTimeout(() => {
         if (session.closed || session.info.cwdStatus !== 'pending') return;
@@ -141,11 +152,15 @@ export class TerminalManager {
     const session = this.session(workspace, id);
     workspace.activeSessionId = id;
     session.listeners.add(listener);
+    session.sizeOwner ??= listener;
     listener({
       type: 'terminal.snapshot', sessionId: id, data: session.serialize.serialize(),
       cols: session.screen.cols, rows: session.screen.rows
     });
-    return () => session.listeners.delete(listener);
+    return () => {
+      session.listeners.delete(listener);
+      if (session.sizeOwner === listener) session.sizeOwner = session.listeners.values().next().value ?? null;
+    };
   }
 
   input(workspace: TerminalWorkspace, id: string, data: string): void {
@@ -154,11 +169,18 @@ export class TerminalManager {
     session.pty.write(data);
   }
 
-  resize(workspace: TerminalWorkspace, id: string, cols: number, rows: number): void {
+  resize(workspace: TerminalWorkspace, id: string, cols: number, rows: number,
+    viewer?: (message: TerminalServerMessage) => void): void {
     if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 2 || cols > 500 || rows < 1 || rows > 300) {
       throw new Error('Invalid terminal dimensions.');
     }
     const session = this.session(workspace, id);
+    if (viewer && session.sizeOwner !== viewer) {
+      // A shared shell has one PTY geometry. Observers render its authoritative
+      // size rather than continuously resizing one another's terminal.
+      viewer({ type: 'terminal.resized', sessionId: id, cols: session.screen.cols, rows: session.screen.rows });
+      return;
+    }
     if (cols === session.screen.cols && rows === session.screen.rows) return;
     session.screen.resize(cols, rows);
     if (session.info.exitCode === null) session.pty.resize(cols, rows);

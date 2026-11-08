@@ -32,7 +32,9 @@ describe('password authentication', () => {
 
   it('rejects short passwords', async () => {
     const auth = await import('./auth.js');
-    await expect(auth.setPassword('123')).rejects.toThrow(/at least 6/i);
+    await expect(auth.setPassword('123')).rejects.toThrow(/12/);
+    await expect(auth.setPassword('password123456')).rejects.toThrow(/12/);
+    await expect(auth.setPassword('aaaaaaaaaaaa')).rejects.toThrow(/12/);
   });
 
   it('verifies signed sessions and rejects tampering', async () => {
@@ -122,5 +124,18 @@ describe('password authentication', () => {
     const token = auth.issueSession();
     auth.revokeSessionCookie(auth.sessionCookie(token, false));
     expect(auth.verifySessionToken(token)).toBeNull();
+  });
+  it('expires idle sessions and fails closed without overwriting a corrupt secret', async () => {
+    const auth = await import('./auth.js');
+    await auth.setPassword('synthetic password');
+    const token = auth.issueSession();
+    const device = auth.authenticatedDevices().devices[0];
+    const old = new Date(Date.now() - 25 * 60 * 60_000);
+    fs.utimesSync(path.join(tempDir, 'authenticated-devices', device.id + '.json'), old, old);
+    expect(auth.verifySessionToken(token)).toBeNull();
+    const secret = path.join(tempDir, 'session-secret');
+    fs.writeFileSync(secret, 'corrupt', 'utf8');
+    expect(auth.verifySessionToken(token)).toBeNull();
+    expect(fs.readFileSync(secret, 'utf8')).toBe('corrupt');
   });
 });

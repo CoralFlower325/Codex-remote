@@ -8,10 +8,11 @@ import { runtimeNames, validateManifest, unpackRuntime, sha256 } from '../deskto
 import { prepareUpdate, installUpdate, compareVersions } from '../desktop/updater.mjs';
 import { run } from '../desktop/process.mjs';
 import { pendingUpdate } from '../desktop/update-transaction.mjs';
+import { verifyRelease } from '../desktop/release-signature.mjs';
 
 const pkg = JSON.parse(await fs.readFile('package.json', 'utf8'));
 const names = runtimeNames(pkg.version);
-const manifest = validateManifest(JSON.parse(await fs.readFile(path.join('output/runtime', names.manifest), 'utf8')), pkg);
+const manifest = validateManifest(verifyRelease(JSON.parse(await fs.readFile(path.join('output/runtime', names.manifest), 'utf8'))), pkg);
 const archive = path.resolve('output/runtime', names.archive);
 if (sha256(await fs.readFile(archive)) !== manifest.archive.sha256) throw new Error('Archive checksum mismatch.');
 const temporary = await fs.mkdtemp(path.resolve('output/runtime-check-'));

@@ -56,12 +56,17 @@ function getSessionSecret(): Buffer {
   try {
     const stored = fs.readFileSync(config.secretFile, 'utf8').trim();
     if (stored.length >= 64) return Buffer.from(stored, 'base64url');
-  } catch {
-    // Generate below.
+    throw new Error('会话密钥文件无效，请从本机恢复认证配置。');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
 
   const secret = crypto.randomBytes(48);
-  fs.writeFileSync(config.secretFile, secret.toString('base64url'), { mode: 0o600 });
+  try { fs.writeFileSync(config.secretFile, secret.toString('base64url'), { mode: 0o600, flag: 'wx' }); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    return getSessionSecret();
+  }
   return secret;
 }
 
@@ -88,8 +93,9 @@ export function isPasswordConfigured(): boolean {
 
 export async function setPassword(password: string): Promise<void> {
   const normalized = password.trim();
-  if (normalized.length < 6) {
-    throw new Error('Password must be at least 6 characters.');
+  if (normalized.length < 12 || normalized.length > 256 || /^(.)\1+$/u.test(normalized) ||
+      /^(?:password|123456789|qwerty|admin|letmein|codexremote)[\d!@#$]*$/i.test(normalized)) {
+    throw new Error('新密码需为 12 至 256 个字符，请使用不重复的长口令。');
   }
 
   const salt = crypto.randomBytes(16);
@@ -104,6 +110,7 @@ export async function setPassword(password: string): Promise<void> {
 }
 
 export async function verifyPassword(password: string): Promise<boolean> {
+  if (password.length > 256) return false;
   const record = readJson<AuthRecord>(config.authFile);
   if (!record?.hash || !record.salt) return false;
 
@@ -163,16 +170,15 @@ export function issueSession(agent?: string): string {
 }
 
 export function verifySessionToken(token: string | undefined, agent?: string): SessionPayload | null {
-  if (!token || token.length > 4096 || token.split('.').length !== 2) return null;
-  const [encoded, signature] = token.split('.');
-  if (!encoded || !signature) return null;
-
-  const secret = getSessionSecret();
-  const expected = crypto.createHmac('sha256', secret).update(encoded).digest('base64url');
-  if (expected.length !== signature.length) return null;
-  if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) return null;
-
   try {
+    if (!token || token.length > 4096 || token.split('.').length !== 2) return null;
+    const [encoded, signature] = token.split('.');
+    if (!encoded || !signature) return null;
+
+    const secret = getSessionSecret();
+    const expected = crypto.createHmac('sha256', secret).update(encoded).digest('base64url');
+    if (expected.length !== signature.length) return null;
+    if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) return null;
     const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as SessionPayload;
     if (typeof payload.sid !== 'string' || !/^[a-zA-Z0-9_-]{32}$/.test(payload.sid) ||
       !Number.isSafeInteger(payload.exp) || !Number.isSafeInteger(payload.iat) ||
@@ -182,9 +188,7 @@ export function verifySessionToken(token: string | undefined, agent?: string): S
     if (!payload.version) registerSession(config.dataDir, payload.sid, payload.iat, payload.exp, generation, agent);
     if (!sessionRegistered(config.dataDir, payload.sid, generation)) return null;
     return payload;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 export function readSessionCookie(cookieHeader: string | undefined, agent?: string): SessionPayload | null {

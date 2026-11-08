@@ -52,6 +52,7 @@ export function handleTerminalSocket(socket: WebSocket, manager: TerminalManager
         if (message.cwd !== undefined && typeof message.cwd !== 'string') throw new Error('Invalid working directory.');
         if (message.cwd !== undefined && !message.cwd.trim()) throw new Error('Invalid working directory.');
         if (message.startAtCwd !== undefined && typeof message.startAtCwd !== 'boolean') throw new Error('Invalid directory selection.');
+        if (message.sessionId !== undefined && typeof message.sessionId !== 'string') throw new Error('Invalid terminal selection.');
         const nextWorkspace = manager.open(message.cwd);
         workspace?.listeners.delete(changed);
         detach?.();
@@ -69,7 +70,8 @@ export function handleTerminalSocket(socket: WebSocket, manager: TerminalManager
           manager.create(workspace);
         }
         workspace.listeners.add(changed);
-        attach(workspace.activeSessionId);
+        attach(message.sessionId && workspace.sessions.has(message.sessionId) && !message.startAtCwd
+          ? message.sessionId : workspace.activeSessionId);
         return;
       }
       if (!workspace) throw new Error('Open a workspace terminal first.');
@@ -91,7 +93,7 @@ export function handleTerminalSocket(socket: WebSocket, manager: TerminalManager
         if (message.type === 'terminal.input') {
           if (typeof message.data !== 'string' || message.data.length > 64 * 1024) throw new Error('Terminal input is too large.');
           manager.input(workspace, activeId, message.data);
-        } else manager.resize(workspace, activeId, message.cols, message.rows);
+        } else manager.resize(workspace, activeId, message.cols, message.rows, send);
         return;
       }
       throw new Error('Unknown terminal message.');

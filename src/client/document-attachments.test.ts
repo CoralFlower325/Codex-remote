@@ -68,13 +68,15 @@ describe('PDF inputs', () => {
     expect(documentReferences([{ type: 'text', text: '## Report.pdf: /private/report.pdf\n## My request:\nText' }])).toEqual([]);
   });
 
-  it('keeps an upload result on its original draft and excludes it from persistent text storage', () => {
+  it('keeps an upload result on its original draft and reports unpersistable legacy references', () => {
     const storage = { getItem: vi.fn(() => null), setItem: vi.fn(), removeItem: vi.fn() };
     const drafts = createComposerDrafts(storage), original = drafts.open('first'), other = drafts.open('other');
     original.update(current => ({ ...current, attachments: [attachment] }));
     expect(other.get().attachments).toEqual([]);
     expect(drafts.open('first').get().attachments).toEqual([attachment]);
-    expect(storage.setItem).not.toHaveBeenCalled();
+    expect(storage.setItem).toHaveBeenCalledWith('composer-context:v1', expect.stringContaining('"omitted":["Report.pdf"]'));
+    expect(drafts.open('first').get().recoveryNotice).toBeTruthy();
+    expect(storage.setItem).not.toHaveBeenCalledWith('draft:first', expect.anything());
   });
 
   it('sends raw PDF bytes with an encoded name and retains uploaded references before model submission', async () => {

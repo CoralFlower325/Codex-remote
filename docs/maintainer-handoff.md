@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-11-07.
+Last reconciled: 2026-11-08.
 
 ## Authority
 
@@ -15,6 +15,35 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
+Current candidate source is Remote **0.2.23** / manager **0.2.4**. The
+[adversarial-review reconciliation](adversarial-review-0.2.22-fixes.md) records
+all 31 findings, corrections, implementation and acceptance boundaries.
+Local validation passed 127 test files (1016 tests, two platform skips),
+typecheck, both builds, eight synthetic viewports, Windows manager source smoke,
+update-worker install/rollback and an isolated signed runtime with a real compiled
+PTY worker. The final directory-fsync change was followed by the full suite and
+server compilation; the preceding test runtime is not a formal release asset.
+The operator authorized pushing, publication, distribution and the local upgrade
+on 2026-11-08 after the final validation report. Verify the exact published
+revision, signed assets and installation receipt before claiming completion.
+Never start another App Server.
+
+Runtime updates now require Ed25519 publisher signatures against bundled public
+keys, including signed commit identity for source fallback. The private key stays
+outside the repository; the `RELEASE_SIGNING_KEY` GitHub secret has been configured,
+with its formal workflow validation pending. Follow [release-signing.md](release-signing.md) before a
+formal runtime release. Manager 0.2.4 requires its own installer; changing Remote
+does not patch an already installed manager. AU self-update and macOS application
+signing/notarization remain paused.
+
+Native PTYs are now isolated in owned processes with bounded IPC and session
+counts. A worker crash is visible and does not terminate Remote or replay input.
+The historical native access violation still has no established upstream root
+cause. Platform output uses bounded rotating logs; macOS controls use the
+same-PID background wrapper and retain ownership checks. Local synthetic checks
+do not establish signed-in macOS service behavior.
+
+The following 0.2.22 publication and installation observations are historical:
 Remote 0.2.22 pairs with unchanged manager 0.2.3; manager installers remain
 in v0.2.17. Tag v0.2.22 identifies functional source
 `139affce9c29517a36188db22e4fd228c86c2636`, merged through PR #12.
@@ -70,8 +99,10 @@ Mobile composer controls intentionally use 36px sizing on small screens.
 Preserve desktop sizing and corners; mobile adaptation must not become a global
 style change. Main and side-chat controls must have matching mobile geometry.
 Only a confirmed frontend update or successful backend update refreshes the page:
-main-chat text drafts persist, while
-temporary side chats, unsent images and skill selections are cleared.
+main-chat text drafts and bounded, ready attachment/skill context persist in
+tab-scoped storage. Context expires after 24 hours, at 2 MiB per draft and 4 MiB
+total; omitted or unfinished content gets a recovery warning. Logout/expired
+authentication clears private context. Temporary side chats remain memory-only.
 
 Outstanding acceptance:
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RRule, rrulestr } from 'rrule';
-import { automationScheduleRule, automationScheduleSummary, validAutomationRule } from './automation-schedule';
+import { automationScheduleRule, automationScheduleSummary, automationSchedulePreset, validAutomationRule } from './automation-schedule';
 
 describe('native automation schedule editor', () => {
   it('emits native RRULE presets without calculating or storing run times', () => {
@@ -18,6 +18,20 @@ describe('native automation schedule editor', () => {
     expect(automationScheduleRule({ kind: 'custom', rrule: rule })).toBe(rule);
     expect(validAutomationRule(rule)).toBe(true);
     expect(automationScheduleSummary(rule)).toBe('自定义计划');
+  });
+
+  it('restores editable preset times without flattening complex native schedules', () => {
+    expect(automationSchedulePreset('RRULE:FREQ=DAILY;BYHOUR=17;BYMINUTE=45;BYSECOND=0'))
+      .toEqual({ kind: 'daily', time: '17:45' });
+    expect(automationSchedulePreset('RRULE:FREQ=WEEKLY;BYDAY=SU;BYHOUR=21;BYMINUTE=5;BYSECOND=0'))
+      .toEqual({ kind: 'weekly', weekday: 0, time: '21:05' });
+    expect(automationSchedulePreset('RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=7;BYMINUTE=30;BYSECOND=0'))
+      .toEqual({ kind: 'weekdays', time: '07:30' });
+    for (const rule of ['RRULE:FREQ=DAILY;BYHOUR=9,17', 'RRULE:FREQ=DAILY;COUNT=4',
+      'DTSTART;TZID=America/New_York:20261105T090000\nRRULE:FREQ=DAILY',
+      'RRULE:FREQ=MONTHLY;BYDAY=1MO']) {
+      expect(automationSchedulePreset(rule)).toEqual({ kind: 'custom', rrule: rule });
+    }
   });
 
   it('rejects malformed rules and keeps labels bounded', () => {

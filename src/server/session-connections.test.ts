@@ -32,4 +32,18 @@ describe('live authentication revocation', () => {
     vi.advanceTimersByTime(10_000);
     expect(check).toHaveBeenCalledTimes(1);
   });
+  it('coalesces streaming checks for one second while action checks stay fresh', () => {
+    vi.useFakeTimers();
+    const registry = new SessionConnections();
+    const peer = { readyState: 1, bufferedAmount: 0, send: vi.fn(), close: vi.fn() };
+    let valid = true;
+    const check = vi.fn(() => valid);
+    registry.add(peer, check);
+    for (let i = 0; i < 200; i++) expect(registry.allowed(peer, false)).toBe(true);
+    expect(check).toHaveBeenCalledTimes(1);
+    valid = false;
+    expect(registry.allowed(peer)).toBe(false);
+    expect(peer.close).toHaveBeenCalledTimes(1);
+    registry.dispose();
+  });
 });

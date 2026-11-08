@@ -3,12 +3,19 @@ import { createComposerDrafts, type ComposerInput } from '../composer-drafts';
 
 const DraftsContext = createContext<ReturnType<typeof createComposerDrafts> | null>(null);
 
-export function ComposerDrafts({ children }: { children: ReactNode }) {
-  const [drafts] = useState(() => createComposerDrafts({
+export function createBrowserComposerDrafts() {
+  return createComposerDrafts({
     getItem: key => sessionStorage.getItem(key),
     setItem: (key, value) => sessionStorage.setItem(key, value),
     removeItem: key => sessionStorage.removeItem(key)
-  }));
+  });
+}
+
+export function ComposerDrafts({ children, value }: {
+  children: ReactNode;
+  value?: ReturnType<typeof createComposerDrafts>;
+}) {
+  const [drafts] = useState(() => value ?? createBrowserComposerDrafts());
   return <DraftsContext.Provider value={drafts}>{children}</DraftsContext.Provider>;
 }
 

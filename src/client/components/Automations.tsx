@@ -3,7 +3,7 @@ import {
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  automationScheduleRule, automationScheduleSummary, AUTOMATION_WEEKDAYS,
+  automationScheduleRule, automationScheduleSummary, automationSchedulePreset, AUTOMATION_WEEKDAYS,
   type Automation, type AutomationList, type AutomationSchedule, type AutomationRun
 } from '../../shared/automation-schedule';
 import { formatTurnClockTime } from '../../shared/turn-timing';
@@ -28,6 +28,7 @@ interface Draft {
   weekday: number;
   active: boolean;
   rrule: string;
+  scheduleChanged: boolean;
 }
 
 const EFFORT_LABELS: Record<string, string> = {
@@ -35,6 +36,7 @@ const EFFORT_LABELS: Record<string, string> = {
 };
 
 function draftFrom(automation?: Automation): Draft {
+  const schedule = automation ? automationSchedulePreset(automation.rrule) : { kind: 'daily' as const, time: '09:00' };
   return {
     name: automation?.name ?? '',
     prompt: automation?.prompt ?? '',
@@ -43,13 +45,14 @@ function draftFrom(automation?: Automation): Draft {
     executionEnvironment: automation?.executionEnvironment ?? 'local',
     model: automation?.model ?? '',
     effort: automation?.reasoningEffort ?? '',
-    kind: automation ? 'custom' : 'daily',
-    everyMinutes: 60,
-    minute: 0,
-    time: '09:00',
-    weekday: 1,
+    kind: schedule.kind,
+    everyMinutes: schedule.kind === 'interval' ? schedule.everyMinutes : 60,
+    minute: schedule.kind === 'hourly' ? schedule.minute : 0,
+    time: 'time' in schedule ? schedule.time : '09:00',
+    weekday: schedule.kind === 'weekly' ? schedule.weekday : 1,
     active: automation ? automation.status === 'ACTIVE' : true,
-    rrule: automation?.rrule ?? ''
+    rrule: automation?.rrule ?? '',
+    scheduleChanged: !automation
   };
 }
 
@@ -141,7 +144,8 @@ export function Automations({ remote, onClose, onOpenThread }: {
       ...(editing === 'new' || draft.projectChanged ? { projectId: draft.projectId || null } : {}),
       executionEnvironment: draft.executionEnvironment,
       model: draft.model || null, reasoningEffort: draft.effort || null,
-      rrule: automationScheduleRule(scheduleFrom(draft)), status: draft.active ? 'ACTIVE' : 'PAUSED',
+      rrule: draft.scheduleChanged ? automationScheduleRule(scheduleFrom(draft)) : draft.rrule,
+      status: draft.active ? 'ACTIVE' : 'PAUSED',
       ...(editing && editing !== 'new' ? { updatedAt: editing.updatedAt } : {})
     };
     busy.current = true; version.current++; read.current?.abort(); setChecking(false); setError(null);
@@ -313,7 +317,7 @@ export function Automations({ remote, onClose, onOpenThread }: {
           </div>
           <div className="automations-grid">
             <label className="automations-field"><span>计划</span>
-              <select value={draft.kind} onChange={event => setDraft({ ...draft, kind: event.target.value as ScheduleKind })}>
+              <select value={draft.kind} onChange={event => setDraft({ ...draft, kind: event.target.value as ScheduleKind, scheduleChanged: true })}>
                 <option value="hourly">每小时</option>
                 <option value="daily">每天</option>
                 <option value="weekdays">工作日</option>
@@ -325,25 +329,25 @@ export function Automations({ remote, onClose, onOpenThread }: {
             {draft.kind === 'interval' && (
               <label className="automations-field"><span>间隔（分钟）</span>
                 <input type="number" min={1} max={10080} value={draft.everyMinutes}
-                  onChange={event => setDraft({ ...draft, everyMinutes: Number(event.target.value) })} />
+                  onChange={event => setDraft({ ...draft, everyMinutes: Number(event.target.value), scheduleChanged: true })} />
               </label>
             )}
             {draft.kind === 'hourly' && (
               <label className="automations-field"><span>分钟</span>
                 <input type="number" min={0} max={59} value={draft.minute}
-                  onChange={event => setDraft({ ...draft, minute: Number(event.target.value) })} />
+                  onChange={event => setDraft({ ...draft, minute: Number(event.target.value), scheduleChanged: true })} />
               </label>
             )}
             {(draft.kind === 'daily' || draft.kind === 'weekdays') && (
               <label className="automations-field"><span>时间</span>
                 <input type="time" value={draft.time} required
-                  onChange={event => setDraft({ ...draft, time: event.target.value })} />
+                  onChange={event => setDraft({ ...draft, time: event.target.value, scheduleChanged: true })} />
               </label>
             )}
             {draft.kind === 'weekly' && (<>
               <label className="automations-field"><span>星期</span>
                 <select value={draft.weekday}
-                  onChange={event => setDraft({ ...draft, weekday: Number(event.target.value) })}>
+                  onChange={event => setDraft({ ...draft, weekday: Number(event.target.value), scheduleChanged: true })}>
                   {AUTOMATION_WEEKDAYS.map((label, index) => (
                     <option key={label} value={index}>周{label}</option>
                   ))}
@@ -351,13 +355,13 @@ export function Automations({ remote, onClose, onOpenThread }: {
               </label>
               <label className="automations-field"><span>时间</span>
                 <input type="time" value={draft.time} required
-                  onChange={event => setDraft({ ...draft, time: event.target.value })} />
+                  onChange={event => setDraft({ ...draft, time: event.target.value, scheduleChanged: true })} />
               </label>
             </>)}
           </div>
           {draft.kind === 'custom' && <label className="automations-field"><span>计划（RRULE）</span>
             <textarea value={draft.rrule} required maxLength={4096} rows={3}
-              onChange={event => setDraft({ ...draft, rrule: event.target.value })} />
+              onChange={event => setDraft({ ...draft, rrule: event.target.value, scheduleChanged: true })} />
           </label>}
           <div className="automations-summary">{automationScheduleSummary(automationScheduleRule(scheduleFrom(draft)))}</div>
           <label className="automations-toggle">

@@ -39,4 +39,41 @@ describe('native follow-up dispatch', () => {
     await initial;
     await vi.waitFor(() => expect(rpc.mock.calls.filter(([method]) => method === 'thread/queue/start')).toHaveLength(2));
   });
+
+  it('reports failed queue reads and rechecks native state when the bridge recovers', async () => {
+    let failed = true;
+    let queued = true;
+    const report = vi.fn();
+    const rpc = vi.fn(async (method: string) => {
+      if (failed) throw new Error('Disconnected');
+      if (method === 'thread/queue/list') return { data: queued ? [{ id: 'pending' }] : [] };
+      if (method === 'thread/read') return { thread: { status: { type: 'idle' } } };
+      if (method === 'thread/queue/start') queued = false;
+      return {};
+    });
+    const queue = new QueueDispatcher(rpc as never, report);
+    await queue.track('t');
+    expect(report).toHaveBeenCalledOnce();
+    expect(rpc.mock.calls.some(([method]) => method === 'thread/queue/start')).toBe(false);
+    failed = false;
+    await queue.recover();
+    expect(rpc).toHaveBeenCalledWith('thread/queue/start', { threadId: 't', queuedSubmissionId: 'pending' });
+  });
+
+  it('does not replay a native queued submission consumed before its acknowledgement was lost', async () => {
+    let queued = true;
+    const report = vi.fn();
+    const rpc = vi.fn(async (method: string) => {
+      if (method === 'thread/queue/list') return { data: queued ? [{ id: 'consumed' }] : [] };
+      if (method === 'thread/read') return { thread: { status: { type: 'idle' } } };
+      if (method === 'thread/queue/start') { queued = false; throw new Error('Acknowledgement lost'); }
+      return {};
+    });
+    const queue = new QueueDispatcher(rpc as never, report);
+    await queue.track('t');
+    await queue.recover();
+    expect(report).toHaveBeenCalledOnce();
+    expect(rpc.mock.calls.filter(([method]) => method === 'thread/queue/start')).toHaveLength(1);
+    expect(rpc.mock.calls.filter(([method]) => method === 'thread/queue/list')).toHaveLength(2);
+  });
 });

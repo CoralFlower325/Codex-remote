@@ -7,10 +7,19 @@ import { QuestionTracker } from './question-tracker.js';
 import { SessionConnections } from './session-connections.js';
 import type { ClientMessage, ServerMessage } from '../shared/protocol.js';
 import type { RemotePeer } from './http-connections.js';
+import { ActionLedger } from './action-ledger.js';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import crypto from 'node:crypto';
 
 const sessions: SessionConnections[] = [];
-afterEach(() => { sessions.splice(0).forEach(session => session.dispose()); });
-function fixture() {
+const directories: string[] = [];
+afterEach(async () => {
+  sessions.splice(0).forEach(session => session.dispose());
+  for (const directory of directories.splice(0)) await fs.rm(directory, { recursive: true, force: true });
+});
+function fixture(actionLedger?: ActionLedger) {
   const native = vi.fn(async (_method: string, _params: unknown): Promise<unknown> => ({}));
   const sessionConnections = new SessionConnections();
   sessions.push(sessionConnections);
@@ -21,7 +30,8 @@ function fixture() {
       getPendingServerRequests: () => [], respondToServerRequest: vi.fn() },
     eventJournal, questionTracker: new QuestionTracker(), metadataReader: new MetadataReader(native),
     workspaceSnapshots: { action: vi.fn() }, ephemeralChats,
-    pushNotifications: { watch: vi.fn() }, queueDispatcher: { track: vi.fn() }, sessionConnections
+    pushNotifications: { watch: vi.fn() }, queueDispatcher: { track: vi.fn() }, sessionConnections,
+    ...(actionLedger ? { actionLedger } : {})
   });
   const peer = () => {
     const received: ServerMessage[] = [];
@@ -33,6 +43,27 @@ function fixture() {
   return { ...hub, native, peer, send, eventJournal, ephemeralChats };
 }
 describe('shared realtime peer policy', () => {
+  it('requires write identities and returns cached confirmations without duplicate native or ephemeral input', async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'remote-peer-actions-'));
+    directories.push(directory);
+    const hub = fixture(new ActionLedger(directory)), peer = hub.peer();
+    hub.connectClient(peer.socket);
+    const params = { threadId: 'remote-side', clientUserMessageId: 'first-message',
+      input: [{ type: 'text', text: 'Synthetic input' }] };
+    await hub.send(peer.socket, { type: 'rpc', id: 'missing', method: 'turn/start', params });
+    expect(hub.native).not.toHaveBeenCalled();
+    expect(peer.received.at(-1)).toMatchObject({ type: 'rpc.error', error: { code: -32001 } });
+    hub.ephemeralChats.adopt('remote-side', peer.socket);
+    hub.native.mockResolvedValue({ turn: { id: 'turn-one' } });
+    const record = vi.spyOn(hub.ephemeralChats, 'recordInput');
+    const actionId = crypto.randomUUID();
+    await hub.send(peer.socket, { type: 'rpc', id: 'first', method: 'turn/start', params, actionId });
+    await hub.send(peer.socket, { type: 'rpc', id: 'retry', method: 'turn/start', actionId,
+      params: { ...params, clientUserMessageId: 'new-random-message-id' } });
+    expect(hub.native).toHaveBeenCalledTimes(1);
+    expect(record).toHaveBeenCalledTimes(1);
+    expect(peer.received.at(-1)).toMatchObject({ type: 'rpc.result', result: { turn: { id: 'turn-one' } } });
+  });
   it('keeps a previously registered Remote-owned ephemeral thread in reconnect memory', async () => {
     const hub = fixture(), peer = hub.peer();
     hub.connectClient(peer.socket);

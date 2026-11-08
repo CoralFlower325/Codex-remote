@@ -5,6 +5,7 @@ import os from 'node:os';
 import { c as archive } from 'tar';
 import { sha256, sourceHash, runtimeNames, runtimePath, validateManifest, unpackRuntime, downloadAsset } from './runtime-package.mjs';
 import { prepareUpdate, installUpdate } from './updater.mjs';
+import { signedFixture } from '../scripts/test-release-signing.mjs';
 
 const temporary = [];
 async function directory() {
@@ -45,7 +46,8 @@ async function fixture() {
     baselines: { '0.1.13': Object.fromEntries(Object.entries(base).map(([name, value]) => [name, sourceHash(Buffer.from(value))])) },
     archive: { size: bytes.length, sha256: sha256(bytes) } };
   const names = runtimeNames('0.1.14');
-  const manifestBytes = Buffer.from(JSON.stringify(manifest));
+  const { signed, keys } = signedFixture(manifest);
+  const manifestBytes = Buffer.from(JSON.stringify(signed));
   const assets = [[names.manifest, manifestBytes], [names.archive, bytes]].map(([name, body]) =>
     ({ name, size: body.length, digest: `sha256:${sha256(body)}`,
       browser_download_url: `https://github.com/CoralFlower325/Codex-remote/releases/download/v0.1.14/${name}` }));
@@ -56,7 +58,7 @@ async function fixture() {
     if (args[0] === 'scripts/check-runtime.mjs') return 'runtime smoke passed';
     throw new Error(`Unexpected command: ${args.join(' ')}`);
   });
-  return { root, payload, output, filename, bytes, manifest, assets, fetcher, execute,
+  return { root, payload, output, filename, bytes, manifest, assets, fetcher, execute, trustedKeys: keys,
     release: { version: '0.1.14', tag: 'v0.1.14', assets } };
 }
 afterEach(async () => {
@@ -65,10 +67,10 @@ afterEach(async () => {
 describe('prebuilt runtime packages', () => {
   it('prepares and installs a verified runtime without Git, npm or a local build', async () => {
     const fixtureData = await fixture();
-    const { root, release, fetcher, execute } = fixtureData;
+    const { root, release, fetcher, execute, trustedKeys } = fixtureData;
     await write(root, 'README.md', 'private documentation');
     const progress = [];
-    const item = await prepareUpdate(root, release, (_title, state) => progress.push(state), execute, { fetcher });
+    const item = await prepareUpdate(root, release, (_title, state) => progress.push(state), execute, { fetcher, trustedKeys });
     expect(item.mode).toBe('runtime');
     const start = vi.fn();
     const result = await installUpdate(item, { stop: vi.fn(), start, verify: vi.fn(), isRunning: async () => false });
@@ -82,21 +84,21 @@ describe('prebuilt runtime packages', () => {
     expect(progress.map((state) => state.percent)).toEqual(progress.map((state) => state.percent).sort((a, b) => a - b));
   });
   it('falls back to isolated source preparation for added local build inputs', async () => {
-    const { root, release, fetcher } = await fixture();
+    const { root, release, fetcher, trustedKeys } = await fixture();
     await write(root, 'src/custom.ts', 'local customization');
     const execute = vi.fn(async (command) => {
       expect(command).toBe('git'); throw new Error('source fallback selected');
     });
-    await expect(prepareUpdate(root, release, () => {}, execute, { fetcher })).rejects.toThrow('尚未安装');
+    await expect(prepareUpdate(root, release, () => {}, execute, { fetcher, trustedKeys })).rejects.toThrow('尚未安装');
     expect(execute).toHaveBeenCalledOnce();
-    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher).toHaveBeenCalledTimes(2);
     expect(await fs.readFile(path.join(root, 'src/custom.ts'), 'utf8')).toBe('local customization');
   });
   it('installs a runtime after a source file was already synchronized to the target', async () => {
-    const { root, payload, release, fetcher, execute } = await fixture();
+    const { root, payload, release, fetcher, execute, trustedKeys } = await fixture();
     const relative = 'scripts/remote-control-windows.ps1';
     await fs.copyFile(path.join(payload, relative), path.join(root, relative));
-    const item = await prepareUpdate(root, release, () => {}, execute, { fetcher });
+    const item = await prepareUpdate(root, release, () => {}, execute, { fetcher, trustedKeys });
     expect(item.mode).toBe('runtime');
     expect(item.plan.some((entry) => entry.relative === relative)).toBe(false);
     const result = await installUpdate(item, {
@@ -107,10 +109,10 @@ describe('prebuilt runtime packages', () => {
     expect(await fs.readFile(path.join(root, 'data/auth.json'), 'utf8')).toBe('private');
   });
   it('still blocks edits to an already applied target after preparation', async () => {
-    const { root, payload, release, fetcher, execute } = await fixture();
+    const { root, payload, release, fetcher, execute, trustedKeys } = await fixture();
     const relative = 'scripts/remote-control-windows.ps1';
     await fs.copyFile(path.join(payload, relative), path.join(root, relative));
-    const item = await prepareUpdate(root, release, () => {}, execute, { fetcher });
+    const item = await prepareUpdate(root, release, () => {}, execute, { fetcher, trustedKeys });
     await write(root, relative, 'new private edit during download');
     const stop = vi.fn();
     await expect(installUpdate(item, {
@@ -120,8 +122,8 @@ describe('prebuilt runtime packages', () => {
     expect(await fs.readFile(path.join(root, relative), 'utf8')).toBe('new private edit during download');
   });
   it('blocks an added build input during download before stopping service', async () => {
-    const { root, release, fetcher, execute } = await fixture();
-    const item = await prepareUpdate(root, release, () => {}, execute, { fetcher });
+    const { root, release, fetcher, execute, trustedKeys } = await fixture();
+    const item = await prepareUpdate(root, release, () => {}, execute, { fetcher, trustedKeys });
     await write(root, 'src/added-during-download.ts', 'new local customization');
     const stop = vi.fn();
     await expect(installUpdate(item, { stop, start: vi.fn(), verify: vi.fn(), isRunning: async () => false }))
@@ -129,8 +131,8 @@ describe('prebuilt runtime packages', () => {
     expect(stop).not.toHaveBeenCalled();
   });
   it('rejects incomplete releases and corrupt downloads before changing the installation', async () => {
-    const { root, release, execute, fetcher, assets, output } = await fixture();
-    await expect(prepareUpdate(root, { ...release, assets: assets.slice(0, 1) }, () => {}, execute, { fetcher }))
+    const { root, release, execute, fetcher, assets, output, trustedKeys } = await fixture();
+    await expect(prepareUpdate(root, { ...release, assets: assets.slice(0, 1) }, () => {}, execute, { fetcher, trustedKeys }))
       .rejects.toThrow('尚未安装');
     await expect(downloadAsset(assets[1], path.join(output, 'bad'), {
       fetcher: async () => new Response(Buffer.alloc(assets[1].size, 0))

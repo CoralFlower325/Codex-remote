@@ -31,6 +31,8 @@ describe('authenticated local previews', () => {
     await fs.writeFile(path.join(directory, 'report.md'),
       '# Result\n\n**Compiled** [State](./status.json)\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n```ts\nconst ready = true;\n```\n', 'utf8');
     await fs.writeFile(path.join(directory, 'status.json'), '{"ready":true}', 'utf8');
+    await fs.writeFile(path.join(directory, 'style.css'), 'h1 { color: black; }', 'utf8');
+    await fs.writeFile(path.join(directory, '.env'), 'SYNTHETIC_SECRET=private', 'utf8');
     await fs.writeFile(path.join(directory, 'page.html'), '<!doctype html><h1>Preview</h1>', 'utf8');
     await fs.writeFile(path.join(directory, 'large.txt'), 'x'.repeat(1024 * 1024 + 10), 'utf8');
     await fs.writeFile(path.join(directory, 'document.docx'), Buffer.from([80, 75, 0, 3]));
@@ -103,13 +105,17 @@ describe('authenticated local previews', () => {
     expect((await request(`${origin}/api/file-preview?path=${encodeURIComponent(path.join(directory, 'missing.md'))}`,
       { headers: { cookie: 'preview=test' } })).status).toBe(404);
   });
-  it('gives isolated HTML short-lived directory access without granting access to Remote APIs', async () => {
+  it('limits HTML grants to safe static assets and rejects private directory reads', async () => {
     const response = await request(`${origin}/api/file-preview?path=${encodeURIComponent(path.join(directory, 'page.html'))}`,
       { headers: { cookie: 'preview=test' } });
     const file = await response.json();
-    const asset = await request(new URL('./status.json', origin + file.previewUrl));
-    expect(await asset.json()).toEqual({ ready: true });
+    const asset = await request(new URL('./style.css', origin + file.previewUrl));
+    expect(await asset.text()).toContain('color: black');
     expect(asset.headers.get('access-control-allow-origin')).toBe('null');
+    for (const name of ['.env', 'status.json', 'report.md', 'document.docx']) {
+      expect((await request(new URL(`./${name}`, origin + file.previewUrl))).status).toBe(403);
+    }
+    expect(asset.headers.get('content-security-policy')).toContain("connect-src 'none'");
     expect((await request(origin + file.previewUrl)).status).toBe(200);
     const escape = file.previewUrl.replace(/[^/]+$/, '..%2Foutside.txt');
     expect((await request(origin + escape)).status).toBe(403);
@@ -133,6 +139,22 @@ describe('authenticated local previews', () => {
     } finally {
       await fs.unlink(link).catch(() => {});
       await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+  it('rejects safe-looking assets resolving into a private directory inside the grant', async () => {
+    const hidden = path.join(directory, '.private');
+    const link = path.join(directory, 'safe-assets');
+    try {
+      await fs.mkdir(hidden);
+      await fs.writeFile(path.join(hidden, 'secret.js'), 'synthetic private fixture');
+      await fs.symlink(hidden, link, process.platform === 'win32' ? 'junction' : 'dir');
+      const response = await request(`${origin}/api/file-preview?path=${encodeURIComponent(path.join(directory, 'page.html'))}`,
+        { headers: { cookie: 'preview=test' } });
+      const file = await response.json();
+      expect((await request(new URL('./safe-assets/secret.js', origin + file.previewUrl))).status).toBe(403);
+    } finally {
+      await fs.unlink(link).catch(() => {});
+      await fs.rm(hidden, { recursive: true, force: true });
     }
   });
 });

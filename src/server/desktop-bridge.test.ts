@@ -13,7 +13,8 @@ afterEach(async () => { for (const close of cleanup.splice(0)) await close(); })
 
 async function desktop(pendingRequests: unknown[] = [],
   automationReply?: (socket: WebSocket, command: any) => void,
-  options: { commandTimeoutMs?: number; hangRequests?: number; additionalPorts?: number[] } = {}) {
+  options: { commandTimeoutMs?: number; responseTimeoutMs?: number; hangRequests?: number;
+    ignoreNativeResponses?: boolean; additionalPorts?: number[] } = {}) {
   const commands: any[] = [];
   const server = http.createServer((req, res) => {
     if (req.url === '/overlay') { res.writeHead(500); res.end(); return; }
@@ -51,7 +52,7 @@ async function desktop(pendingRequests: unknown[] = [],
       if (expression.includes('window.__codexRemotePendingRequests ??=')) connected = true;
       if (expression.startsWith('window.electronBridge.sendMessageFromView(')) {
         const message = JSON.parse(expression.slice('window.electronBridge.sendMessageFromView('.length, -1));
-        if (message.type === 'mcp-request') {
+        if (message.type === 'mcp-request' && !options.ignoreNativeResponses) {
           relay({ type: 'mcp-response', message: {
             id: message.request.id,
             ...(message.request.method === 'bad'
@@ -63,13 +64,14 @@ async function desktop(pendingRequests: unknown[] = [],
       }
     });
   });
-  const bridge = new DesktopBridge([...(options.additionalPorts ?? []), port], options.commandTimeoutMs);
+  const bridge = new DesktopBridge([...(options.additionalPorts ?? []), port],
+    options.commandTimeoutMs, options.responseTimeoutMs);
   cleanup.push(async () => {
     bridge.shutdown();
     for (const socket of sockets.clients) socket.terminate();
     await new Promise<void>((resolve) => sockets.close(() => server.close(() => resolve())));
   });
-  return { bridge, relay, commands };
+  return { bridge, relay, commands, raw: (data: string) => client.send(data) };
 }
 
 describe('desktop RPC transport', () => {
@@ -123,6 +125,50 @@ describe('desktop RPC transport', () => {
     relay({ type: 'mcp-notification', method: 'serverRequest/resolved', params: { requestId: 8 } });
     expect(await resolved).toBe('desktop:8');
     expect(bridge.getPendingServerRequests()).toEqual([]);
+  });
+
+  it.each(['{', 'null', JSON.stringify({ method: 'Runtime.bindingCalled' }),
+    JSON.stringify({ method: 'Runtime.bindingCalled', params: { name: '__codexRemoteRelay', payload: 'null' } })])(
+    'disconnects malformed relay frames safely and allows a fresh connection: %s', async frame => {
+      const { bridge, raw } = await desktop();
+      await bridge.connect();
+      raw(frame);
+      await vi.waitFor(() => expect(bridge.isConnected()).toBe(false));
+      expect(await bridge.connect()).toBe(true);
+      expect(await bridge.request('thread/read', { threadId: 'recovered' })).toEqual({ threadId: 'recovered' });
+    });
+
+  it('claims approvals before yielding so concurrent viewers submit only one native response', async () => {
+    const { bridge, commands } = await desktop([
+      { id: 9, method: 'item/fileChange/requestApproval', params: { threadId: 't' } }
+    ]);
+    await bridge.connect();
+    const results = await Promise.allSettled([
+      bridge.respondToServerRequest('desktop:9', { decision: 'accept' }),
+      bridge.respondToServerRequest('desktop:9', { decision: 'accept' })
+    ]);
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(commands.filter(command => command.params?.expression?.includes('"type":"mcp-response"'))).toHaveLength(1);
+  });
+
+  it('does not repeat an approval whose acknowledgement was lost after reconnect', async () => {
+    const { bridge, commands } = await desktop([
+      { id: 10, method: 'item/fileChange/requestApproval', params: { threadId: 't' } }
+    ], undefined, { commandTimeoutMs: 50, hangRequests: 1 });
+    await bridge.connect();
+    await expect(bridge.respondToServerRequest('desktop:10', {})).rejects.toThrow();
+    expect(await bridge.connect()).toBe(true);
+    await expect(bridge.respondToServerRequest('desktop:10', {})).rejects.toThrow();
+    expect(commands.filter(command => command.params?.expression?.includes('"type":"mcp-response"'))).toHaveLength(1);
+  });
+
+  it('bounds native response waits and reports an uncertain write without replaying it', async () => {
+    const { bridge, commands } = await desktop([], undefined,
+      { responseTimeoutMs: 40, ignoreNativeResponses: true });
+    await bridge.connect();
+    await expect(bridge.request('turn/start', { threadId: 't' })).rejects.toThrow();
+    expect(bridge.isConnected()).toBe(false);
+    expect(commands.filter(command => command.params?.expression?.includes('"method":"turn/start"'))).toHaveLength(1);
   });
 
   it('uses the native automation relay and returns unsupported-service errors without fallback', async () => {

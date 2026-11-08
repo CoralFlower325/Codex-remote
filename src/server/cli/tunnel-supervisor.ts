@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { createConnection } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { TunnelSupervisor, type TunnelChild } from '../tunnel-supervisor.js';
+import { boundedLogWriter } from '../../../scripts/rotating-log.mjs';
 
 const [binary, protocol = 'http2'] = process.argv.slice(2);
 const root = process.cwd();
@@ -11,8 +12,9 @@ const token = path.join(root, 'data/cloudflared-token');
 if (!binary || !existsSync(binary) || !existsSync(token) || !['auto', 'http2', 'quic'].includes(protocol)) {
   throw new Error('A cloudflared executable, token file and supported tunnel protocol are required.');
 }
-const log = (message: string) => appendFileSync(path.join(root, 'data/tunnel-supervisor.log'),
-  `${new Date().toISOString()} ${message}\n`, 'utf8');
+const supervisorLog = boundedLogWriter(path.join(root, 'data/tunnel-supervisor.log'));
+const cloudflaredLog = boundedLogWriter(path.join(root, 'data/cloudflared.log'));
+const log = (message: string) => { supervisorLog(`${new Date().toISOString()} ${message}\n`); };
 
 const supervisor = new TunnelSupervisor({
   log,
@@ -22,8 +24,11 @@ const supervisor = new TunnelSupervisor({
   start: () => new Promise<TunnelChild>((resolve, reject) => {
     const child = spawn(binary, ['tunnel', '--protocol', protocol, '--no-autoupdate',
       '--metrics', '127.0.0.1:20241', '--loglevel', 'info',
-      '--logfile', path.join(root, 'data/cloudflared.log'), 'run', '--token-file', token],
-    { windowsHide: true, stdio: 'ignore' });
+      'run', '--token-file', token],
+    { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const capture = (data: Buffer) => { cloudflaredLog(data); };
+    child.stdout.on('data', capture);
+    child.stderr.on('data', capture);
     const exited = new Promise<void>(done => child.once('exit', () => done()));
     child.once('error', reject);
     child.once('spawn', () => resolve({

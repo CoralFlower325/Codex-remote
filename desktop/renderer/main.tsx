@@ -192,12 +192,12 @@ function App() {
             setPassword(''); setConfirm('');
             void perform(() => window.manager.security(request));
           }}>
-            <label>新密码<input type="password" autoComplete="new-password" minLength={6} maxLength={256} required disabled={disabled}
+            <label>新密码<input type="password" autoComplete="new-password" minLength={12} maxLength={256} required disabled={disabled}
               value={password} onChange={event => setPassword(event.target.value)} /></label>
-            <label>确认新密码<input type="password" autoComplete="new-password" minLength={6} maxLength={256} required disabled={disabled}
+            <label>确认新密码<input type="password" autoComplete="new-password" minLength={12} maxLength={256} required disabled={disabled}
               value={confirm} onChange={event => setConfirm(event.target.value)} /></label>
-            <p className="detail">修改密码将退出所有已认证设备。</p>
-            <div className="inline-actions"><button className="primary" disabled={disabled || password.length < 6 || confirm.length < 6}>保存密码</button>
+            <p className="detail">使用 12–256 个字符，避免常见密码和单一字符重复。修改密码将退出所有已认证设备。</p>
+            <div className="inline-actions"><button className="primary" disabled={disabled || password.length < 12 || confirm.length < 12}>保存密码</button>
               <button type="button" disabled={disabled} onClick={() => { setPassword(''); setConfirm(''); setPasswordOpen(false); }}>取消</button></div>
           </form>}
         </>}

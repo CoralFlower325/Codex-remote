@@ -3,6 +3,7 @@ import { threadRouter } from './thread-router.js';
 import { asyncRoute } from './http-route.js';
 import fs from 'node:fs';
 import http from 'node:http';
+import https from 'node:https';
 import type { Duplex } from 'node:stream';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -46,11 +47,26 @@ import { backendUpdateRouter } from './backend-update-router.js';
 import { updateClientRouter } from './update-client-router.js';
 import { publicClientRouter } from './public-client-router.js';
 import { localSetupRequest, LoginBudget } from './request-security.js';
+import { apiBoundary } from './api-boundary.js';
+import { ActionLedger } from './action-ledger.js';
+import { installRotatingConsole } from './logging.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+if (process.platform !== 'win32') installRotatingConsole(config.dataDir);
 const server = http.createServer(app);
-const lanServer = config.lanPort ? http.createServer(app) : null;
+let lanWarning: string | null = null;
+const lanServer = (() => {
+  if (!config.lanPort) return null;
+  if (config.lanCertificate && config.lanKey) {
+    try { return https.createServer({ cert: fs.readFileSync(config.lanCertificate), key: fs.readFileSync(config.lanKey),
+      minVersion: 'TLSv1.2' }, app); }
+    catch { lanWarning = '局域网证书或私钥无法读取，请在主机检查 LAN_CERT_FILE / LAN_KEY_FILE。'; return null; }
+  }
+  if (config.lanAllowHttp) return http.createServer(app);
+  lanWarning = '局域网入口未启用：请配置 HTTPS 证书；仅在可信网络明确接受明文风险时设置 LAN_ALLOW_HTTP=1。';
+  return null;
+})();
 const wss = new WebSocketServer({
   noServer: true,
   maxPayload: 100 * 1024 * 1024,
@@ -73,7 +89,8 @@ const pushNotifications = new PushNotifications(
 );
 const ephemeralChats = new EphemeralChats<RemotePeer>(threadId => codexBridge.request('thread/unsubscribe', { threadId }));
 const queueDispatcher = new QueueDispatcher(<T,>(method: import('../shared/protocol.js').ClientRpcMethod, params: unknown) =>
-  codexBridge.request(method, params) as Promise<T>);
+  codexBridge.request(method, params) as Promise<T>, (threadId, message) =>
+    broadcast({ type: 'error', error: { message: `队列 ${threadId}：${message}` } }));
 const automations = new Automations(
   async (method, params) => {
     await codexBridge.ensureStarted();
@@ -85,7 +102,8 @@ const terminals = new TerminalManager(config.codexWorkdir);
 const sessionConnections = new SessionConnections();
 const { clients, connectClient, disconnectClient, handleClientMessage, broadcast } = createPeerHub({
   codexBridge, eventJournal, questionTracker, metadataReader, workspaceSnapshots,
-  ephemeralChats, pushNotifications, queueDispatcher, sessionConnections
+  ephemeralChats, pushNotifications, queueDispatcher, sessionConnections,
+  actionLedger: new ActionLedger(path.join(config.dataDir, 'action-ledger'))
 });
 terminalWss.on('connection', (socket, req) => {
   sessionConnections.add(socket, () => Boolean(readSessionCookie(req.headers.cookie, req.headers['user-agent'])));
@@ -96,6 +114,7 @@ terminalWss.on('connection', (socket, req) => {
 app.set('trust proxy', config.trustProxy);
 app.disable('x-powered-by');
 app.use(compression());
+app.use('/api', apiBoundary(requireAuth));
 app.use('/api/connection', requireAuth, (req, _res, next) => {
   assertTrustedOrigin(req);
   next();
@@ -210,7 +229,7 @@ app.post(
     }
 
     const key = clientAddress(req);
-    const budget = loginBudget.begin(key);
+    const budget = loginBudget.begin(key, Date.now(), isLocalRequest(req));
     if ('retryAfter' in budget) {
       res.setHeader('Retry-After', String(budget.retryAfter));
       res.status(429).json({ error: `尝试过于频繁，请在 ${budget.retryAfter} 秒后重试。` });
@@ -291,7 +310,7 @@ app.use('/api/automations', requireAuth, (req, _res, next) => {
 
 app.get('/api/connections', requireAuth, (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ publicOrigin: config.publicOrigin, lanOrigins: lanServer?.listening ? config.lanOrigins : [] });
+  res.json({ publicOrigin: config.publicOrigin, lanOrigins: lanServer?.listening ? config.lanOrigins : [], lanWarning });
 });
 
 app.get(
@@ -427,12 +446,15 @@ codexBridge.on('server-request', ({ requestId, method, params }) => {
   broadcast({ type: 'server.request', requestId, method, params });
   void pushNotifications.notifyApproval(params ?? {}, method);
 });
+let bridgeWasReady = codexBridge.getStatus() === 'ready';
 codexBridge.on('status', (status) => {
-  if (status !== 'ready') {
+  if (status === 'ready') void queueDispatcher.recover();
+  if (status !== 'ready' && bridgeWasReady) {
     eventJournal.reset();
     metadataReader.clear();
     workspaceSnapshots.clear();
   }
+  bridgeWasReady = status === 'ready';
   broadcast({ type: 'bridge.status', status });
 });
 codexBridge.on('resolved', (requestId) => broadcast({ type: 'server.request.resolved', requestId }));
@@ -453,6 +475,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 lanServer?.on('error', error => { console.error('[LAN]', error.message); });
+if (lanWarning) console.error('[LAN]', lanWarning);
 lanServer?.listen(config.lanPort, '0.0.0.0', () => {
   console.log(`Codex Remote LAN: ${config.lanOrigins.join(', ')}`);
 });

@@ -10,6 +10,7 @@ import { collaborationMode } from './slash-commands';
 import { api } from './api';
 import { conversationEvent, type ChatViewState } from './conversation-state';
 import { isSideConversationThread } from '../shared/thread-source';
+import { sideChatAction } from './side-chat-actions';
 
 export type SideChat = ChatViewState & { desktop?: boolean; settingsRevision?: number };
 export interface SideChatAdoptionRequest { id: number; chatId: string }
@@ -330,21 +331,30 @@ export function useSideChats(transport: ChatTransport, connected: boolean) {
     const chat = chatsRef.current.find(entry => entry.id === id);
     if (!chat || chat.closing || chat.unavailable) return;
     patch(id, { error: null });
-    const clientUserMessageId = randomUUID();
-    const submitted = (entry: SideChat, turnId: string): SideChat => ({
-      ...entry, items: upsertItem(entry.items, { type: 'userMessage', id: clientUserMessageId, turnId, content: input })
-    });
-    if (chat.activeTurnId) {
-      await transport.rpc('turn/steer', { threadId, expectedTurnId: chat.activeTurnId, input, clientUserMessageId });
-      update(current => current.map(entry => entry.id === id ? submitted(entry, chat.activeTurnId!) : entry));
-      return;
-    }
     const mode: CollaborationMode = collaborationMode(chat.mode, chat.model, chat.effort);
-    const result = await transport.rpc<{ turn: TurnTiming & { items?: ThreadItem[] } }>('turn/start', {
-      threadId, input, clientUserMessageId, ...(chat.model ? { model: chat.model } : {}), ...(chat.effort ? { effort: chat.effort } : {}),
+    const action = sideChatAction(threadId, input, chat.activeTurnId, {
+      ...(chat.model ? { model: chat.model } : {}), ...(chat.effort ? { effort: chat.effort } : {}),
       ...(chat.permissions ? permissionProfileUpdate(chat.permissions) : {}),
       collaborationMode: mode
     });
+    const clientUserMessageId = action.params.clientUserMessageId;
+    const submitted = (entry: SideChat, turnId: string): SideChat => ({
+      ...entry, items: upsertItem(entry.items, { type: 'userMessage', id: clientUserMessageId, turnId, content: input })
+    });
+    let result: { turn: TurnTiming & { items?: ThreadItem[] } };
+    try {
+      if (action.method === 'turn/steer') {
+        await transport.rpc(action.method, action.params);
+        action.complete();
+        update(current => current.map(entry => entry.id === id ? submitted(entry, action.expectedTurnId!) : entry));
+        return;
+      }
+      result = await transport.rpc(action.method, action.params);
+      action.complete();
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'number') action.complete();
+      throw error;
+    }
     update(current => current.map(entry => {
       if (entry.id !== id) return entry;
       const next = submitted(entry, result.turn.id);

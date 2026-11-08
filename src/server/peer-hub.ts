@@ -1,6 +1,6 @@
 import { WebSocket } from 'ws';
 import type { ClientMessage, ServerMessage } from '../shared/protocol.js';
-import { nativeRpcFailure } from '../shared/native-error.js';
+import { nativeRpcFailure, NativeRpcError } from '../shared/native-error.js';
 import { isSideConversationThread, isTaskThread } from '../shared/thread-source.js';
 import type { TurnTiming } from '../shared/turn-timing.js';
 import type { CodexBridge } from './codex-bridge.js';
@@ -14,6 +14,8 @@ import type { PushNotifications } from './push-notifications.js';
 import type { QueueDispatcher } from './queue-dispatcher.js';
 import type { SessionConnections } from './session-connections.js';
 import { isAllowedRpcMethod } from '../shared/rpc-methods.js';
+import type { ActionLedger } from './action-ledger.js';
+import { needsActionIdentity } from '../shared/action-policy.js';
 
 function validMessage(value: unknown): value is ClientMessage {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -27,7 +29,9 @@ function validMessage(value: unknown): value is ClientMessage {
     case 'thread.watch': return watches();
     case 'sync.resume': return watches() && (message.epoch === null || id(message.epoch)) &&
       Number.isSafeInteger(message.after) && (message.after as number) >= 0;
-    case 'rpc': return id(message.id) && typeof message.method === 'string' && isAllowedRpcMethod(message.method) &&
+    case 'rpc': return id(message.id) && (message.actionId === undefined ||
+      typeof message.actionId === 'string' && /^[a-f0-9-]{36}$/i.test(message.actionId)) &&
+      typeof message.method === 'string' && isAllowedRpcMethod(message.method) &&
       (message.params === undefined || message.params !== null && typeof message.params === 'object' && !Array.isArray(message.params));
     case 'server.request.respond': return id(message.requestId) || typeof message.requestId === 'number' &&
       Number.isSafeInteger(message.requestId);
@@ -45,10 +49,11 @@ interface PeerServices {
   pushNotifications: Pick<PushNotifications, 'watch'>;
   queueDispatcher: Pick<QueueDispatcher, 'track'>;
   sessionConnections: SessionConnections;
+  actionLedger?: ActionLedger;
 }
 
 export function createPeerHub({ codexBridge, eventJournal, questionTracker, metadataReader,
-  workspaceSnapshots, ephemeralChats, pushNotifications, queueDispatcher, sessionConnections }: PeerServices) {
+  workspaceSnapshots, ephemeralChats, pushNotifications, queueDispatcher, sessionConnections, actionLedger }: PeerServices) {
   const clients = new Set<RemotePeer>();
   const synchronizedClients = new Set<RemotePeer>();
   const watchedThreads = new Map<RemotePeer, Set<string>>();
@@ -129,11 +134,28 @@ export function createPeerHub({ codexBridge, eventJournal, questionTracker, meta
 
     if (message.type === 'rpc') {
       try {
-        const result = await metadataReader.read(message.method, message.params ?? {});
-        workspaceSnapshots.action(message.method, message.params as Record<string, unknown> ?? {});
-        if (message.method === 'project/create') metadataReader.clear('project/list');
+        if (actionLedger && needsActionIdentity(message.method) && !message.actionId) {
+          throw new NativeRpcError({ code: -32001, message: '当前页面缺少安全操作标识，请保存草稿后更新网页版本再操作。' });
+        }
+        if (needsActionIdentity(message.method) && codexBridge.getStatus() !== 'ready') {
+          throw new NativeRpcError({ code: -32001, message: 'Desktop 尚未连接，此操作没有发送。请先恢复主机连接再试。' });
+        }
         const params = message.params as { ephemeral?: boolean; threadId?: string;
           clientUserMessageId?: string; input?: unknown[]; expectedTurnId?: string } | undefined;
+        const dispatch = async () => {
+          const result = await metadataReader.read(message.method, message.params ?? {});
+          if ((message.method === 'turn/start' || message.method === 'turn/steer') &&
+              params?.threadId && params.clientUserMessageId && params.input) {
+            const turnId = message.method === 'turn/start' ? (result as { turn: { id: string } }).turn.id : params.expectedTurnId!;
+            ephemeralChats.recordInput(params.threadId, turnId, params.clientUserMessageId, params.input);
+          }
+          return result;
+        };
+        const result = message.actionId && actionLedger
+          ? await actionLedger.execute(message.actionId, message.method, message.params ?? {}, dispatch)
+          : await dispatch();
+        workspaceSnapshots.action(message.method, message.params as Record<string, unknown> ?? {});
+        if (message.method === 'project/create') metadataReader.clear('project/list');
         if (/^thread\/(?:start|fork|resume|read)$/.test(message.method)) {
           const thread = (result as { thread?: {
             id: string; source?: unknown; ephemeral?: boolean;
@@ -151,11 +173,6 @@ export function createPeerHub({ codexBridge, eventJournal, questionTracker, meta
           if (thread && isTaskThread(thread)) pushNotifications.watch(thread.id);
         }
         if (message.method === 'thread/unsubscribe' && params?.threadId) ephemeralChats.remove(params.threadId);
-        if ((message.method === 'turn/start' || message.method === 'turn/steer') &&
-            params?.threadId && params.clientUserMessageId && params.input) {
-          const turnId = message.method === 'turn/start' ? (result as { turn: { id: string } }).turn.id : params.expectedTurnId!;
-          ephemeralChats.recordInput(params.threadId, turnId, params.clientUserMessageId, params.input);
-        }
         if (message.method === 'thread/queue/add' && params?.threadId) void queueDispatcher.track(params.threadId);
         send(socket, { type: 'rpc.result', id: message.id, result });
       } catch (error) {
@@ -191,14 +208,14 @@ export function createPeerHub({ codexBridge, eventJournal, questionTracker, meta
     );
     if (recipients.length === 0) return;
     for (const client of recipients) {
-      if (!sessionConnections.allowed(client)) continue;
+      if (!sessionConnections.allowed(client, false)) continue;
       if (client.bufferedAmount > 2 * 1024 * 1024) client.close(1013, 'Connection congested; resume.');
       else client.send(entry.payload);
     }
   }
 
   function send(socket: RemotePeer, message: ServerMessage): void {
-    if (!sessionConnections.allowed(socket)) return;
+    if (!sessionConnections.allowed(socket, false)) return;
     if (socket.readyState === WebSocket.OPEN) {
       try { socket.send(JSON.stringify(message)); }
       catch { disconnectClient(socket); try { socket.close(1011, 'Message delivery failed'); } catch { /* Already closed. */ } }

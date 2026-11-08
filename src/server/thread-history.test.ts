@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { readConversationHistoryPage, readThreadHistoryAround, readThreadHistoryPage, readThreadOutline } from './thread-history.js';
+import { readConversationHistoryPage, readThreadHistoryAround, readThreadHistoryFromItem, readThreadHistoryPage, readThreadOutline } from './thread-history.js';
 
 describe('native history paging', () => {
   it('uses the owning server for fresh history and only reports an active turn', async () => {
@@ -88,6 +88,29 @@ describe('native history paging', () => {
 
 describe('turn navigation', () => {
   const entry = (id: string, turnId = 'target') => ({ turnId, item: { id }, startedAtMs: null, completedAtMs: null });
+
+  it.each(['asc', 'desc'] as const)('recovers a trimmed %s item edge using thread-wide native cursor pages', async direction => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ data: [entry('neighbor')], nextCursor: 'native:boundary', backwardsCursor: 'native:reverse' })
+      .mockResolvedValueOnce({ data: [entry('a'), entry('b', 'adjacent-turn')], nextCursor: 'native:continued' });
+    const page = await readThreadHistoryFromItem(request, 'thread', 'target', 'anchor', 100, direction);
+    expect(request.mock.calls[0]![1]).toEqual({ threadId: 'thread', turnId: 'target',
+      cursor: { type: 'item', itemId: 'anchor' }, sortDirection: direction === 'asc' ? 'desc' : 'asc', limit: 1 });
+    expect(request.mock.calls[1]![1]).toEqual({ threadId: 'thread', cursor: 'native:boundary', sortDirection: direction, limit: 100 });
+    expect(page.items.some(item => item.turnId === 'adjacent-turn')).toBe(true);
+    expect(page.nextCursor).toBe('native:continued');
+  });
+
+  it('resolves the first or last item of a turn with a bounded seed instead of losing adjacent turns', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ data: [], nextCursor: null, backwardsCursor: null })
+      .mockResolvedValueOnce({ data: [entry('anchor')], nextCursor: 'native:after', backwardsCursor: 'native:before' })
+      .mockResolvedValueOnce({ data: [entry('older', 'previous-turn')], nextCursor: null });
+    const page = await readThreadHistoryFromItem(request, 'thread', 'target', 'anchor', 100, 'desc');
+    expect(request.mock.calls[1]![1]).toEqual({ threadId: 'thread', turnId: 'target', sortDirection: 'desc', limit: 1 });
+    expect(request.mock.calls[2]![1]).toEqual({ threadId: 'thread', cursor: 'native:before', sortDirection: 'desc', limit: 100 });
+    expect(page.items[0]?.turnId).toBe('previous-turn');
+  });
 
   it('reads both sides of a native opaque cursor without filtering out adjacent turns', async () => {
     const request = vi.fn()

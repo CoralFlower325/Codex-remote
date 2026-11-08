@@ -71,6 +71,29 @@ describe('terminal socket lifecycle', () => {
     socket.close();
   });
 
+  it('retains each viewer selection and restores the requested tab after reconnect', () => {
+    const { manager, socket } = setup();
+    socket.receive({ type: 'terminal.open' });
+    const firstId = manager.list(manager.open())[0]!.id;
+    socket.receive({ type: 'terminal.create' });
+    const secondId = manager.list(manager.open())[1]!.id;
+    socket.receive({ type: 'terminal.attach', sessionId: firstId });
+    const other = new Socket();
+    handleTerminalSocket(other as unknown as WebSocket, manager);
+    other.receive({ type: 'terminal.open', sessionId: secondId });
+    expect(other.sent.at(-1)).toMatchObject({ type: 'terminal.snapshot', sessionId: secondId });
+    expect(socket.sent.filter(message => message.type === 'terminal.state').at(-1))
+      .toMatchObject({ activeSessionId: firstId });
+    socket.close();
+    const restored = new Socket();
+    handleTerminalSocket(restored as unknown as WebSocket, manager);
+    restored.receive({ type: 'terminal.open', sessionId: firstId });
+    expect(restored.sent.at(-1)).toMatchObject({ type: 'terminal.snapshot', sessionId: firstId });
+    expect(manager.list(manager.open())).toHaveLength(2);
+    other.close();
+    restored.close();
+  });
+
   it('rejects input before attach, foreign sessions, malformed input, and invalid dimensions', () => {
     const { manager, directory, socket } = setup();
     socket.receive({ type: 'terminal.input', sessionId: 'none', data: 'text' });

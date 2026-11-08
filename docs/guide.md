@@ -373,7 +373,7 @@ On phones, the conversation-index sheet uses the composer corner radius and a sm
 
 On phones, swipe right from the leftmost 28 CSS pixels to open the conversation sidebar. Swipe left on the open sidebar or its backdrop to close it. A deliberate horizontal swipe travels at least 56 CSS pixels; vertical scrolling, input fields, text selection, and dialogs are excluded. Gesture logic and touch-event handling have automated coverage; physical iOS Safari/PWA gesture acceptance is separate, including browser-reserved history gestures.
 
-Use **Settings → Refresh version → Check and update** to check uncached server metadata against the loaded page's version and build. An already current page stays open without refreshing. When an update exists, review its release summary and confirm **Update to ...**. Remote downloads the full public shell, verifies the new controller, then reloads and displays the completed update summary. Failures allow retry without removing login state, main-chat text drafts or push subscriptions. A successful update clears temporary side chats, unsent images and skill selections. Existing tabs keep their old public assets during manual activation; a later natural activation cleans obsolete app caches. Older installed shells can open **`/update.html` in the same browser or installed web app**. This independent recovery page and `/version.json` bypass the installed shell cache; a current recovery check offers a return link without navigating automatically. Updates require network access; physical iOS Safari/PWA acceptance remains separate.
+Use **Settings → Refresh version → Check and update** to check uncached server metadata against the loaded page's version and build. An already current page stays open without refreshing. When an update exists, review its release summary and confirm **Update to ...**. Remote downloads the full public shell, verifies the new controller, then reloads and displays the completed update summary. Failures allow retry without removing login state, main-chat text drafts or push subscriptions. A successful update clears temporary side chats; main-chat ready PDF references, skills and bounded image data survive in tab-scoped storage for up to 24 hours, with explicit warnings for omitted or unfinished content. Existing tabs keep their old public assets during manual activation; a later natural activation cleans obsolete app caches. Older installed shells can open **`/update.html` in the same browser or installed web app**. This independent recovery page and `/version.json` bypass the installed shell cache; a current recovery check offers a return link without navigating automatically. Updates require network access; physical iOS Safari/PWA acceptance remains separate.
 
 **Settings → Check Remote updates** checks the backend on the connected host against
 the latest stable GitHub Release. Windows x64 and Apple Silicon installations must
@@ -582,7 +582,9 @@ references through steering, queues, temporary chats and stopped-message edits.
 It does not invent a native PDF API input type or extract/OCR every page on
 upload. Whether Codex can inspect a file depends on its host tools and chat
 permissions. Upload success alone does not prove the model read the document.
-Browser reload clears unsent attachment/skill selections; uploaded bytes follow
+Browser reload restores ready main-chat PDF references and skill selections
+within the draft lifetime/capacity limits; unfinished or omitted context gets a
+recovery warning. Temporary side chats remain memory-only. Uploaded bytes follow
 the host retention rules above. PDF contents are never put in public caches or
 sent to an external viewer.
 
@@ -745,7 +747,7 @@ Commands call the owning App Server or open the corresponding UI. A failed comma
 - Model and project metadata load in the authenticated bootstrap and refresh on reconnection. They are not continuously refreshed while the connection stays open. Currently, these two lists read their first requested page; task history, task lists, and permission profiles have separate pagination.
 - New chats currently initialize reasoning from the model catalog default. This can differ from a global Codex configuration override; select the desired level explicitly.
 - Permission profiles come from `permissionProfile/list` and update the current chat. Builtins include `:read-only`, `:workspace`, and `:danger-full-access`.
-- Main-chat text drafts live in browser `sessionStorage`. Unsent images and skill selections stay in workspace memory per chat, including when file reads or sends finish after navigation. Switching chats and reconnecting preserve them; reloading, updating the page or logging out clears unsent images/skills. Images appear in a horizontally scrollable thumbnail row above the input, with separate preview and remove controls. Sending successfully clears only the submitted input; failures keep it. Drafts do not synchronize with Desktop or other devices. Temporary side-chat drafts remain in memory only.
+- Main-chat drafts use tab-scoped `sessionStorage`: text, ready document references, skills and bounded image data. Attachment context is limited to 2 MiB per draft, 4 MiB total and 24 hours. Unfinished or oversized attachments show a recovery notice. Signing out or expired authentication clears private attachment context. Images have preview and removal controls. Successful sends clear only the submitted input; failures retain it, including when a new thread was created before its first send failed. Drafts do not synchronize with Desktop or other devices. Temporary side-chat drafts remain in memory only.
 - Uploads are sent to the local Codex workflow. The remote UI does not implement a separate hosted model service.
 
 ## Device Notifications
@@ -860,7 +862,7 @@ cannot load external resources or arbitrary HTML.
 - The production service worker caches only the public application shell and static assets. Repeat navigation returns the installed shell immediately; its document and modules stay on the same version while new versions install in the background. Close all open Remote windows and reopen to activate a waiting update. Workspace prewarming starts for returning-device shells or after authentication/login; anonymous HTML no longer forces a Workspace module preload. The service worker still downloads the public shell in the background, so this does not promise a halved total first-visit transfer. API responses, chats, approvals, images, and terminal data are not stored in its cache. Offline shell availability does not make chats available offline. Install the site from a supporting HTTPS browser, or use Safari's Add to Home Screen.
 - After a successful login, a boolean device hint allows repeat entry to display the empty workspace immediately while authentication runs in the background. The hint contains no credentials or chat data and never grants access. Tasks and the socket still wait for server verification; expiry and logout clear the hint. This shortens the full-screen wait, not the network authentication round trip.
 - Local browser User Timing marks (`remote:shell`, `remote:auth`, `remote:bootstrap`, `remote:tasks`, `remote:chat`, `remote:connected`) record the latest completion of each phase without message content or automatic telemetry. Controlled before/after measurements and real-device limits are documented in [startup acceptance](startup-acceptance.md).
-- For a fixed trusted device, sign in once in the browser or installed app you will use, then pin that entry to the home screen or taskbar. The HTTP-only session lasts 30 days by default (`SESSION_DAYS`); expiry, signing out, clearing site data, or resetting the server session secret requires signing in again. Keep the same HTTPS origin and browser profile. A home-screen installation may have separate browser storage.
+- For a fixed trusted device, sign in once in the browser or installed app you will use, then pin that entry to the home screen or taskbar. The HttpOnly session lasts seven days by default (`SESSION_DAYS`, maximum 30) and expires after 24 idle hours (`SESSION_IDLE_HOURS`, maximum 168); expiry, signing out, clearing site data, or resetting the server session secret requires signing in again. Keep the same HTTPS origin and browser profile. A home-screen installation may have separate browser storage.
 - The tunnel installers default to HTTP/2. Windows accepts `-TunnelProtocol auto|http2|quic` on `scripts/install-task-windows.ps1`; the macOS tunnel installer accepts `TUNNEL_PROTOCOL`. Compare protocols on the actual host before changing them; a slow route can still dominate dynamic requests.
 
 ### Updating a Home-Screen Installation
@@ -895,9 +897,17 @@ The build mounts only the exact application-shell paths and `/assets/*`; it does
 
 ### Optional LAN Fallback
 
-Run `npm run setup:lan` in the installed checkout, then restart Remote. It enables a second listener on port 4546 that shares authentication, chats, and terminal sessions with the existing server. The settings menu lists available LAN/VPN addresses alongside the public entry. An optional port argument changes 4546; `LAN_ADDRESS` chooses the preferred local IPv4 address.
+In the installed checkout, configure a certificate trusted by the devices that will connect, then restart Remote:
 
-This fallback uses HTTP on a trusted private LAN/VPN, not public Internet access. HTTPS-only features such as PWA installation and dictation still require the public HTTPS entry. Windows firewall setup needs administrator rights; run the setup command in an administrator terminal if it reports that the rule could not be added. Other devices and the router must allow peer connections. Set `LAN_PORT=0` and restart to disable it.
+```sh
+npm run setup:lan -- --cert /path/to/lan-certificate.pem --key /path/to/lan-private-key.pem
+```
+
+This enables a second HTTPS listener on port 4546 that shares authentication, chats, and terminal sessions with the existing server. Use certificate names or IP subject alternative names matching the LAN address. The command stores absolute `LAN_CERT_FILE` and `LAN_KEY_FILE` paths in `.env`; it also reuses certificate paths already configured there. An optional numeric port before the flags changes 4546. `LAN_ADDRESS` chooses the preferred local IPv4 address shown in the connection menu.
+
+If TLS is unavailable and you explicitly accept sending passwords and session data without encryption on a trusted private network, use `npm run setup:lan -- --allow-http`. This sets `LAN_ALLOW_HTTP=1`. A configured LAN port without TLS or this explicit consent remains disabled; the existing local/Tunnel entry stays available. Prefer HTTPS or an encrypted VPN. Plain HTTP LAN addresses do not support HTTPS-only features such as PWA installation and dictation.
+
+On Windows, the command creates or tightens the existing `Codex Remote LAN` firewall rule to TCP from `LocalSubnet` on Private and Domain network profiles. It excludes Public profiles. Firewall setup requires administrator rights; rerun the same command in an administrator terminal if it reports failure. Other devices and the router must allow peer connections. Set `LAN_PORT=0` and restart to disable the listener.
 
 Measure the current route with `node scripts/benchmark-network.mjs https://codex.example.com 10`. It reports median/P95 and failures for the shell and dynamic health request using reused connections. These host measurements do not replace tests on an actual phone, mobile network, or signed-in macOS desktop.
 

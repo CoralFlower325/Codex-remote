@@ -27,8 +27,56 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run manager:build
+      - name: Validate release metadata and packaged receipts
+        run: npm run check:release
       - name: Validate macOS controls
         if: runner.os == 'macOS'
         run: |
           bash scripts/check-macos.sh
           node scripts/check-macos-tunnel.mjs
+      - name: Validate independent Windows update worker
+        if: runner.os == 'Windows'
+        run: node scripts/run-acceptance.mjs windows-worker
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os == 'Windows'
+        with:
+          name: windows-worker-acceptance
+          path: |
+            output/acceptance/windows-worker.json
+            output/web-update-worker-026/results.json
+          if-no-files-found: ignore
+
+  browser:
+    name: Browser Acceptance (Synthetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      REMOTE_BROWSER_CHANNEL: chromium
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+      - run: npm ci
+      - run: npm --prefix desktop ci
+      - run: node desktop/node_modules/playwright/cli.js install --with-deps chromium
+      - run: npm run build
+      - name: Validate React, history, composer and update recovery
+        run: node scripts/run-acceptance.mjs browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-browser-acceptance
+          path: |
+            output/acceptance/browser.json
+            output/playwright/audit-ui
+            output/playwright/composer-028
+            output/playwright/review-followup
+            output/playwright/web-update-029
+            output/playwright/preview-security
+          if-no-files-found: ignore

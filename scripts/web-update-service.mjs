@@ -68,8 +68,9 @@ export async function launchWorker(job, execute = run, platform = process.platfo
   if (platform === 'darwin') {
     const config = JSON.parse(await fs.readFile(request, 'utf8'));
     await execute('/bin/launchctl', ['submit', '-l', `com.codex.remote.update.${config.id}`,
-      '-o', path.join(job, 'worker.log'), '-e', path.join(job, 'worker.err.log'), '--',
-      process.execPath, path.join(job, 'scripts', 'web-update-worker.mjs'), request],
+      '-o', '/dev/null', '-e', '/dev/null', '--',
+      process.execPath, path.join(job, 'scripts', 'background-service.mjs'),
+      path.join(job, 'scripts', 'web-update-worker.mjs'), request],
     { cwd: job, timeout: 20_000 });
     return null;
   }

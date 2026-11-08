@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { compareVersions, latestRelease, safeRelative, planFiles, mergeBuildInputs, installUpdate, prepareUpdate } from './updater.mjs';
+import { signedSourceRelease } from '../scripts/test-release-signing.mjs';
 
 const temporary = [];
 async function directory() {
@@ -327,7 +328,7 @@ describe('isolated update preparation', () => {
           await write(stage, 'dist/client/index.html', 'new client');
           await write(stage, 'dist-server/server/index.js', 'new server');
         }
-        if (args[2] === 'rev-parse') return 'release commit';
+        if (args[2] === 'rev-parse') return 'a'.repeat(40);
         if (args[2] === 'diff') return '.env.example\npackage.json\nsource.txt';
         if (args[2] === 'ls-tree') { readBase.push(args.at(-1)); return args.at(-1); }
         if (args[2] === 'show') return Buffer.from(args.at(-1).endsWith(':package.json')
@@ -339,7 +340,8 @@ describe('isolated update preparation', () => {
       if (args[0] === '--input-type=module') return 'npm-cli.js';
       return '';
     });
-    const prepared = await prepareUpdate(root, { tag: 'v0.2.9', version: '0.2.9' }, () => {}, execute);
+    const identity = signedSourceRelease('0.2.9');
+    const prepared = await prepareUpdate(root, identity.release, () => {}, execute, identity.options);
     expect(prepared.mode).toBe('source');
     expect(prepared.plan.map(item => item.relative)).toEqual(['package.json', 'source.txt']);
     expect(prepared.inputs.some(item => item.relative.startsWith('.env'))).toBe(false);
@@ -374,7 +376,7 @@ describe('isolated update preparation', () => {
           await write(stage, 'package.json', JSON.stringify({ name: 'codex-remote', version: '0.1.10' }));
           await write(stage, 'source.txt', 'new source');
         }
-        if (args[2] === 'rev-parse') return 'release commit';
+        if (args[2] === 'rev-parse') return 'a'.repeat(40);
         if (args[2] === 'diff' || args[2] === 'ls-tree') return 'source.txt';
         if (args[2] === 'show') return Buffer.from('old source');
         return '';
@@ -393,8 +395,9 @@ describe('isolated update preparation', () => {
       if (args.includes('typecheck')) throw new Error('validation failure');
       return '';
     });
-    await expect(prepareUpdate(root, { tag: 'v0.1.10', version: '0.1.10' },
-      (_title, state) => updates.push(state), execute)).rejects.toThrow('尚未安装');
+    const identity = signedSourceRelease('0.1.10');
+    await expect(prepareUpdate(root, identity.release,
+      (_title, state) => updates.push(state), execute, identity.options)).rejects.toThrow('尚未安装');
     expect(installs).toBe(2);
     expect(updates.some((state) => state.detail.includes('最后一次重试'))).toBe(true);
     expect(updates.at(-1)).toMatchObject({ status: 'failed', percent: 43 });

@@ -10,7 +10,7 @@ it.skipIf(process.platform !== 'win32')('runs a windowless task in a path with s
   try {
     await fs.mkdir(path.join(root, 'scripts'));
     await fs.mkdir(path.join(root, 'dist-server/server'), { recursive: true });
-    for (const file of ['run-hidden-windows.vbs', 'background-task-windows.mjs']) {
+    for (const file of ['run-hidden-windows.vbs', 'background-task-windows.mjs', 'rotating-log.mjs']) {
       await fs.copyFile(fileURLToPath(new URL(`../scripts/${file}`, import.meta.url)), path.join(root, 'scripts', file));
     }
     await fs.writeFile(path.join(root, 'dist-server/server/index.js'),

@@ -155,7 +155,8 @@ function SetupPage({ setupAllowed, onDone }: { setupAllowed: boolean; onDone: ()
               type="password"
               autoFocus
               autoComplete="new-password"
-              minLength={6}
+              minLength={12}
+              maxLength={256}
               required
             />
           </label>
@@ -166,10 +167,12 @@ function SetupPage({ setupAllowed, onDone }: { setupAllowed: boolean; onDone: ()
               onChange={(event) => setConfirm(event.target.value)}
               type="password"
               autoComplete="new-password"
-              minLength={6}
+              minLength={12}
+              maxLength={256}
               required
             />
           </label>
+          <p className="auth-password-hint">使用 12–256 个字符，避免常见密码和单一字符重复。</p>
           {error && <div className="form-error">{error}</div>}
           <button type="submit" className="primary-button primary-button--wide" disabled={working}>
             {working ? <LoaderCircle size={16} className="spin" aria-hidden="true" /> : <CheckCircle2 size={16} aria-hidden="true" />}
