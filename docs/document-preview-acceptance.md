@@ -33,6 +33,6 @@ node scripts/check-composer-layout.mjs
 
 Windows 的真实转换结果不能证明所有 Office 格式、复杂排版、宏文件或恶意文件安全。
 宏和外链设置不提供网络或文件系统沙箱。旧格式和 ODF 仍需按实际产物抽查。
-macOS 转换、真实 iPhone Safari/主屏幕、手机网络和系统听写需单独实机验收。
+macOS 转换、真实 iPhone Safari/主屏幕和手机网络需单独实机验收。
 转换器缺失时的单元夹具与界面错误注入不等同于在每个平台卸载 LibreOffice 测试。
 关闭页面会停止浏览器加载，但不会取消已经排队的主机转换。

@@ -71,19 +71,28 @@
 
 .app-shell[data-layout="mobile"] .composer-toolbar {
   min-height: 44px;
+  flex-wrap: nowrap;
+  gap: 4px;
   padding: 0 6px 4px;
 }
 
 .app-shell[data-layout="mobile"] .composer-setting {
   min-width: 0;
   min-height: var(--mobile-composer-control-size);
+  flex: 1 1 auto;
   flex-shrink: 1;
+  overflow: hidden;
 }
 
 .app-shell[data-layout="mobile"] .composer-toolbar-left {
   min-width: 0;
   flex: 1;
   gap: 2px;
+  overflow: hidden;
+}
+
+.app-shell[data-layout="mobile"] .composer-submit {
+  gap: 4px;
 }
 
 .app-shell[data-layout="mobile"] .composer-circle-button {

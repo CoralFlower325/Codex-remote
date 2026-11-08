@@ -1,6 +1,6 @@
 import {
   ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, Eye, Folder,
-  LoaderCircle, ShieldAlert, ShieldCheck, Square, X, Plus, Mic, MessageSquare, Sparkles, ListTodo,
+  LoaderCircle, ShieldAlert, ShieldCheck, Square, X, Plus, MessageSquare, Sparkles, ListTodo,
   FileText, RotateCw, CornerDownRight, ListEnd
 } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
@@ -35,7 +35,6 @@ interface ComposerProps {
   draftKey?: string;
   temporary?: boolean;
   queueMessages?: boolean;
-  onQueueModeChange?: (enabled: boolean) => void;
   initialInput?: { text: string; attachments: ComposerAttachment[]; skills: SkillInfo[] };
   disabled?: boolean;
   placeholder?: string;
@@ -59,7 +58,6 @@ export function Composer({
   draftKey = variant, disabled = false, placeholder, onProjectChange,
   onModelChange, onEffortChange, onSubmit, onStop, onError, contextUsage,
   onCommand, loadSkills, skillScope, hasSavedThread, mode, temporary = false, initialInput, queueMessages = false,
-  onQueueModeChange
 }: ComposerProps) {
   const controlId = useId();
   const { text: draft, attachments, skills: selectedSkills, sending, owner, recoveryNotice } = useComposerDraft(draftKey, temporary, initialInput);
@@ -77,7 +75,6 @@ export function Composer({
   const [focused, setFocused] = useState(false);
   const [slashDismissed, setSlashDismissed] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
-  const [listening, setListening] = useState(false);
   const [menu, setMenu] = useState<'settings' | 'models' | 'permissions' | 'projects' | null>(null);
   const [renderedMenu, setRenderedMenu] = useState<typeof menu>(null);
   const [popoverPhase, setPopoverPhase] = useState<'enter' | 'idle' | 'exit'>('enter');
@@ -91,12 +88,10 @@ export function Composer({
   const permissionButtonRef = useRef<HTMLButtonElement>(null);
   const projectButtonRef = useRef<HTMLButtonElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<Dictation | null>(null);
   const commandRunningRef = useRef(false);
   const skillsLoaderRef = useRef(loadSkills);
   const skillScopeRef = useRef(skillScope);
   skillsLoaderRef.current = loadSkills;
-  const speechConstructor = (window as SpeechWindow).SpeechRecognition ?? (window as SpeechWindow).webkitSpeechRecognition;
   const contextWindow = contextUsage?.modelContextWindow;
   const usedTokens = contextUsage?.last.totalTokens;
   const contextPercent = contextWindow && usedTokens != null
@@ -192,28 +187,6 @@ export function Composer({
     }).finally(() => { if (!cancelled) setSkillsLoading(false); });
     return () => { cancelled = true; };
   }, [slashOpen, skillScope]);
-
-  useEffect(() => () => { recognitionRef.current?.abort(); }, []);
-
-  const dictate = () => {
-    if (recognitionRef.current) { recognitionRef.current.stop(); return; }
-    if (!speechConstructor) return;
-    const recognition = new speechConstructor();
-    recognitionRef.current = recognition;
-    recognition.lang = document.documentElement.lang || navigator.language;
-    recognition.interimResults = false;
-    recognition.onstart = () => setListening(true);
-    recognition.onend = () => { recognitionRef.current = null; setListening(false); };
-    recognition.onerror = (event) => {
-      if (event.error !== 'aborted') onError(new Error(event.error === 'not-allowed' ? '请允许浏览器使用麦克风。' : '听写暂时不可用，请重试。'));
-    };
-    recognition.onresult = (event) => {
-      const transcript = Array.from(event.results).map((result) => result[0]?.transcript ?? '').join('');
-      const current = draftRef.current;
-      updateDraft(`${current}${current && !/\s$/.test(current) ? ' ' : ''}${transcript}`);
-    };
-    recognition.start();
-  };
 
   const upload = async (attachment: ComposerDocumentAttachment) => {
     if (!attachment.file) return;
@@ -438,6 +411,7 @@ export function Composer({
     catch (error) { onError(error); }
     finally { setStopping(false); }
   };
+  const hasComposerContent = Boolean(draft.trim()) || attachments.length > 0 || selectedSkills.length > 0;
 
   return (
     <div className={`composer-wrap composer-wrap--${variant}`} ref={composerRef}>
@@ -629,7 +603,7 @@ export function Composer({
           placeholder={placeholder ?? (activeTurnId ? '补充要求' : variant === 'home' ? '有什么需要处理？' : '继续向 Codex 提问')}
           rows={1}
         />
-        <div className={`composer-toolbar${activeTurnId && onQueueModeChange ? ' composer-toolbar--send-mode' : ''}`}>
+        <div className="composer-toolbar">
           <div className="composer-toolbar-left">
             <button type="button" className="composer-circle-button composer-add" aria-label="添加图片或 PDF" title="添加图片或 PDF"
               disabled={sending || disabled} onClick={() => fileRef.current?.click()}><Plus size={15} /></button>
@@ -668,12 +642,6 @@ export function Composer({
             <span className="composer-turn-slot" data-thread-navigation-slot={variant === 'thread' ? '' : undefined} />
           </div>
           <div className="composer-submit">
-            {activeTurnId && onQueueModeChange && <div className="composer-send-mode" role="group" aria-label="发送方式">
-              <button type="button" aria-pressed={queueMessages} title="本轮结束后发送" aria-label="排队发送"
-                disabled={sending || disabled} onClick={() => onQueueModeChange(true)}><ListEnd size={15} /></button>
-              <button type="button" aria-pressed={!queueMessages} title="立即引导当前轮次" aria-label="立即引导"
-                disabled={sending || disabled} onClick={() => onQueueModeChange(false)}><CornerDownRight size={15} /></button>
-            </div>}
             {contextPercent !== null && <span className="context-usage" role="img" tabIndex={0}
               aria-label={`上下文已用 ${Math.round(contextPercent)}%`}
               title={`上下文已用 ${Math.round(contextPercent)}%\n${usedTokens?.toLocaleString()} / ${contextWindow?.toLocaleString()} tokens`}
@@ -683,16 +651,13 @@ export function Composer({
                 <circle className="context-usage-progress" cx="6" cy="6" r="5" pathLength="100" />
               </svg>
             </span>}
-            {speechConstructor && <button type="button" className={`composer-circle-button${listening ? ' is-listening' : ''}`}
-              aria-label={listening ? '停止听写' : '开始听写'} title={listening ? '停止听写' : '开始听写'}
-              aria-pressed={listening} onClick={dictate}><Mic size={15} /></button>}
-            {activeTurnId && (
+            {activeTurnId && !hasComposerContent && (
               <button type="button" className="composer-stop" disabled={stopping} onClick={() => void stop()}
                 aria-label="停止任务" title="停止任务">
                 {stopping ? <LoaderCircle size={16} className="spin" /> : <Square size={13} fill="currentColor" />}
               </button>
             )}
-            {(!activeTurnId || Boolean(draft.trim()) || attachments.length > 0 || selectedSkills.length > 0) && (
+            {(!activeTurnId || hasComposerContent || sending) && (
               <button type="button" className="composer-send" disabled={(!draft.trim() && attachments.length === 0 && selectedSkills.length === 0) ||
                 attachments.some(attachment => attachment.kind === 'document' && Boolean(attachment.status)) || sending || disabled}
                  onClick={() => void submit()} aria-label={activeTurnId ? queueMessages ? '加入队列' : '发送补充要求' : '发送任务'}
@@ -707,19 +672,3 @@ export function Composer({
     </div>
   );
 }
-
-interface Dictation {
-  lang: string;
-  interimResults: boolean;
-  onstart: (() => void) | null;
-  onend: (() => void) | null;
-  onerror: ((event: { error: string }) => void) | null;
-  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  start(): void;
-  stop(): void;
-  abort(): void;
-}
-type SpeechWindow = Window & {
-  SpeechRecognition?: new () => Dictation;
-  webkitSpeechRecognition?: new () => Dictation;
-};

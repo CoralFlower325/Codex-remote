@@ -37,13 +37,13 @@ The unchanged manager 0.2.4 retained its root/settings and reports the new host
 healthy. Its prior installation receipt and all rollback backups are retained in
 the private deployment record. Never start another App Server.
 
-Remote **0.2.24-rc** is the current functional candidate; manager **0.2.4** is
-unchanged. It adds macOS discovery through the fixed `/bin/ps` command for trusted
-Applications bundles, alongside the published Windows process discovery. Both
-platforms reject non-loopback addresses, renderer children, untrusted install
-paths and CDP socket URLs that leave the selected loopback port. Existing explicit
-candidates and 9229 remain fallbacks. The macOS local read-only check selected
-the current ChatGPT process port `9229` and found the Desktop page. Publish the
+Remote **0.2.25-rc** is the current functional candidate; manager **0.2.4** is
+unchanged. It keeps the mobile composer toolbar on one row without shrinking its
+36px or 44px controls, removes browser dictation, and makes the active-turn
+composer expose one primary action: Stop for an empty input, then Send/Steer when
+content is present. Queue mode remains in queued-message actions. The preceding
+0.2.24-rc work adds macOS discovery through the fixed `/bin/ps` command for
+trusted Applications bundles, alongside Windows process discovery. Publish the
 signed runtime, update the distribution Worker, install Remote locally and
 replace this candidate note with the exact Release/deployment receipt before
 claiming completion.
@@ -142,7 +142,7 @@ Outstanding acceptance:
   Forms cover observed unanswered questions across loaded main-chat turns and
   temporary side chats. Questions beyond the bounded loaded window or an evicted
   memory index are not claimed complete.
-- Some approval forms, actual dictation and a fresh active subagent lifecycle.
+- Some approval forms and a fresh active subagent lifecycle.
 - Sustained connection stability under real network/proxy changes. Earlier
   intermittent public failures are not proven eliminated by short live probes.
 

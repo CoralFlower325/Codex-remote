@@ -272,7 +272,6 @@ svg { stroke-width: 1.8; }
 .composer-circle-button { display: inline-grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; border: 0; border-radius: 50%; background: transparent; padding: 0; color: var(--muted); }
 .composer-circle-button:hover { background: var(--surface-hover); color: var(--ink); }
 .composer-add { border: 1px solid var(--line-strong); }
-.composer-circle-button.is-listening { color: var(--danger); background: var(--danger-soft); }
 .app-shell[data-layout="desktop"] {
   --desktop-compact-composer-size: calc(28px * 2 / 3);
   --desktop-compact-navigation-size: calc(44px * 2 / 3);

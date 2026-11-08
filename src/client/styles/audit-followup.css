@@ -8,23 +8,12 @@
 .thread-recovery { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
 .thread-recovery > span { min-width: 0; flex: 1; max-height: 64px; overflow-y: auto; overflow-wrap: anywhere; }
 .thread-recovery > button { flex: 0 0 auto; }
-.composer-send-mode { display: flex; flex: 0 0 auto; align-items: center; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-.composer-send-mode button { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 0; padding: 0; color: var(--muted); background: transparent; }
-.composer-send-mode button[aria-pressed="true"] { color: var(--ink); background: var(--surface-hover); }
-.composer-send-mode button:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
 .draft-recovery-notice { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-size: 12px; color: var(--muted); }
 .draft-recovery-notice > span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 .approval-details { margin: 8px 0; min-width: 0; }
 .approval-details summary { cursor: pointer; font-size: 12px; }
 .approval-details > code { display: block; margin-top: 6px; overflow-wrap: anywhere; font-size: 12px; }
 .approval-details + button { display: inline-flex; align-items: center; gap: 6px; }
-.app-shell[data-layout="mobile"] .composer-send-mode button { width: 32px; height: 36px; }
 .app-shell[data-layout="mobile"] .thread-recovery { flex-wrap: wrap; }
 .app-shell[data-layout="mobile"] .composer-toolbar-left { min-width: 0; }
 .app-shell[data-layout="mobile"] .composer-submit { flex: 0 0 auto; }
-@media (max-width: 480px) {
-  .app-shell[data-layout="mobile"] .composer-toolbar--send-mode { flex-wrap: wrap; row-gap: 0; }
-  .app-shell[data-layout="mobile"] .composer-toolbar--send-mode .composer-toolbar-left { flex-basis: 100%; }
-  .app-shell[data-layout="mobile"] .composer-toolbar--send-mode .composer-setting { min-width: 48px; }
-  .app-shell[data-layout="mobile"] .composer-toolbar--send-mode .composer-submit { margin-left: auto; }
-}

@@ -781,7 +781,7 @@ function ThreadScreen({
   insertRequest: { id: number; text: string } | null;
 }) {
   const [queueEnabled, updateQueueEnabled] = useState(() => {
-    try { return sessionStorage.getItem('composer-queue-mode') !== 'steer'; } catch { return true; }
+    try { return sessionStorage.getItem('composer-queue-mode') === 'queue'; } catch { return false; }
   });
   const setQueueEnabled = (enabled: boolean) => {
     updateQueueEnabled(enabled);
@@ -869,7 +869,6 @@ function ThreadScreen({
           models={remote.models}
           activeTurnId={remote.activeTurnId}
           queueMessages={queueEnabled}
-          onQueueModeChange={setQueueEnabled}
           {...(remote.contextUsage ? { contextUsage: remote.contextUsage } : {})}
           onModelChange={onModelChange}
           onEffortChange={onEffortChange}

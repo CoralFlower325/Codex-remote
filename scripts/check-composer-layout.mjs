@@ -125,9 +125,6 @@ try {
     submissions = []; pendingSend = null; historyReads = 0; syncEnabled = true; actions = [];
     const context = await browser.newContext({ viewport: { width: size.width, height: size.height },
       deviceScaleFactor: size.deviceScaleFactor, isMobile: size.mobile, hasTouch: size.mobile, serviceWorkers: 'block' });
-    await context.addInitScript(() => {
-      window.SpeechRecognition = class { start() {} stop() {} abort() {} };
-    });
     const page = await context.newPage(), errors = [];
     page.on('pageerror', e => errors.push(e.message));
     const origin = `http://127.0.0.1:${server.address().port}`;
@@ -135,6 +132,55 @@ try {
     const input = page.locator('.composer textarea');
     await page.locator('.message-stream').getByText('A short final reply.', { exact: true }).waitFor();
     await page.waitForFunction(() => !document.querySelector('.composer textarea')?.disabled);
+    await page.evaluate(() => document.fonts.ready);
+    const toolbarGeometry = async composer => {
+      const value = await composer.evaluate(root => {
+        const outer = root.getBoundingClientRect();
+        const nodes = [...root.querySelectorAll('.composer-toolbar button, .composer-toolbar .context-usage')];
+        const controls = nodes.filter(node => node.getClientRects().length).map(node => {
+          const rect = node.getBoundingClientRect();
+          return { name: node.getAttribute('aria-label'), left: rect.left, right: rect.right,
+            top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
+        });
+        return { left: outer.left, right: outer.right, controls,
+          overflow: document.documentElement.scrollWidth > innerWidth };
+      });
+      assert.equal(value.overflow, false, JSON.stringify(value));
+      for (const control of value.controls) {
+        assert(control.left >= value.left - 1 && control.right <= value.right + 1,
+          `Control outside composer: ${JSON.stringify(control)}`);
+        assert(control.width >= 12 && control.height >= 12, `Collapsed control: ${JSON.stringify(control)}`);
+      }
+      for (let i = 0; i < value.controls.length; i++) for (let j = i + 1; j < value.controls.length; j++) {
+        const a = value.controls[i], b = value.controls[j];
+        const overlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const sameRow = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        assert(overlap <= 1 || sameRow <= 1, `Controls overlap: ${JSON.stringify([a, b])}`);
+      }
+      const centers = value.controls.map(control => (control.top + control.bottom) / 2);
+      assert(Math.max(...centers) - Math.min(...centers) <= 1, `Toolbar wrapped: ${JSON.stringify(value)}`);
+      return value;
+    };
+    if (process.env.REMOTE_COMPOSER_LAYOUT_ONLY === '1') {
+      event('turn/started', { turn: { id: 'layout-only', status: 'inProgress',
+        startedAt: Math.floor(Date.now() / 1000) - 2 } });
+      const composer = page.locator('.thread-screen > .thread-bottom .composer');
+      await composer.locator('.composer-stop').waitFor();
+      assert.equal(await composer.locator('.composer-send').count(), 0);
+      const emptyLayout = await toolbarGeometry(composer);
+      await input.fill('Layout-only steering draft');
+      await composer.locator('.composer-send').waitFor();
+      assert.equal(await composer.locator('.composer-stop').count(), 0);
+      assert.equal(await composer.getByRole('button', { name: /听写/ }).count(), 0);
+      const contentLayout = await toolbarGeometry(composer);
+      assert.equal(contentLayout.controls.filter(control =>
+        ['发送任务', '发送补充要求', '加入队列'].includes(control.name)).length, 1);
+      await page.screenshot({ path: `${directory}/${size.name}-mobile-composer.png` });
+      results.push({ viewport: size.name, composerOnly: true, emptyLayout, contentLayout,
+        singleRow: true, singlePrimaryAction: true, noDictation: true, errors });
+      await context.close();
+      continue;
+    }
     const select = async id => {
       if (await page.locator('.app-shell').getAttribute('data-layout') === 'mobile')
         await page.getByRole('button', { name: '\u6253\u5f00\u4efb\u52a1\u5217\u8868', exact: true }).click();
@@ -189,6 +235,8 @@ try {
       await page.screenshot({ path: `${directory}/history-diagnostic.png` });
       throw error;
     }
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(100);
     const tailBefore = await page.locator('.message-stream-inner').evaluate(e => parseFloat(e.style.getPropertyValue('--reading-tail')) || 0);
     const anchorAfter = await page.locator('[data-user-key]').last().evaluate(e => e.getBoundingClientRect().top);
     assert(Math.abs(anchorAfter - anchorBefore) < 2, `History anchor moved: ${anchorBefore} -> ${anchorAfter}`);
@@ -330,32 +378,13 @@ try {
       await page.getByRole('option').filter({ hasText: '/synthetic-stop' }).click();
       await composer.locator('.composer-context-chip').getByText('Synthetic Stop', { exact: true }).waitFor();
     };
-    const dualButtonGeometry = async composer => {
-      await composer.locator('.composer-stop').waitFor();
+    const singleActionGeometry = async composer => {
       await composer.locator('.composer-send').waitFor();
-      const value = await composer.evaluate(root => {
-        const outer = root.getBoundingClientRect();
-        const nodes = [...root.querySelectorAll('.composer-toolbar button, .composer-toolbar .context-usage')];
-        const controls = nodes.filter(node => node.getClientRects().length).map(node => {
-          const rect = node.getBoundingClientRect();
-          return { name: node.getAttribute('aria-label'), left: rect.left, right: rect.right,
-            top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height };
-        });
-        return { left: outer.left, right: outer.right, controls,
-          overflow: document.documentElement.scrollWidth > innerWidth };
-      });
-      assert.equal(value.overflow, false, JSON.stringify(value));
-      for (const control of value.controls) {
-        assert(control.left >= value.left - 1 && control.right <= value.right + 1,
-          `Control outside composer: ${JSON.stringify(control)}`);
-        assert(control.width >= 12 && control.height >= 12, `Collapsed control: ${JSON.stringify(control)}`);
-      }
-      for (let i = 0; i < value.controls.length; i++) for (let j = i + 1; j < value.controls.length; j++) {
-        const a = value.controls[i], b = value.controls[j];
-        const overlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
-        const sameRow = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
-        assert(overlap <= 1 || sameRow <= 1, `Controls overlap: ${JSON.stringify([a, b])}`);
-      }
+      assert.equal(await composer.locator('.composer-stop').count(), 0);
+      assert.equal(await composer.getByRole('button', { name: /听写/ }).count(), 0);
+      const value = await toolbarGeometry(composer);
+      assert.equal(value.controls.filter(control => ['发送任务', '发送补充要求', '加入队列'].includes(control.name)).length, 1,
+        `Expected one send action: ${JSON.stringify(value)}`);
       return value;
     };
     const mainComposer = page.locator('.thread-screen > .thread-bottom .composer');
@@ -364,16 +393,18 @@ try {
     event('turn/started', { turn: { id: 'stop-with-draft', status: 'inProgress', startedAt: Math.floor(Date.now() / 1000) - 2 } });
     event('thread/tokenUsage/updated', { tokenUsage: { last: { totalTokens: 100 }, modelContextWindow: 1000 } });
     await mainComposer.locator('.context-usage').waitFor();
-    const mainDualButtons = await dualButtonGeometry(mainComposer);
-    await page.screenshot({ path: `${directory}/${size.name}-main-stop-draft.png` });
+    const mainSingleAction = await singleActionGeometry(mainComposer);
+    await page.screenshot({ path: `${directory}/${size.name}-main-single-send.png` });
+    while (await mainComposer.locator('.composer-image-remove').count()) await mainComposer.locator('.composer-image-remove').first().click();
+    if (await mainComposer.locator('.composer-context-chip button').count()) await mainComposer.locator('.composer-context-chip button').click();
+    await mainComposer.locator('textarea').fill('');
+    await mainComposer.locator('.composer-stop').waitFor();
+    assert.equal(await mainComposer.locator('.composer-send').count(), 0);
     const mainActionCount = actions.length;
     await mainComposer.locator('.composer-stop').click();
     await mainComposer.locator('.composer-stop').waitFor({ state: 'detached' });
     assert.deepEqual(actions.slice(mainActionCount).map(action => action.method), ['turn/interrupt']);
     assert.deepEqual(actions.at(-1).params, { threadId: 'a', turnId: 'stop-with-draft' });
-    assert.equal(await mainComposer.locator('textarea').inputValue(), 'Retry draft');
-    assert.equal(await mainComposer.locator('.composer-image').count(), 4);
-    assert.equal(await mainComposer.locator('.composer-context-chip').count(), 1);
     // A temporary side chat steers directly while active. Stopping must retain
     // its own draft and never enqueue, start or steer that draft.
     await page.getByRole('button', { name: '\u6253\u5f00\u4efb\u52a1\u68c0\u67e5\u5668', exact: true }).click();
@@ -391,13 +422,8 @@ try {
     event('thread/tokenUsage/updated', { threadId: 'side',
       tokenUsage: { last: { totalTokens: 100 }, modelContextWindow: 1000 } });
     await sideComposer.locator('.context-usage').waitFor();
-    const sideDualButtons = await dualButtonGeometry(sideComposer);
-    await page.screenshot({ path: `${directory}/${size.name}-side-stop-draft.png` });
-    const sideActionCount = actions.length;
-    await sideComposer.locator('.composer-stop').click();
-    await sideComposer.locator('.composer-stop').waitFor({ state: 'detached' });
-    assert.deepEqual(actions.slice(sideActionCount).map(action => action.method), ['turn/interrupt']);
-    assert.deepEqual(actions.at(-1).params, { threadId: 'side', turnId: 'side-running' });
+    const sideSingleAction = await singleActionGeometry(sideComposer);
+    await page.screenshot({ path: `${directory}/${size.name}-side-single-send.png` });
     assert.equal(await sideComposer.locator('textarea').inputValue(), 'Keep side draft');
     assert.equal(await sideComposer.locator('.composer-image').count(), 1);
     assert.equal(await sideComposer.locator('.composer-context-chip').count(), 1);
@@ -405,7 +431,7 @@ try {
     results.push({ viewport: size.name, tailBefore, anchorDrift: anchorAfter - anchorBefore, ...layout, pasteSwitch: true, imagePreview: true,
       fileSelection: true, sendWhileSwitching: true, failedSendRetained: true, removalRetained: true,
       nativeRetry: true, nativeFailure: true, errorStyle, bannerStyle, manualReconnect: true, noActionReplay: true,
-      mainDualButtons, sideDualButtons, stopPreservesDraft: true, stopDoesNotSend: true, errors });
+      mainSingleAction, sideSingleAction, singlePrimaryAction: true, stopAvailableWhenEmpty: true, noDictation: true, errors });
     await context.close();
   }
   await fs.writeFile(`${directory}/results.json`, JSON.stringify(results, null, 2), 'utf8');

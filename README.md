@@ -40,7 +40,7 @@ PDF and Office updates retain page and zoom. Hidden previews stop watching.
   <img src="docs/images/review.png" alt="Changed files with line numbers and a unified diff" width="300">
 </p>
 
-Mobile attachment and conversation-index controls use 24px sizing; model and dictation controls remain 36px. Desktop attachment/index controls also use compact sizes. See the [layout guide](docs/guide.md#responsive-layout) for viewport rules and device acceptance limits.
+Mobile attachment and conversation-index controls use 24px sizing; model controls remain 36px. The composer keeps one primary action: stop while a running turn has an empty input, then steer once text, files or skills are present. Active-turn sends steer immediately by default. Desktop attachment/index controls also use compact sizes. See the [layout guide](docs/guide.md#responsive-layout) for viewport rules and device acceptance limits.
 
 </details>
 
@@ -118,7 +118,7 @@ Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
 remains pending.
 
-Release candidate Remote **0.2.24-rc** pairs with unchanged manager **0.2.4**.
+Release candidate Remote **0.2.25-rc** pairs with unchanged manager **0.2.4**.
 Actual installed versions remain separately recorded in each deployment's acceptance. Install the manager
 manually over 0.2.0, select the same host directory and retry; updating Remote
 cannot replace the old manager's bundled updater. [Manager downloads](docs/update-downloads.md)
@@ -158,7 +158,7 @@ HTTP status codes and Codex retry state. See [runtime errors](docs/native-runtim
 | Phone browsers | Responsive Chromium/Windows WebKit checks; physical iPhone Safari/Home Screen, keyboard and Wi-Fi/5G acceptance pending |
 | Linux | CI build and tests; Desktop integration unvalidated |
 
-The interface currently uses **Simplified Chinese**. Internal Desktop interfaces can change between releases. Some approval forms, real native question submission, actual dictation and physical OS notification display still need dedicated live acceptance. Model/project catalogs currently read their first requested page; model defaults can differ from global overrides.
+The interface currently uses **Simplified Chinese**. Internal Desktop interfaces can change between releases. Some approval forms, real native question submission and physical OS notification display still need dedicated live acceptance. Model/project catalogs currently read their first requested page; model defaults can differ from global overrides.
 
 Remote is for **one trusted operator controlling their own machine**. Use a strong password and HTTPS. Keep `.env`, `data/`, credentials, logs and debug ports private. Public app caches exclude conversations and APIs; the separate authenticated device snapshot has bounded retention. Review [Security](SECURITY.md) and the [complete limits](docs/guide.md#known-limits) before exposing a host.
 

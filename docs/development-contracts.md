@@ -45,13 +45,17 @@ Release and privacy policy remains in AGENTS.md.
   into native-style summaries across types. Ordinary reasoning is hidden; viewed
   images and commentary keep their positions. Completed turns fold their process
   under the duration disclosure, leaving the final reply visible.
-  Mobile dictation and model controls use 36px controls; attachment and
+  Mobile model controls use 36px controls; attachment and
   composer conversation-index buttons use two thirds of that size (24px).
   Desktop attachment and composer conversation-index buttons also use two
   thirds of their previous size: 28px becomes about 18.67px. Desktop standalone
   conversation-index and coarse-pointer side-chat attachment/index controls shrink
-  from 44px to about 29.33px. Preserve desktop model/dictation sizing and
-  goal/queued-message corners. Other touch targets remain at least 44px.
+  from 44px to about 29.33px. Preserve desktop model sizing and
+  goal/queued-message corners. Keep one primary composer action: stop for an
+  empty input during an active turn, otherwise send or steer; default active-turn
+  sends to steer, with queue mode retained in queued-message actions. Do not expose
+  browser dictation. Keep the mobile toolbar on one row without shrinking its
+  36px or 44px controls. Other touch targets remain at least 44px.
   Conversation text follows native 14px/22.75px, weight 430; activity headers use
   14px/21px, weight 430. Keep the system font stack and lazy detail bodies.
 - Use native turn timing, including metadata cursors for older history. Never
