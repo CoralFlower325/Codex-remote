@@ -115,8 +115,8 @@ Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
 remains pending.
 
-Source candidate Remote **0.2.23** pairs with manager **0.2.4**; this batch is not published or installed.
-The last installed versions remain separately recorded in the deployment acceptance. Install a formally published manager
+Published Remote **0.2.23** pairs with manager **0.2.4**, available in [v0.2.23](https://github.com/CoralFlower325/Codex-remote/releases/tag/v0.2.23).
+Actual installed versions remain separately recorded in each deployment's acceptance. Install the manager
 manually over 0.2.0, select the same host directory and retry; updating Remote
 cannot replace the old manager's bundled updater. [Manager downloads](docs/update-downloads.md)
 use the project's public distribution, with official GitHub alternatives.

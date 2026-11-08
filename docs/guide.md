@@ -2,7 +2,8 @@
 
 Remote preserves unsent image/skill drafts when switching chats, provides image
 previews above the input, and releases obsolete history spacing on return toward
-latest. Draft images/skills remain in memory and clear on page reload.
+latest. Main-chat drafts restore ready document references, skills and bounded
+image data across reloads; unrecoverable attachments show a warning.
 The top connection banner uses quiet monochrome `Reconnecting` / `Retry`.
 Per-turn runtime errors use Desktop-style compact rows and native retry/message
 formatting, without extra Remote headings or duplicated status labels.
@@ -10,8 +11,8 @@ See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
-Remote 0.2.16 pairs with stable manager 0.2.2, using manual installer upgrades.
-Install 0.2.2 over the old app, select the same host root and retry the update.
+Remote 0.2.23 pairs with stable manager 0.2.4, using manual installer upgrades.
+Install 0.2.4 over the old app, select the same host root and retry the update.
 Updating Remote cannot change the old manager's bundled updater.
 Manager self-update is preserved on the paused 0.2.0AU development line;
 see [the checkpoint](manager-self-update-checkpoints.md).

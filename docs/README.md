@@ -66,7 +66,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
-| [0.2.22 对抗审查修复对账](adversarial-review-0.2.22-fixes.md) | Remote 0.2.23 / manager 0.2.4 候选：31 项对账、安全与可靠性修复及真机边界；未发布、部署或安装 |
+| [0.2.22 对抗审查修复对账](adversarial-review-0.2.22-fixes.md) | 已发布 0.2.23 / manager 0.2.4：31 项对账、正式签名、三平台 CI、下载分发及 Windows 安装；真机边界保留 |
 | [PR #10 自动任务消息复核](pr-10-review.md) | 已发布 0.2.21：原生信封、通知决策、流式标签及八视口合成验收；主机升级、真实执行与真机待验收 |
 | [PR #8 原生自动任务复核](pr-8-review.md) | 已发布 0.2.20：原生服务桥接、回合时刻、八视口合成检查；真实执行与真机待验收，发布不代表主机已升级 |
 | [PR #7 后续与真机步骤](review-followup-acceptance.md) | 已发布 0.2.19：终端 cwd、多根目录、Windows 预览路径、说明与路径复制；原生 App Server 占用修复，iPhone/macOS 待验收 |
@@ -74,7 +74,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 | [代码整理](refactor-acceptance.md) | v0.1.16 基线、独立差分与桌面/手机界面对照 |
 | [Startup](startup-acceptance.md) | Shell, authentication, tasks, chat and connection phases / 启动各阶段 |
 | [History](history-loading-acceptance.md) | Paging, anchors and side chats / 历史分页、阅读锚点与侧聊 |
-| [实时文件预览](live-preview-acceptance.md) | 0.2.22 候选：文件变更、阅读位置、PDF 状态、私有推送及八组视口；真机步骤 |
+| [实时文件预览](live-preview-acceptance.md) | 已发布 0.2.22：文件变更、阅读位置、PDF 状态、私有推送及八组视口；真机步骤 |
 | [Previews](session-preview-acceptance.md) | Isolation, attachments and rendering limits / 预览隔离、附件与渲染限制 |
 | [文档预览与可靠性](document-preview-acceptance.md) | 0.2.8 主机 Office 转换、原文件下载、窄屏停止与错误恢复 |
 | [输入草稿与布局](composer-layout-acceptance.md) | 0.2.5 会话草稿、图片预览、末条间距与历史锚点回归 |
