@@ -15,7 +15,7 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-Current published release is Remote **0.2.23** / manager **0.2.4**, tag
+The last published release is Remote **0.2.23** / manager **0.2.4**, tag
 `v0.2.23`, functional commit `348e457899172a91d1c6936b045082096794e74f`
 merged through PR #14. The
 [adversarial-review reconciliation](adversarial-review-0.2.22-fixes.md) records
@@ -81,6 +81,18 @@ Physical-device and sustained real Office conversion acceptance remain separate.
 The current 0.2.23 evidence is recorded above. Source validation alone does not
 establish publication or installation; retain the operator's approval boundary
 for subsequent batches.
+
+Remote **0.2.24** is the current functional candidate; the manager remains
+**0.2.4** without changes. It adds Windows discovery of the loopback
+`--remote-debugging-port` supplied to the current trusted Codex/ChatGPT process.
+The implementation rejects non-loopback addresses, renderer children, untrusted
+install paths and CDP socket URLs that leave the selected loopback port. Existing
+explicit candidates and 9229 remain fallbacks. An on-host compiled check selected
+the current Codex++ port `4952`, found `app://-/index.html` and connected without
+starting another App Server. Local validation passed 128 test files (1022 tests,
+two platform skips), typecheck and both builds. Publish the signed runtime, update
+the distribution Worker, install Remote locally and replace this candidate note
+with the exact Release/deployment receipt before claiming completion.
 
 Remote now uses only Desktop's existing App Server. Bridge loss stays offline
 and reconnects; it must never start a standalone server or replay uncertain

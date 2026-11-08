@@ -77,6 +77,8 @@ open -a Codex --args --remote-debugging-port=9229 --remote-debugging-address=127
 **9229 端口必须保持私有**。[安装指南](docs/guide.zh-CN.md#2-开启桌面同步)提供调试页面的检查方法。
 
 普通启动 Codex 不保证开启此端点，需使用上述参数启动，或使用已经配置这些参数的启动器。
+Windows 上，Remote 还会从当前已安装、正在运行的 Codex/ChatGPT 进程读取回环调试端口；
+启动器选择其他端口时无需再把同一个端口写进 `.env`。
 
 ### 2. 安装并启动
 
@@ -111,7 +113,7 @@ Windows 常驻右下通知区域，macOS 常驻顶部菜单栏。
 选择现有安装目录，关闭窗口后继续常驻。Release 提供未签名安装包；
 macOS GUI 的实机验收仍待完成。
 
-正式发布 Remote **0.2.23** 配套管理器 **0.2.4**，见 [v0.2.23](https://github.com/CoralFlower325/Codex-remote/releases/tag/v0.2.23)。
+Remote **0.2.24** 为当前候选版本，配套**无变更**的管理器 **0.2.4**。
 各主机实际安装版本以部署验收记录为准。请手动下载安装包覆盖旧管理器，
 选择原主机目录重试；单独更新 Remote 不能替换旧管理器内置的更新器。
 [管理器下载](docs/update-downloads.md)优先走项目自有公共分发，另有官方 GitHub 备用地址。

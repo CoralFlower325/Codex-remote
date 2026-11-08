@@ -14,14 +14,15 @@ afterEach(async () => { for (const close of cleanup.splice(0)) await close(); })
 async function desktop(pendingRequests: unknown[] = [],
   automationReply?: (socket: WebSocket, command: any) => void,
   options: { commandTimeoutMs?: number; responseTimeoutMs?: number; hangRequests?: number;
-    ignoreNativeResponses?: boolean; additionalPorts?: number[] } = {}) {
+    ignoreNativeResponses?: boolean; additionalPorts?: number[]; debugPorts?: number[];
+    discoveredPorts?: number[] } = {}) {
   const commands: any[] = [];
   const server = http.createServer((req, res) => {
     if (req.url === '/overlay') { res.writeHead(500); res.end(); return; }
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify([
       { type: 'page', url: 'app://-/index.html?initialRoute=%2Favatar-overlay', webSocketDebuggerUrl: `ws://127.0.0.1:${port}/overlay` },
-      { type: 'page', url: 'app://-/index.html', webSocketDebuggerUrl: `ws://127.0.0.1:${port}` }
+      { type: 'page', url: 'app://-/index.html', webSocketDebuggerUrl: `ws://127.0.0.1:${port}/devtools/page/main` }
     ]));
   });
   const sockets = new WebSocketServer({ server });
@@ -64,19 +65,27 @@ async function desktop(pendingRequests: unknown[] = [],
       }
     });
   });
-  const bridge = new DesktopBridge([...(options.additionalPorts ?? []), port],
-    options.commandTimeoutMs, options.responseTimeoutMs);
+  const bridge = new DesktopBridge(options.debugPorts ?? [...(options.additionalPorts ?? []), port],
+    options.commandTimeoutMs, options.responseTimeoutMs,
+    async () => options.discoveredPorts ?? []);
   cleanup.push(async () => {
     bridge.shutdown();
     for (const socket of sockets.clients) socket.terminate();
     await new Promise<void>((resolve) => sockets.close(() => server.close(() => resolve())));
   });
-  return { bridge, relay, commands, raw: (data: string) => client.send(data) };
+  return { bridge, relay, commands, port, raw: (data: string) => client.send(data) };
 }
 
 describe('desktop RPC transport', () => {
   it('falls back to the standard debug port when the configured port is stale', async () => {
     const { bridge } = await desktop([], undefined, { additionalPorts: [1] });
+    expect(await bridge.connect()).toBe(true);
+  });
+
+  it('discovers the current Windows Desktop debug port when fixed ports are stale', async () => {
+    const fixture = await desktop();
+    const bridge = new DesktopBridge([1], 5000, 30_000, async () => [fixture.port]);
+    cleanup.push(async () => bridge.shutdown());
     expect(await bridge.connect()).toBe(true);
   });
 
