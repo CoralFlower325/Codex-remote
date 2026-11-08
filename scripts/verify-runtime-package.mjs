@@ -38,6 +38,9 @@ try {
     return new Response(Readable.toWeb(createReadStream(asset.target)));
   };
   const baselines = [...new Set([latestBaseline, ...(manifest.baselines['0.2.7'] ? ['0.2.7'] : [])])];
+  // Stable update selection rejects prerelease tags. The package itself remains
+  // versioned as the RC while acceptance exercises the next numeric release.
+  const acceptanceTag = `v${pkg.version.split('-', 1)[0]}`;
   for (const baseline of baselines) {
     const baseArchive = path.join(temporary, `old-source-${baseline}.tar`);
     execFileSync('git', ['-C', repositoryRoot, 'archive', '--format=tar', `--output=${baseArchive}`, `v${baseline}`]);
@@ -56,7 +59,7 @@ try {
       await fs.writeFile(path.join(root, 'data/auth.json'), 'synthetic private fixture');
       await fs.writeFile(path.join(root, '.env'), 'PORT=4545\n');
       await fs.writeFile(path.join(root, 'scripts/.DS_Store'), 'synthetic Finder metadata');
-      const prepared = await prepareUpdate(root, { tag: `v${pkg.version}`, version: pkg.version, assets }, () => {},
+      const prepared = await prepareUpdate(root, { tag: acceptanceTag, version: pkg.version, assets }, () => {},
         (command, args, options) => {
           if (command === 'git' || args.some((arg) => /npm-cli|typecheck|^test$|^build$/.test(arg))) {
             throw new Error('A standard update must not run Git, npm or build tools.');

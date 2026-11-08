@@ -184,12 +184,12 @@ try {
       queue = [];
       event('thread/queue/changed', { threadId: 'dock' });
       await page.locator('.queued-messages').waitFor({ state: 'detached' });
-      const mode = page.getByRole('group', { name: '\u53d1\u9001\u65b9\u5f0f', exact: true });
-      await mode.getByRole('button', { name: '\u7acb\u5373\u5f15\u5bfc', exact: true }).click();
-      assert.equal(await mode.getByRole('button', { name: '\u7acb\u5373\u5f15\u5bfc', exact: true }).getAttribute('aria-pressed'), 'true');
-      await mode.getByRole('button', { name: '\u6392\u961f\u53d1\u9001', exact: true }).click();
-      assert.equal(await mode.getByRole('button', { name: '\u6392\u961f\u53d1\u9001', exact: true }).getAttribute('aria-pressed'), 'true');
       await page.locator('.composer textarea').fill('Unsaved composer text');
+      const send = page.locator('.composer-send');
+      await send.waitFor();
+      assert.equal(await send.getAttribute('aria-label'), '\u53d1\u9001\u8865\u5145\u8981\u6c42');
+      assert.equal(await page.getByRole('group', { name: '\u53d1\u9001\u65b9\u5f0f', exact: true }).count(), 0);
+      assert.equal(await page.locator('.composer-stop').count(), 0);
       await page.keyboard.press('Control+n');
       // The browser may handle Ctrl+N; the app must never turn it into task navigation.
       assert((await page.url()).includes('thread=dock'));
