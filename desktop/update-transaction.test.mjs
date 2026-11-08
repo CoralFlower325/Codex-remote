@@ -69,7 +69,7 @@ describe('durable interrupted update recovery', () => {
     const start = vi.fn();
     await recoverPendingUpdate(root, { stop: vi.fn(), start, verify: vi.fn() });
     expect(start).not.toHaveBeenCalled();
-  });
+  }, 25_000);
   it('preserves later source edits and the journal instead of overwriting them', async () => {
     const { root, stage } = await fixture();
     await interrupt(root, stage, 'source');

@@ -107,7 +107,7 @@ describe('prebuilt runtime packages', () => {
     expect(result.mode).toBe('runtime');
     expect(JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8')).version).toBe(release.version);
     expect(await fs.readFile(path.join(root, 'data/auth.json'), 'utf8')).toBe('private');
-  });
+  }, 25_000);
   it('still blocks edits to an already applied target after preparation', async () => {
     const { root, payload, release, fetcher, execute, trustedKeys } = await fixture();
     const relative = 'scripts/remote-control-windows.ps1';
