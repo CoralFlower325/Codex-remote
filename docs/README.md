@@ -67,6 +67,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
 | [0.2.22 对抗审查修复对账](adversarial-review-0.2.22-fixes.md) | 已发布 0.2.23 / manager 0.2.4：31 项对账、正式签名、三平台 CI、下载分发及 Windows 安装；真机边界保留 |
+| [Windows 调试端口自动发现](desktop-debug-discovery.md) | 0.2.24：动态启动器端口、可信路径、回环 CDP 校验、回退与实机只读验证 |
 | [PR #10 自动任务消息复核](pr-10-review.md) | 已发布 0.2.21：原生信封、通知决策、流式标签及八视口合成验收；主机升级、真实执行与真机待验收 |
 | [PR #8 原生自动任务复核](pr-8-review.md) | 已发布 0.2.20：原生服务桥接、回合时刻、八视口合成检查；真实执行与真机待验收，发布不代表主机已升级 |
 | [PR #7 后续与真机步骤](review-followup-acceptance.md) | 已发布 0.2.19：终端 cwd、多根目录、Windows 预览路径、说明与路径复制；原生 App Server 占用修复，iPhone/macOS 待验收 |

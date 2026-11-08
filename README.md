@@ -79,6 +79,9 @@ Keep port **9229 private**. The [setup guide](docs/guide.md#2-enable-desktop-syn
 
 Ordinary Codex launches do not necessarily enable this endpoint. Launch with the
 arguments above, or use an existing launcher configured to supply them.
+On Windows, Remote also discovers the loopback debug port supplied to the current
+installed Codex/ChatGPT process, so a wrapper that chooses another port does not
+require matching it in `.env`.
 
 ### 2. Install And Run
 
@@ -115,7 +118,7 @@ Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
 remains pending.
 
-Published Remote **0.2.23** pairs with manager **0.2.4**, available in [v0.2.23](https://github.com/CoralFlower325/Codex-remote/releases/tag/v0.2.23).
+Release candidate Remote **0.2.24** pairs with unchanged manager **0.2.4**.
 Actual installed versions remain separately recorded in each deployment's acceptance. Install the manager
 manually over 0.2.0, select the same host directory and retry; updating Remote
 cannot replace the old manager's bundled updater. [Manager downloads](docs/update-downloads.md)

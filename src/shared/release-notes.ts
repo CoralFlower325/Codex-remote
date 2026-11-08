@@ -2,6 +2,11 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.24', changes: [
+    'Windows 自动读取当前已安装 Codex/ChatGPT 进程的回环调试端口，兼容 Codex++ 等会动态更换端口的启动器；无需在 .env 重复填写当前端口。',
+    '自动发现只接受可信安装路径、回环调试地址、Desktop 页面和同端口回环 WebSocket；显式候选与 9229 继续作为回退，CDP 不可用时仍保持离线且不会启动第二个 App Server。',
+    '正式管理器仍为 0.2.4，无变更；管理器自更新、macOS 应用签名与公证继续暂停。'
+  ] },
   { version: '0.2.23', changes: [
     '修复 Desktop 桥接异常帧、审批并发与消息确认丢失问题；原生操作增加持久化防重复记录，结果不确定时先核对记录，禁止自动重发。',
     '补齐会话恢复重试、显式问题选择、排队与引导切换、草稿附件和技能恢复、自动任务计划编辑；限制底部待处理区域及长历史窗口，保留分页和阅读位置。',

@@ -5,6 +5,7 @@ import { NativeRpcError } from '../shared/native-error.js';
 import { readFile } from 'node:fs/promises';
 import { automationMethods, type AutomationMethod } from '../shared/automation-schedule.js';
 import { isAllowedRpcMethod, rpcMethods } from '../shared/rpc-methods.js';
+import { discoverWindowsDesktopDebugPorts } from './desktop-debug-port.js';
 
 interface DebugTarget {
   type: string;
@@ -39,6 +40,17 @@ const record = (value: unknown): value is Record<string, any> =>
 const identifier = (value: unknown): value is string | number =>
   typeof value === 'string' && value.length > 0 && value.length <= 1024 ||
   typeof value === 'number' && Number.isSafeInteger(value);
+
+function validDebugSocket(value: string, port: number): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'ws:' && url.hostname === '127.0.0.1' &&
+      url.port === String(port) && !url.username && !url.password &&
+      url.pathname.startsWith('/devtools/page/');
+  } catch {
+    return false;
+  }
+}
 
 function transportError(method: string, error: Error): Error {
   if (error instanceof NativeRpcError || isAllowedRpcMethod(method) && rpcMethods[method] === 'read') return error;
@@ -82,9 +94,12 @@ export class DesktopBridge extends EventEmitter {
   private closed = false;
   private readonly debugPorts: number[];
   private activePort: number | null = null;
+  private discoveredPorts: number[] = [];
+  private discoveryCheckedAt = 0;
 
   constructor(debugPorts: number | number[] = DEBUG_PORTS, private readonly commandTimeoutMs = 5000,
-    private readonly responseTimeoutMs = DEFAULT_RESPONSE_TIMEOUT) {
+    private readonly responseTimeoutMs = DEFAULT_RESPONSE_TIMEOUT,
+    private readonly discoverDebugPorts = discoverWindowsDesktopDebugPorts) {
     super();
     this.debugPorts = [...new Set(Array.isArray(debugPorts) ? debugPorts : [debugPorts])]
       .filter(port => Number.isInteger(port) && port > 0 && port <= 65_535);
@@ -109,9 +124,15 @@ export class DesktopBridge extends EventEmitter {
   }
 
   private async open(): Promise<boolean> {
-    const orderedPorts = this.activePort
-      ? [this.activePort, ...this.debugPorts.filter(port => port !== this.activePort)]
-      : this.debugPorts;
+    if (Date.now() - this.discoveryCheckedAt >= 3000) {
+      this.discoveredPorts = await this.discoverDebugPorts().catch(() => []);
+      this.discoveryCheckedAt = Date.now();
+    }
+    const orderedPorts = [...new Set([
+      ...(this.activePort ? [this.activePort] : []),
+      ...this.discoveredPorts,
+      ...this.debugPorts
+    ])];
     let port: number | null = null;
     let page: DebugTarget | undefined;
     for (const candidate of orderedPorts) {
@@ -125,7 +146,7 @@ export class DesktopBridge extends EventEmitter {
         const match = pages.find(target => target.url === 'app://-/index.html') ??
           pages.find(target => !target.url.includes('spotlight') && !target.url.includes('avatar-overlay')) ??
           pages[0];
-        if (!match) continue;
+        if (!match || !validDebugSocket(match.webSocketDebuggerUrl, candidate)) continue;
         port = candidate;
         page = match;
         break;

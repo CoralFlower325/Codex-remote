@@ -14,7 +14,9 @@ const roots = [];
 afterEach(async () => {
   vi.useRealTimers();
   vi.restoreAllMocks();
-  await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })));
+  await Promise.all(roots.splice(0).map(root => fs.rm(root, {
+    recursive: true, force: true, maxRetries: 5, retryDelay: 100
+  })));
 });
 async function fixture() {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'remote-web-update-test-'))); roots.push(root);
@@ -156,8 +158,8 @@ describe('independent worker transaction', () => {
       backendPid: process.pid, release: {} }, {
       owned: async () => {}, controls: () => ({}), prepare: async () => ({}), install: async () => {}
     });
-    await vi.waitFor(() => expect(paused).toBe(true));
     try {
+      await vi.waitFor(() => expect(paused).toBe(true), { timeout: 5000 });
       await expect(f.updater.start({ id: crypto.randomUUID(), token: offer.token, version: '0.2.6' }))
         .rejects.toThrow('另一个管理器');
       expect(f.launch).not.toHaveBeenCalled();

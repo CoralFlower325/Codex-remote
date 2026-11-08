@@ -69,9 +69,11 @@ shows only the target version and a short downtime/data-preservation notice.
   healthy. Readings older than twenty seconds become stale.
 - Desktop diagnostics distinguish a missing debug endpoint, a missing Desktop
   page and a pending native bridge. Ordinary Codex launches do not necessarily
-  enable port 9229; use the debug launch arguments from the setup guide. Another
-  launcher such as Codex++ may supply these arguments. Remote uses Desktop's
-  endpoint, not the launcher's own local server. Diagnostics clear on recovery.
+  enable a debug endpoint; Windows Remote 0.2.24 discovers the loopback port from
+  the current installed process, while explicit arguments and 9229 remain
+  fallbacks. Another launcher such as Codex++ may therefore choose a different
+  port. Remote uses Desktop's endpoint, not the launcher's own local server.
+  Diagnostics clear on recovery.
   Start can succeed with Desktop sync still pending; the overall health remains
   degraded until Desktop connects.
 - macOS LaunchAgent/daemon tunnels keep their existing configuration and management.

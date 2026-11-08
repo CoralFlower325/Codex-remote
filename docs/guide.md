@@ -83,7 +83,7 @@ Detailed setup, everyday controls and operating limits. Screenshots use syntheti
 | Host | Windows 10/11, or macOS |
 | Runtime | Node.js **22.19 or later**, with npm |
 | Codex | Installed and authenticated Codex Desktop / compatible bundled CLI |
-| Desktop sync | Desktop debug endpoint on loopback port `9229` |
+| Desktop sync | Loopback Desktop debug endpoint; Windows discovers the current process port, with `9229` as fallback |
 | Public access | Optional `cloudflared`; a Cloudflare-managed hostname for the Windows helper |
 | Windows tunnel helper | PowerShell 7 and an authenticated `cf` CLI |
 
@@ -106,6 +106,13 @@ Ordinary launches do not necessarily open port 9229. A launcher such as Codex++
 may supply the debug argument; Remote and that launcher can use Desktop's
 endpoint. It is separate from the launcher's own local server. If the endpoint
 is already available, leave the current Desktop running.
+
+On Windows, Remote reads the `--remote-debugging-port` argument from the current
+top-level Codex/ChatGPT process installed from a trusted app path. It accepts only
+a loopback debugging address, verifies the page at `/json/list`, and requires its
+WebSocket URL to remain on the same loopback port. Codex++ or another launcher can
+therefore choose a different port without requiring a matching `.env` edit. The
+explicit `CODEX_DESKTOP_DEBUG_PORT` candidates and `9229` remain fallbacks.
 
 For a Windows Store installation, in PowerShell:
 
@@ -188,7 +195,7 @@ Cloudflare Tunnel (optional)
         v
 Local Node.js server (127.0.0.1:4545)
         |
-        | Private CDP bridge (127.0.0.1:9229)
+        | Private loopback-only CDP bridge
         v
 Codex Desktop -> its owning App Server
 ```
@@ -302,13 +309,13 @@ cp .env.example .env
 | `CODEX_BINARY` | Auto-detected | Explicit path to the bundled Codex CLI |
 | `CODEX_HOME` | `~/.codex` | Codex state and configuration directory |
 | `CODEX_WORKDIR` | Home directory | Default working directory |
-| `CODEX_DESKTOP_DEBUG_PORT` | `9229` | Preferred Desktop debug endpoint; comma-separated candidates are also accepted |
+| `CODEX_DESKTOP_DEBUG_PORT` | empty | Optional comma-separated Desktop debug candidates; Windows also discovers the current installed process port and falls back to `9229` |
 | `TRUST_PROXY` | `1` | Trust loopback proxies only; `0` disables trust; otherwise comma-separated trusted IPs/CIDRs |
 | `LIBREOFFICE_PATH` | Standard install detection | Optional host LibreOffice executable for Office previews |
 | `SESSION_DAYS` | `30` | Browser session lifetime |
 
 Keep `HOST` on loopback when using a local tunnel or reverse proxy. The Windows tunnel helper assumes port `4545` unless you pass its `-LocalUrl` parameter.
-Remote also probes the standard Desktop port `9229` when the configured endpoint is stale.
+Remote also probes the standard Desktop port `9229` when explicit and discovered endpoints are stale.
 
 Codex CLI detection checks Windows app packages, local standalone installations, and `PATH`. On macOS it checks supported app locations, the local standalone installation, and `PATH`. Set `CODEX_BINARY` if auto-detection does not find your installation.
 
