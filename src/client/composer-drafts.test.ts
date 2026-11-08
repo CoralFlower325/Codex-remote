@@ -89,13 +89,17 @@ describe('composer drafts', () => {
     const storage = memoryStorage();
     const drafts = createComposerDrafts(storage);
     const bigImage = { ...image, url: `data:image/png;base64,${'A'.repeat(700_000)}` };
+    // Cross the record limit cheaply, then cross the byte limit with three images.
     for (let index = 0; index < 35; index++) {
-      drafts.open(String(index)).update(d => ({ ...d, attachments: [bigImage] }));
+      drafts.open(String(index)).update(d => ({ ...d, attachments: [index < 32 ? image : bigImage] }));
     }
     expect(storage.getItem('composer-context:v1')!.length * 2).toBeLessThanOrEqual(4 * 1024 * 1024);
+    expect(Object.keys(JSON.parse(storage.getItem('composer-context:v1')!))).toHaveLength(30);
     const restored = createComposerDrafts(storage);
     expect(restored.open('34').get().attachments).toHaveLength(1);
     expect(restored.open('0').get().recoveryNotice).toBeTruthy();
+    expect(restored.open('32').get().attachments).toEqual([]);
+    expect(restored.open('32').get().recoveryNotice).toBeTruthy();
   });
 
   it('preserves legacy text-only drafts and clears persisted attachment context on sign-out', () => {
