@@ -11,8 +11,8 @@
 “验证与边界”排列。历史页首提供最新正式版入口，历史变更、源码、附件和验证
 仍描述该次发布，不改写为当前功能或当前验收。
 
-Remote 与管理器独立计版。当前稳定管理器 0.2.3 安装包位于
-[v0.2.17](https://github.com/CoralFlower325/Codex-remote/releases/tag/v0.2.17)。
+Remote 与管理器独立计版。当前稳定管理器 0.2.4 安装包位于
+[v0.2.23](https://github.com/CoralFlower325/Codex-remote/releases/tag/v0.2.23)。
 Remote 0.2.12 当时沿用 v0.2.10 的管理器 0.2.1，没有重打包；历史附件继续保留。
 
 历史 v0.2.1 的同号管理器属于旧同步计版阶段。v0.2.2 将管理器设为 0.2.0

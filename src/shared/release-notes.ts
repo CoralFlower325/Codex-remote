@@ -5,7 +5,8 @@ export const releaseNotes: ReleaseNote[] = [
   { version: '0.2.24-rc', changes: [
     'Windows 与 macOS 均会从当前已安装、正在运行的 Codex/ChatGPT 顶层进程读取回环调试端口，兼容 Codex++ 等会动态更换端口的启动器；无需在 .env 重复填写当前端口。',
     'macOS 使用固定 /bin/ps 查询，只接受标准 Applications 路径、回环调试地址、Desktop 页面和同端口回环 WebSocket；显式候选与 9229 继续作为回退。',
-    '自动发现失败或 CDP 不可用时仍保持离线并继续重连，不会启动第二个 App Server。'
+    '自动发现失败或 CDP 不可用时仍保持离线并继续重连，不会启动第二个 App Server。',
+    '管理器保持 0.2.4，无变更；RC 仅用于验证 macOS 与 Windows 调试端口自动发现。'
   ] },
   { version: '0.2.24', changes: [
     'Windows 自动读取当前已安装 Codex/ChatGPT 进程的回环调试端口，兼容 Codex++ 等会动态更换端口的启动器；无需在 .env 重复填写当前端口。',

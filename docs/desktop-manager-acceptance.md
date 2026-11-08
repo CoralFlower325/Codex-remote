@@ -1,9 +1,9 @@
 # Desktop Manager Acceptance
 
-Current batch and historical acceptance records, reconciled 2026-11-02.
-Stable manager 0.2.3 pairs with Remote 0.2.17; self-update work remains paused
-as [0.2.0AU](manager-self-update-checkpoints.md). Historical records below retain
-their original scope and counts.
+Current batch and historical acceptance records, reconciled 2026-11-08.
+Stable manager 0.2.4 is published with Remote 0.2.23; self-update work remains
+paused as [0.2.0AU](manager-self-update-checkpoints.md). Historical records below
+retain their original scope and counts.
 
 ## Manager 0.2.3 Existing macOS Tunnel Repair
 
