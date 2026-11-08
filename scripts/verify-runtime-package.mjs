@@ -12,6 +12,9 @@ import { verifyRelease } from '../desktop/release-signature.mjs';
 
 const pkg = JSON.parse(await fs.readFile('package.json', 'utf8'));
 const names = runtimeNames(pkg.version);
+// Stable update selection rejects prerelease tags. The package itself remains
+// versioned as the RC while acceptance exercises the next numeric release.
+const acceptanceTag = `v${pkg.version.split('-', 1)[0]}`;
 const manifest = validateManifest(verifyRelease(JSON.parse(await fs.readFile(path.join('output/runtime', names.manifest), 'utf8'))), pkg);
 const archive = path.resolve('output/runtime', names.archive);
 if (sha256(await fs.readFile(archive)) !== manifest.archive.sha256) throw new Error('Archive checksum mismatch.');
@@ -26,7 +29,7 @@ try {
   const manifestPath = path.resolve('output/runtime', names.manifest);
   const assets = [[names.manifest, manifestPath], [names.archive, archive]].map(([name, target]) => ({
     name, target, size: name === names.archive ? manifest.archive.size : null,
-    browser_download_url: `https://github.com/CoralFlower325/Codex-remote/releases/download/v${pkg.version}/${name}`
+    browser_download_url: `https://github.com/CoralFlower325/Codex-remote/releases/download/${acceptanceTag}/${name}`
   }));
   for (const asset of assets) {
     const bytes = await fs.readFile(asset.target);
@@ -38,9 +41,6 @@ try {
     return new Response(Readable.toWeb(createReadStream(asset.target)));
   };
   const baselines = [...new Set([latestBaseline, ...(manifest.baselines['0.2.7'] ? ['0.2.7'] : [])])];
-  // Stable update selection rejects prerelease tags. The package itself remains
-  // versioned as the RC while acceptance exercises the next numeric release.
-  const acceptanceTag = `v${pkg.version.split('-', 1)[0]}`;
   for (const baseline of baselines) {
     const baseArchive = path.join(temporary, `old-source-${baseline}.tar`);
     execFileSync('git', ['-C', repositoryRoot, 'archive', '--format=tar', `--output=${baseArchive}`, `v${baseline}`]);
