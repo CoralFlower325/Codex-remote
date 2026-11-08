@@ -5,16 +5,16 @@
 失败后尝试官方 GitHub。分发由项目的 Cloudflare Worker 提供，不要求更新主机配置
 Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 
-## 安装管理器 0.2.3
+## 安装管理器 0.2.4
 
 | 系统 | 项目分发 | 官方备用 |
 | --- | --- | --- |
-| macOS Apple Silicon | [DMG](https://downloads.73916482.xyz/releases/download/v0.2.17/Codex-Remote-Manager-0.2.3-mac-arm64.dmg) · [ZIP](https://downloads.73916482.xyz/releases/download/v0.2.17/Codex-Remote-Manager-0.2.3-mac-arm64.zip) | [DMG](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.17/Codex-Remote-Manager-0.2.3-mac-arm64.dmg) · [ZIP](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.17/Codex-Remote-Manager-0.2.3-mac-arm64.zip) |
-| Windows x64 | [安装程序](https://downloads.73916482.xyz/releases/download/v0.2.17/Codex-Remote-Manager-0.2.3-win-x64.exe) | [安装程序](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.17/Codex-Remote-Manager-0.2.3-win-x64.exe) |
+| macOS Apple Silicon | [DMG](https://downloads.73916482.xyz/releases/download/v0.2.23/Codex-Remote-Manager-0.2.4-mac-arm64.dmg) · [ZIP](https://downloads.73916482.xyz/releases/download/v0.2.23/Codex-Remote-Manager-0.2.4-mac-arm64.zip) | [DMG](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.23/Codex-Remote-Manager-0.2.4-mac-arm64.dmg) · [ZIP](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.23/Codex-Remote-Manager-0.2.4-mac-arm64.zip) |
+| Windows x64 | [安装程序](https://downloads.73916482.xyz/releases/download/v0.2.23/Codex-Remote-Manager-0.2.4-win-x64.exe) | [安装程序](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.23/Codex-Remote-Manager-0.2.4-win-x64.exe) |
 
 1. 从菜单栏／托盘菜单退出旧管理器。退出管理器不停止 Remote。
-2. 下载并安装 0.2.3，覆盖旧应用。macOS 将新应用替换到原应用位置。
-3. 重新打开管理器，确认显示 0.2.3，选择原 Remote 安装目录。
+2. 下载并安装 0.2.4，覆盖旧应用。macOS 将新应用替换到原应用位置。
+3. 重新打开管理器，确认显示 0.2.4，选择原 Remote 安装目录。
 4. 有中断事务时先恢复；否则重新检查并执行主机更新。保留事务记录和备份，
    不要为重试删除本机数据、文档或更新锁。
 
@@ -24,9 +24,10 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 本次不恢复 AU 功能；签名、公证和真实 Mac 登录环境验收仍是独立断点。
 未签名安装包可能需要按系统下载信誉或 Gatekeeper 流程确认。
 
-Remote 0.2.22 未修改管理器，继续使用 v0.2.17 的 0.2.3 安装包。
+Remote 0.2.23 配套新管理器 0.2.4；七份正式附件均位于 v0.2.23。
+运行包 Ed25519 清单签名已启用，与仍暂停的 AU 和 macOS 应用签名分别管理。
 
-English: install manager 0.2.3 manually over the old app, reopen it and select the same
+English: install manager 0.2.4 manually over the old app, reopen it and select the same
 Remote directory before retrying. Host updates cannot patch the old manager's
 bundled updater. Manager self-update, signing and notarization remain paused.
 
@@ -45,7 +46,9 @@ bundled updater. Manager self-update, signing and notarization remain paused.
   切换到备用来源后仍需重新完成该次下载，不能把不完整文件当成成功结果。
 - 来源切换不降低校验。运行包清单和归档需要官方 Release 的大小与 SHA-256，
   解压前检查路径、链接、重复条目和大小，解压后逐文件校验，再检查原生终端。
-  缺少校验值或清单／归档不成对时停止，不绕过保护继续安装。
+  Remote 0.2.23 / manager 0.2.4 还要求固定公钥验证 Ed25519 清单签名；
+  源码回退也要求与签名提交完全一致。缺少签名、校验值或清单／归档不成对时停止，
+  不绕过保护继续安装。
 - 使用管理器或网页入口前需具备包含新逻辑的版本。旧程序不会因分发服务上线自动升级。
 
 分发面向公开发布内容；访问日志可能包含公开附件路径。不会传递浏览器 Cookie、
@@ -77,22 +80,23 @@ Remote 0.2.16 与管理器 0.2.2 不再将已等于目标版本的文件误判�
 
 ## 维护分发服务
 
-2026-11-07 已发布 Remote **0.2.22**，管理器 **0.2.3，无变更**，
-安装包保留在 `v0.2.17`。正式源码为
-`139affce9c29517a36188db22e4fd228c86c2636`；
-三平台 CI `42335330164` 和双平台运行包 CI `42335449436` 通过，
-管理器计划 `42335449431` 通过并跳过安装包构建。
-下载 Worker `bcf44564-7761-4387-9110-35350cc3af33` 已刷新四附件快照，
-公网标准 `/releases/latest` 返回 `v0.2.22`，附件元数据与正式发布一致。
-四份官方附件及四份分发附件均完成整文件大小和 SHA-256 校验，
-双平台清单的完整源码树与正式标签一致，包内文件逐项校验通过。
-运行包 HEAD、单段 Range 及七项方法／路由／查询／多段 Range 边界通过；
-原 v0.2.17 的三种管理器安装包 HEAD 与 16 字节 Range 可达，
-本轮未重复管理器整包摘要检查。
+2026-11-08 已发布 Remote **0.2.23** 与管理器 **0.2.4**，七份附件均在
+`v0.2.23`。正式源码为 `348e457899172a91d1c6936b045082096794e74f`；
+三平台 CI `42482630537`、双平台运行包 CI `42482760659` 与双平台管理器
+CI `42482760660` 全部通过，包含原生终端与打包后启动检查。
+下载 Worker `75747d6e-c117-41d8-93a1-3b367825cac7` 已刷新七附件快照，
+公网 `/releases/latest` 返回 `v0.2.23`，附件元数据与正式发布一致。
+七份官方附件及七份分发附件均完成整文件大小和 SHA-256 校验；
+双平台清单通过固定公钥验签，完整源码树与标签一致，Windows 3073 个文件、
+macOS 3066 个文件逐项解包校验通过。
+七份分发附件的 HEAD、16 字节 Range 及七项方法／路由／查询／多段 Range 边界通过。
+初次 Range 和 macOS 归档探测曾返回 502，后续重试与整包校验通过，
+保留失败记录；短时成功不保证上游持续稳定。
 
 本轮沿用现有 Windows 网络，没有更改系统代理设置。GitHub 命令使用系统已配置的
 代理完成官方附件核验，不等于关闭 TUN、Mac 真机网络或 Electron 更新全流程验收。
-另经授权将本机 Remote 与公网前端更新为 0.2.22，健康状态为 ready / desktop；
+另经授权将本机 Remote 与公网前端更新为 0.2.23，健康状态为 ready / desktop，
+Windows 管理器已安装 0.2.4，原配置、当前版本检查及托盘行为通过；
 下载分发核验与实际安装仍分别记录，不能相互替代。
 历史版本的下载速度、节点和失败调查保留在 Git 历史及对应版本证据中，
 不作为当前网络或当前安装状态的保证。

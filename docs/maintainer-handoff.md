@@ -15,7 +15,9 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-Current candidate source is Remote **0.2.23** / manager **0.2.4**. The
+Current published release is Remote **0.2.23** / manager **0.2.4**, tag
+`v0.2.23`, functional commit `348e457899172a91d1c6936b045082096794e74f`
+merged through PR #14. The
 [adversarial-review reconciliation](adversarial-review-0.2.22-fixes.md) records
 all 31 findings, corrections, implementation and acceptance boundaries.
 Local validation passed 127 test files (1016 tests, two platform skips),
@@ -24,14 +26,24 @@ update-worker install/rollback and an isolated signed runtime with a real compil
 PTY worker. The final directory-fsync change was followed by the full suite and
 server compilation; the preceding test runtime is not a formal release asset.
 The operator authorized pushing, publication, distribution and the local upgrade
-on 2026-11-08 after the final validation report. Verify the exact published
-revision, signed assets and installation receipt before claiming completion.
-Never start another App Server.
+on 2026-11-08. Main CI `42482630537`, runtime CI `42482760659` and manager CI
+`42482760660` passed, including packaged PTY and manager startup checks.
+All seven official and distribution attachments passed complete size/digest checks.
+The signed Windows/macOS archives passed pinned-key verification, exact source-tree
+comparison and individual checks of 3073/3066 files. The download snapshot and
+matching static edge were deployed separately.
+The authorized Windows installation runs Remote 0.2.23 and manager 0.2.4;
+local/public versions and nine asset digests agree, Desktop transport is ready,
+authenticated task/history reads succeed and anonymous private reads return 401.
+Only Remote restarted; Desktop, Tunnel and the domestic relay were preserved.
+The manager retained its selected root/settings and passed current-version and
+tray checks. Its separate installation receipt and all rollback backups are retained
+in the private deployment record. Never start another App Server.
 
 Runtime updates now require Ed25519 publisher signatures against bundled public
 keys, including signed commit identity for source fallback. The private key stays
-outside the repository; the `RELEASE_SIGNING_KEY` GitHub secret has been configured,
-with its formal workflow validation pending. Follow [release-signing.md](release-signing.md) before a
+outside the repository; the `RELEASE_SIGNING_KEY` GitHub secret and formal
+two-platform signing workflow have been validated. Follow [release-signing.md](release-signing.md) before a
 formal runtime release. Manager 0.2.4 requires its own installer; changing Remote
 does not patch an already installed manager. AU self-update and macOS application
 signing/notarization remain paused.
@@ -43,7 +55,7 @@ cause. Platform output uses bounded rotating logs; macOS controls use the
 same-PID background wrapper and retain ownership checks. Local synthetic checks
 do not establish signed-in macOS service behavior.
 
-The following 0.2.22 publication and installation observations are historical:
+The following paragraphs retain historical 0.2.22 and earlier observations:
 Remote 0.2.22 pairs with unchanged manager 0.2.3; manager installers remain
 in v0.2.17. Tag v0.2.22 identifies functional source
 `139affce9c29517a36188db22e4fd228c86c2636`, merged through PR #12.
@@ -66,8 +78,9 @@ attempt hit two existing five-second test timeouts; the unchanged source passed
 on rerun. This does not resolve the historical native-worker crash.
 Installed compiled preview routes passed synthetic write and atomic-save checks.
 Physical-device and sustained real Office conversion acceptance remain separate.
-Source validation alone does not establish publication or installation; retain
-the operator's approval boundary for subsequent batches.
+The current 0.2.23 evidence is recorded above. Source validation alone does not
+establish publication or installation; retain the operator's approval boundary
+for subsequent batches.
 
 Remote now uses only Desktop's existing App Server. Bridge loss stays offline
 and reconnects; it must never start a standalone server or replay uncertain

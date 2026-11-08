@@ -44,8 +44,8 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   An explicit user version takes precedence.
   Remote and the desktop manager have independent versions. Remote's version lives
   in the root package/lockfile; the manager's lives in desktop/package/lockfile.
-  The stable manager is independently versioned at 0.2.3; installers remain in
-  v0.2.17. Remote-only changes must not increment, rebuild
+  The stable manager is independently versioned at 0.2.4; installers are in
+  v0.2.23. Remote-only changes must not increment, rebuild
   or install the manager. Increment the manager patch only for its own changes.
   Manager self-update is paused as 0.2.0AU on archive/manager-0.2.0AU;
   keep AU self-update out of the stable manager and formal releases. Preserve AU history,
@@ -53,7 +53,8 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Runtime manifest authentication is separate: all new runtime releases require
   Ed25519 publisher signatures verified against pinned public keys. Source
   fallback must match a signed release commit; never bypass missing signatures.
-  Candidate source is Remote 0.2.23 / manager 0.2.4, pending publication approval.
+  Remote 0.2.23 / manager 0.2.4 were formally published on 2026-11-08.
+  Verify each installation against its own current acceptance record.
 - After completing and validating project changes, push the public repository
   by default unless the user explicitly asks not to. Never push the separate
   private deployment checkout or its runtime data.
@@ -103,7 +104,7 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Cache public metadata for 60 seconds; stream assets with no-store.
   Prepare it with scripts/prepare-distribution.mjs and deploy cf deploy --prebuilt
   from distribution. See docs/update-downloads.md.
-  Installed managers load their bundled updater: install manager 0.2.3 manually
+  Installed managers load their bundled updater: install manager 0.2.4 manually
   over 0.2.0 and retry the same host root; a Remote update cannot patch the old app.
 - Restart the local Remote service after every application update, including
   frontend-only updates. Verify its old listener and owned process exited before
