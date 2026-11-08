@@ -18,7 +18,7 @@ their original scope and do not establish current physical-device performance.
 The current published release is Remote **0.2.24** / manager **0.2.4**, tag
 `v0.2.24`, functional commit `94077f48aad6f35d4e1e97d3566dea920726b101`
 merged through PR #16. The
-[Windows discovery acceptance](desktop-debug-discovery.md) records the
+[Windows / macOS discovery acceptance](desktop-debug-discovery.md) records the
 implementation and security boundaries. The preceding
 [adversarial-review reconciliation](adversarial-review-0.2.22-fixes.md) retains
 the 31-item 0.2.23 batch.
@@ -36,6 +36,17 @@ Only Remote restarted; Desktop, Tunnel and the domestic relay were preserved.
 The unchanged manager 0.2.4 retained its root/settings and reports the new host
 healthy. Its prior installation receipt and all rollback backups are retained in
 the private deployment record. Never start another App Server.
+
+Remote **0.2.24-rc** is the current functional candidate; manager **0.2.4** is
+unchanged. It adds macOS discovery through the fixed `/bin/ps` command for trusted
+Applications bundles, alongside the published Windows process discovery. Both
+platforms reject non-loopback addresses, renderer children, untrusted install
+paths and CDP socket URLs that leave the selected loopback port. Existing explicit
+candidates and 9229 remain fallbacks. The macOS local read-only check selected
+the current ChatGPT process port `9229` and found the Desktop page. Publish the
+signed runtime, update the distribution Worker, install Remote locally and
+replace this candidate note with the exact Release/deployment receipt before
+claiming completion.
 
 Runtime updates now require Ed25519 publisher signatures against bundled public
 keys, including signed commit identity for source fallback. The private key stays

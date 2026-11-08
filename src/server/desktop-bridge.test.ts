@@ -82,7 +82,7 @@ describe('desktop RPC transport', () => {
     expect(await bridge.connect()).toBe(true);
   });
 
-  it('discovers the current Windows Desktop debug port when fixed ports are stale', async () => {
+  it('discovers the current Desktop debug port when fixed ports are stale', async () => {
     const fixture = await desktop();
     const bridge = new DesktopBridge([1], 5000, 30_000, async () => [fixture.port]);
     cleanup.push(async () => bridge.shutdown());

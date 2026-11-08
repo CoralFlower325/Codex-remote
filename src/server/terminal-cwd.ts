@@ -63,7 +63,13 @@ export function terminalCwdIntegration(file: string, args: string[], env = proce
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-terminal-shell-'));
   fs.chmodSync(directory, 0o700);
   const write = (name: string, text: string) => fs.writeFileSync(path.join(directory, name), text, { mode: 0o600 });
-  const dispose = () => fs.rmSync(directory, { recursive: true, force: true });
+  // The PTY may still be unlinking its rc files when close returns on macOS.
+  const dispose = () => fs.rmSync(directory, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 25
+  });
   try {
     if (name === 'bash') {
       write('cwd.bash', reportPosix);

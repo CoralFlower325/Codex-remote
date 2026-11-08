@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { discoverWindowsDesktopDebugPorts, parseWindowsDesktopDebugPorts,
-  parseWindowsDesktopDiscovery } from './desktop-debug-port.js';
+import { discoverDesktopDebugPorts, discoverMacosDesktopDebugPorts, discoverWindowsDesktopDebugPorts,
+  parseMacosDesktopDiscovery, parseWindowsDesktopDebugPorts, parseWindowsDesktopDiscovery } from './desktop-debug-port.js';
 
 const environment = {
   ProgramFiles: 'C:\\Program Files',
@@ -62,5 +62,49 @@ describe('Windows Desktop debug-port discovery', () => {
       'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
       expect.arrayContaining(['-NoProfile', '-NonInteractive', '-Command'])
     );
+  });
+});
+
+describe('macOS Desktop debug-port discovery', () => {
+  const environment = { HOME: '/Users/Example' };
+  const executable = '/Applications/ChatGPT.app/Contents/MacOS/ChatGPT';
+
+  it('extracts only loopback debug ports from trusted top-level Desktop processes', () => {
+    const output = [
+      ` 100 05:00 ${executable} --remote-debugging-port=4952`,
+      ' 101 01:00 /tmp/ChatGPT --remote-debugging-port=6333',
+      ` 102 02:00 ${executable} --remote-debugging-address=0.0.0.0 --remote-debugging-port=7001`,
+      ` 103 03:00 ${executable} --type=renderer --remote-debugging-port=7333`,
+      ` 104 04:00 ${executable} --remote-debugging-port=4952`
+    ].join('\n');
+    expect(parseMacosDesktopDiscovery(output, environment)).toEqual([4952]);
+  });
+
+  it('supports home Applications paths with spaces and orders newest processes first', () => {
+    const home = '/Users/Example User';
+    const executable = `${home}/Applications/Codex.app/Contents/MacOS/Codex`;
+    const output = [
+      ` 200 01:00 ${executable} --remote-debugging-port=6333`,
+      ` 201 00:30 ${executable} --remote-debugging-address=::1 --remote-debugging-port=4952`
+    ].join('\n');
+    expect(parseMacosDesktopDiscovery(output, { HOME: home })).toEqual([4952, 6333]);
+  });
+
+  it('fails closed for malformed lines and untrusted executable names', () => {
+    expect(parseMacosDesktopDiscovery([
+      'not a process line',
+      ' 300 00:01 /Applications/ChatGPT.app/Contents/MacOS/Helper --remote-debugging-port=7000',
+      ` 301 nope ${executable} --remote-debugging-port=7001`,
+      ` 302 00:02 ${executable} --remote-debugging-port=0`
+    ].join('\n'), environment)).toEqual([]);
+  });
+
+  it('uses fixed /bin/ps discovery on macOS and dispatches by platform', async () => {
+    const output = ` 400 00:10 ${executable} --remote-debugging-port=4952\n`;
+    const execute = vi.fn(async () => output);
+    expect(await discoverMacosDesktopDebugPorts({ platform: 'darwin', environment, execute })).toEqual([4952]);
+    expect(execute).toHaveBeenCalledWith('/bin/ps', ['-axo', 'pid=,etime=,command=']);
+    expect(await discoverDesktopDebugPorts({ platform: 'linux', environment, execute })).toEqual([]);
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 });

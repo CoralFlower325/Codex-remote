@@ -5,7 +5,7 @@ import { NativeRpcError } from '../shared/native-error.js';
 import { readFile } from 'node:fs/promises';
 import { automationMethods, type AutomationMethod } from '../shared/automation-schedule.js';
 import { isAllowedRpcMethod, rpcMethods } from '../shared/rpc-methods.js';
-import { discoverWindowsDesktopDebugPorts } from './desktop-debug-port.js';
+import { discoverDesktopDebugPorts } from './desktop-debug-port.js';
 
 interface DebugTarget {
   type: string;
@@ -99,7 +99,7 @@ export class DesktopBridge extends EventEmitter {
 
   constructor(debugPorts: number | number[] = DEBUG_PORTS, private readonly commandTimeoutMs = 5000,
     private readonly responseTimeoutMs = DEFAULT_RESPONSE_TIMEOUT,
-    private readonly discoverDebugPorts = discoverWindowsDesktopDebugPorts) {
+    private readonly discoverDebugPorts = discoverDesktopDebugPorts) {
     super();
     this.debugPorts = [...new Set(Array.isArray(debugPorts) ? debugPorts : [debugPorts])]
       .filter(port => Number.isInteger(port) && port > 0 && port <= 65_535);

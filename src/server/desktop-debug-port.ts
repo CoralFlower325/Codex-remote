@@ -16,6 +16,7 @@ interface DiscoveryOptions {
 
 const portArgument = /(?:^|\s)--remote-debugging-port(?:=|\s+)(\d{1,5})(?=\s|$)/i;
 const addressArgument = /(?:^|\s)--remote-debugging-address(?:=|\s+)(?:"([^"]+)"|'([^']+)'|(\S+))/i;
+const macProcessLine = /^\s*\d+\s+([0-9:-]+)\s+(.+)$/;
 const processQuery = [
   "$ErrorActionPreference = 'Stop';",
   "$items = @(Get-CimInstance Win32_Process -Filter \"Name='ChatGPT.exe' OR Name='Codex.exe'\"",
@@ -72,6 +73,32 @@ function creationTime(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function macTrustedExecutables(environment: NodeJS.ProcessEnv): string[] {
+  const applications = ['/Applications'];
+  if (environment.HOME) applications.push(path.posix.join(environment.HOME, 'Applications'));
+  return [...new Set(applications.flatMap(root => [
+    path.posix.join(root, 'ChatGPT.app', 'Contents', 'MacOS', 'ChatGPT'),
+    path.posix.join(root, 'Codex.app', 'Contents', 'MacOS', 'Codex')
+  ]))];
+}
+
+function macDesktopExecutable(command: string, environment: NodeJS.ProcessEnv): string | null {
+  return macTrustedExecutables(environment).find(executable =>
+    command === executable || command.startsWith(`${executable} `)) ?? null;
+}
+
+function elapsedSeconds(value: string): number {
+  const separator = value.indexOf('-');
+  const days = separator >= 0 ? value.slice(0, separator) : '0';
+  const clock = separator >= 0 ? value.slice(separator + 1) : value;
+  const parts = clock.split(':').map(Number);
+  if (parts.some(part => !Number.isInteger(part) || part < 0)) return Number.POSITIVE_INFINITY;
+  const seconds = parts.length === 2 ? parts[0]! * 60 + parts[1]!
+    : parts.length === 3 ? parts[0]! * 3600 + parts[1]! * 60 + parts[2]!
+      : Number.POSITIVE_INFINITY;
+  return Number(days) * 86_400 + seconds;
+}
+
 export function parseWindowsDesktopDebugPorts(value: unknown,
   environment: NodeJS.ProcessEnv = process.env): number[] {
   const records = (Array.isArray(value) ? value : [value]).filter(
@@ -104,6 +131,31 @@ export function parseWindowsDesktopDiscovery(output: string,
   }
 }
 
+export function parseMacosDesktopDiscovery(output: string,
+  environment: NodeJS.ProcessEnv = process.env): number[] {
+  const candidates = output.split(/\r?\n/).flatMap(line => {
+    const match = macProcessLine.exec(line);
+    if (!match) return [];
+    const elapsedText = match[1];
+    const command = match[2];
+    if (!elapsedText || !command) return [];
+    const elapsed = elapsedSeconds(elapsedText);
+    if (/(?:^|\s)--type(?:=|\s+)/i.test(command)) return [];
+    const executable = macDesktopExecutable(command, environment);
+    if (!executable) return [];
+    const args = command.slice(executable.length);
+    const port = Number(portArgument.exec(args)?.[1]);
+    if (!Number.isInteger(port) || port < 1 || port > 65_535) return [];
+    const addressMatch = addressArgument.exec(args);
+    const address = addressMatch?.[1] ?? addressMatch?.[2] ?? addressMatch?.[3];
+    if (!loopbackAddress(address)) return [];
+    return [{ port, elapsed }];
+  });
+  return [...new Map(candidates
+    .sort((left, right) => left.elapsed - right.elapsed)
+    .map(candidate => [candidate.port, candidate.port])).values()];
+}
+
 function executeHidden(file: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(file, args, {
@@ -129,4 +181,23 @@ export async function discoverWindowsDesktopDebugPorts(options: DiscoveryOptions
   } catch {
     return [];
   }
+}
+
+export async function discoverMacosDesktopDebugPorts(options: DiscoveryOptions = {}): Promise<number[]> {
+  const platform = options.platform ?? process.platform;
+  if (platform !== 'darwin') return [];
+  const environment = options.environment ?? process.env;
+  try {
+    const output = await (options.execute ?? executeHidden)('/bin/ps', ['-axo', 'pid=,etime=,command=']);
+    return parseMacosDesktopDiscovery(output, environment);
+  } catch {
+    return [];
+  }
+}
+
+export async function discoverDesktopDebugPorts(options: DiscoveryOptions = {}): Promise<number[]> {
+  const platform = options.platform ?? process.platform;
+  return platform === 'win32' ? discoverWindowsDesktopDebugPorts(options)
+    : platform === 'darwin' ? discoverMacosDesktopDebugPorts(options)
+      : [];
 }

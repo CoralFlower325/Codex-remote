@@ -72,7 +72,7 @@ Remote 将晚到的原生事件留在所属轮次，随后原生读取校准不�
 | 主机 | Windows 10/11 或 macOS |
 | 运行环境 | Node.js **22.19 及以上**，包含 npm |
 | Codex | 已安装并登录的 Codex Desktop / 兼容的内置 CLI |
-| 桌面同步 | 回环地址上的 Desktop 调试端点；Windows 自动发现当前进程端口，并回退到 `9229` |
+| 桌面同步 | 回环地址上的 Desktop 调试端点；Windows/macOS 自动发现当前可信进程端口，并回退到 `9229` |
 | 公网访问 | 可选安装 `cloudflared`；Windows 助手需要 Cloudflare 管理的域名 |
 | Windows 隧道助手 | PowerShell 7，以及已登录的 `cf` CLI |
 
@@ -95,10 +95,10 @@ cd Codex-remote
 Remote 与启动器可以使用同一个 Desktop 调试端点，它与启动器自己的本地服务不同。
 如果端点已经就绪，保持当前 Desktop 运行即可。
 
-Windows 上，Remote 会从可信安装路径下当前运行的最高层 Codex/ChatGPT 进程读取
-`--remote-debugging-port`。只有调试地址为回环地址、`/json/list` 中存在 Desktop
-页面，且该页面的 WebSocket 仍指向同一回环端口时才会连接。因此 Codex++ 等启动器
-可以自行选择端口，无需再让 `.env` 跟随变化；显式
+Windows 与 macOS 上，Remote 会从可信应用路径下当前运行的最高层 Codex/ChatGPT
+进程读取 `--remote-debugging-port`。只有调试地址为回环地址、`/json/list` 中存在
+Desktop 页面，且该页面的 WebSocket 仍指向同一回环端口时才会连接。因此 Codex++ 等
+启动器可以自行选择端口，无需再让 `.env` 跟随变化；显式
 `CODEX_DESKTOP_DEBUG_PORT` 候选项与 `9229` 继续作为回退。
 
 Windows 商店安装版，可在 PowerShell 中执行：
@@ -294,7 +294,7 @@ cp .env.example .env
 | `CODEX_BINARY` | 自动发现 | 显式指定内置 Codex CLI 路径 |
 | `CODEX_HOME` | `~/.codex` | Codex 状态和配置目录 |
 | `CODEX_WORKDIR` | 用户主目录 | 默认工作目录 |
-| `CODEX_DESKTOP_DEBUG_PORT` | 空 | 可选的逗号分隔桌面调试候选；Windows 还会自动发现当前已安装进程端口，并回退到 `9229` |
+| `CODEX_DESKTOP_DEBUG_PORT` | 空 | 可选的逗号分隔桌面调试候选；Windows/macOS 还会自动发现当前可信进程端口，并回退到 `9229` |
 | `TRUST_PROXY` | `1` | 仅信任回环代理；`0` 关闭；其他值为逗号分隔的可信 IP/CIDR |
 | `LIBREOFFICE_PATH` | 探测标准安装位置 | 可选的主机 LibreOffice 程序路径，用于 Office 预览 |
 | `SESSION_DAYS` | `30` | 浏览器会话有效天数 |
