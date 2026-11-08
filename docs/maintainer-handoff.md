@@ -15,30 +15,27 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The last published release is Remote **0.2.23** / manager **0.2.4**, tag
-`v0.2.23`, functional commit `348e457899172a91d1c6936b045082096794e74f`
-merged through PR #14. The
-[adversarial-review reconciliation](adversarial-review-0.2.22-fixes.md) records
-all 31 findings, corrections, implementation and acceptance boundaries.
-Local validation passed 127 test files (1016 tests, two platform skips),
-typecheck, both builds, eight synthetic viewports, Windows manager source smoke,
-update-worker install/rollback and an isolated signed runtime with a real compiled
-PTY worker. The final directory-fsync change was followed by the full suite and
-server compilation; the preceding test runtime is not a formal release asset.
-The operator authorized pushing, publication, distribution and the local upgrade
-on 2026-11-08. Main CI `42482630537`, runtime CI `42482760659` and manager CI
-`42482760660` passed, including packaged PTY and manager startup checks.
-All seven official and distribution attachments passed complete size/digest checks.
-The signed Windows/macOS archives passed pinned-key verification, exact source-tree
-comparison and individual checks of 3073/3066 files. The download snapshot and
-matching static edge were deployed separately.
-The authorized Windows installation runs Remote 0.2.23 and manager 0.2.4;
-local/public versions and nine asset digests agree, Desktop transport is ready,
+The current published release is Remote **0.2.24** / manager **0.2.4**, tag
+`v0.2.24`, functional commit `94077f48aad6f35d4e1e97d3566dea920726b101`
+merged through PR #16. The
+[Windows discovery acceptance](desktop-debug-discovery.md) records the
+implementation and security boundaries. The preceding
+[adversarial-review reconciliation](adversarial-review-0.2.22-fixes.md) retains
+the 31-item 0.2.23 batch.
+Local validation passed 128 test files (1022 tests, two platform skips),
+typecheck, both builds, browser acceptance and a compiled on-host bridge check.
+Main CI `42491241874`, runtime CI `42491290265` and manager CI `42491290241`
+passed; the manager plan correctly skipped unchanged packaging.
+All four official and distribution runtime attachments passed complete size/digest
+checks. The signed Windows/macOS archives passed pinned-key verification, exact
+source-tree comparison and individual checks of 3078/3071 files.
+The authorized Windows installation runs Remote 0.2.24; local/public versions and
+nine asset digests agree, Desktop transport is ready through discovered port 4952,
 authenticated task/history reads succeed and anonymous private reads return 401.
 Only Remote restarted; Desktop, Tunnel and the domestic relay were preserved.
-The manager retained its selected root/settings and passed current-version and
-tray checks. Its separate installation receipt and all rollback backups are retained
-in the private deployment record. Never start another App Server.
+The unchanged manager 0.2.4 retained its root/settings and reports the new host
+healthy. Its prior installation receipt and all rollback backups are retained in
+the private deployment record. Never start another App Server.
 
 Runtime updates now require Ed25519 publisher signatures against bundled public
 keys, including signed commit identity for source fallback. The private key stays
@@ -55,7 +52,7 @@ cause. Platform output uses bounded rotating logs; macOS controls use the
 same-PID background wrapper and retain ownership checks. Local synthetic checks
 do not establish signed-in macOS service behavior.
 
-The following paragraphs retain historical 0.2.22 and earlier observations:
+The following paragraphs retain historical 0.2.23 and earlier observations:
 Remote 0.2.22 pairs with unchanged manager 0.2.3; manager installers remain
 in v0.2.17. Tag v0.2.22 identifies functional source
 `139affce9c29517a36188db22e4fd228c86c2636`, merged through PR #12.
@@ -78,21 +75,16 @@ attempt hit two existing five-second test timeouts; the unchanged source passed
 on rerun. This does not resolve the historical native-worker crash.
 Installed compiled preview routes passed synthetic write and atomic-save checks.
 Physical-device and sustained real Office conversion acceptance remain separate.
-The current 0.2.23 evidence is recorded above. Source validation alone does not
+The 0.2.22 evidence is retained here. Source validation alone does not
 establish publication or installation; retain the operator's approval boundary
 for subsequent batches.
 
-Remote **0.2.24** is the current functional candidate; the manager remains
-**0.2.4** without changes. It adds Windows discovery of the loopback
-`--remote-debugging-port` supplied to the current trusted Codex/ChatGPT process.
-The implementation rejects non-loopback addresses, renderer children, untrusted
-install paths and CDP socket URLs that leave the selected loopback port. Existing
-explicit candidates and 9229 remain fallbacks. An on-host compiled check selected
-the current Codex++ port `4952`, found `app://-/index.html` and connected without
-starting another App Server. Local validation passed 128 test files (1022 tests,
-two platform skips), typecheck and both builds. Publish the signed runtime, update
-the distribution Worker, install Remote locally and replace this candidate note
-with the exact Release/deployment receipt before claiming completion.
+Remote 0.2.23 / manager 0.2.4 used tag `v0.2.23`, functional commit
+`348e457899172a91d1c6936b045082096794e74f`, main CI `42482630537`,
+runtime CI `42482760659` and manager CI `42482760660`. Seven official assets
+were verified and installed before the Codex++ launcher changed its debug port.
+That fixed-port limitation motivated 0.2.24; the historical manifests, rollback
+files and deployment receipts remain separate.
 
 Remote now uses only Desktop's existing App Server. Bridge loss stays offline
 and reconnects; it must never start a standalone server or replay uncertain
