@@ -113,7 +113,7 @@ Windows 常驻右下通知区域，macOS 常驻顶部菜单栏。
 选择现有安装目录，关闭窗口后继续常驻。Release 提供未签名安装包；
 macOS GUI 的实机验收仍待完成。
 
-Remote **0.2.24** 为当前候选版本，配套**无变更**的管理器 **0.2.4**。
+正式发布 Remote **0.2.24**，配套**无变更**的管理器 **0.2.4**，见 [v0.2.24](https://github.com/CoralFlower325/Codex-remote/releases/tag/v0.2.24)。
 各主机实际安装版本以部署验收记录为准。请手动下载安装包覆盖旧管理器，
 选择原主机目录重试；单独更新 Remote 不能替换旧管理器内置的更新器。
 [管理器下载](docs/update-downloads.md)优先走项目自有公共分发，另有官方 GitHub 备用地址。
