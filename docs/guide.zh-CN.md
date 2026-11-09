@@ -7,7 +7,7 @@ Remote 保留切换会话时的待发图片与技能草稿，输入框上方提�
 详见[输入草稿与布局验收](composer-layout-acceptance.md)。
 Remote 将晚到的原生事件留在所属轮次，随后原生读取校准不重复条目，
 保留消息内容和原生时间锚点。
-详见[原生聊天顺序](native-history-order.md)。Remote 0.2.23 配套正式管理器 0.2.4，
+详见[原生聊天顺序](native-history-order.md)。Remote 0.2.25 配套正式管理器 0.2.4，
 通过安装包手动覆盖旧管理器，选择原主机目录后重试更新。单独更新 Remote
 不能修改旧管理器内置的更新器。管理器自更新保存为暂停的 0.2.0AU 开发线，
 详见[开发断点](manager-self-update-checkpoints.md)。
@@ -297,7 +297,11 @@ cp .env.example .env
 | `CODEX_DESKTOP_DEBUG_PORT` | 空 | 可选的逗号分隔桌面调试候选；Windows/macOS 还会自动发现当前可信进程端口，并回退到 `9229` |
 | `TRUST_PROXY` | `1` | 仅信任回环代理；`0` 关闭；其他值为逗号分隔的可信 IP/CIDR |
 | `LIBREOFFICE_PATH` | 探测标准安装位置 | 可选的主机 LibreOffice 程序路径，用于 Office 预览 |
-| `SESSION_DAYS` | `30` | 浏览器会话有效天数 |
+| `LAN_PORT` | `0` | 可选的局域网／VPN 第二监听入口，使用 `npm run setup:lan` 配置 |
+| `LAN_CERT_FILE` / `LAN_KEY_FILE` | 空 | 可选的局域网／VPN HTTPS 证书与私钥 |
+| `LAN_ALLOW_HTTP` | `0` | 仅在可信私有网络中明确开启明文局域网访问 |
+| `SESSION_DAYS` | `7` | 浏览器会话有效天数，最多 30 天 |
+| `SESSION_IDLE_HOURS` | `24` | 闲置失效小时数，最多 168 小时 |
 
 使用本地隧道或反向代理时，应保持回环监听。Windows 隧道助手默认转发到 `4545`，改端口时需要同时指定其 `-LocalUrl` 参数。
 显式配置和自动发现的桌面调试端口都失效时，Remote 还会探测标准端口 `9229`。

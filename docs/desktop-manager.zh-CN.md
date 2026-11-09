@@ -5,7 +5,7 @@
 
 ## 安装与打开
 
-Remote 0.2.23 配套管理器 0.2.4。从[项目分发或官方备用地址](update-downloads.md)
+Remote 0.2.25 配套管理器 0.2.4。从[项目分发或官方备用地址](update-downloads.md)
 下载 Windows 安装程序或 macOS DMG/ZIP。
 Windows 提供 x64，macOS 仅提供 Apple Silicon（arm64）。首批安装包未签名，
 可能需要按 Windows 下载信誉或 Gatekeeper 流程确认。

@@ -27,8 +27,8 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   stop Desktop, bypass native writer locks or replay uncertain model,
   approval or archive actions. Bridge loss stays offline and reconnects.
 - Probe comma-separated `CODEX_DESKTOP_DEBUG_PORT` candidates plus standard
-  `9229`; on Windows, additionally discover the loopback debug port from the
-  current top-level installed Codex/ChatGPT process. Accept only trusted
+  `9229`; on Windows and macOS, additionally discover the loopback debug port
+  from the current top-level installed Codex/ChatGPT process. Accept only trusted
   installation paths and loopback CDP socket URLs, and prefer the main Codex
   window over overlays. A command timeout on an
   OPEN DevTools socket must discard that socket and reconnect instead of leaving
@@ -56,7 +56,7 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Runtime manifest authentication is separate: all new runtime releases require
   Ed25519 publisher signatures verified against pinned public keys. Source
   fallback must match a signed release commit; never bypass missing signatures.
-  Remote 0.2.24 / manager 0.2.4 were formally published on 2026-11-08.
+  Remote 0.2.25 / manager 0.2.4 are the current formal release.
   Verify each installation against its own current acceptance record.
 - After completing and validating project changes, push the public repository
   by default unless the user explicitly asks not to. Never push the separate
@@ -123,8 +123,8 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 - Model/project metadata currently reads its first requested page; model defaults
   can differ from global configuration overrides. Do not imply otherwise.
 - Remote terminals are separate from Desktop shells and bypass model permission
-  profiles; document this in both READMEs. Some approval forms and actual
-  dictation still need dedicated live acceptance.
+  profiles; document this in both READMEs. Some approval forms and native
+  question submission still need dedicated live acceptance.
 - Windows has live desktop acceptance. macOS has CI coverage for builds, unit
   tests, shell syntax, and generated LaunchAgents; signed-in desktop integration,
   login persistence, and the legacy tunnel still need live macOS acceptance.

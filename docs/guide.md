@@ -11,7 +11,7 @@ See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
-Remote 0.2.23 pairs with stable manager 0.2.4, using manual installer upgrades.
+Remote 0.2.25 pairs with stable manager 0.2.4, using manual installer upgrades.
 Install 0.2.4 over the old app, select the same host root and retry the update.
 Updating Remote cannot change the old manager's bundled updater.
 Manager self-update is preserved on the paused 0.2.0AU development line;
@@ -313,7 +313,11 @@ cp .env.example .env
 | `CODEX_DESKTOP_DEBUG_PORT` | empty | Optional comma-separated Desktop debug candidates; Windows/macOS also discover the current trusted process port and fall back to `9229` |
 | `TRUST_PROXY` | `1` | Trust loopback proxies only; `0` disables trust; otherwise comma-separated trusted IPs/CIDRs |
 | `LIBREOFFICE_PATH` | Standard install detection | Optional host LibreOffice executable for Office previews |
-| `SESSION_DAYS` | `30` | Browser session lifetime |
+| `LAN_PORT` | `0` | Optional secondary LAN/VPN listener; configure with `npm run setup:lan` |
+| `LAN_CERT_FILE` / `LAN_KEY_FILE` | Empty | Optional LAN/VPN HTTPS certificate and private key |
+| `LAN_ALLOW_HTTP` | `0` | Explicit plaintext LAN opt-in; use only on a trusted private network |
+| `SESSION_DAYS` | `7` | Browser session lifetime, maximum 30 days |
+| `SESSION_IDLE_HOURS` | `24` | Idle timeout, maximum 168 hours |
 
 Keep `HOST` on loopback when using a local tunnel or reverse proxy. The Windows tunnel helper assumes port `4545` unless you pass its `-LocalUrl` parameter.
 Remote also probes the standard Desktop port `9229` when explicit and discovered endpoints are stale.

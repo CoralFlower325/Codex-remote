@@ -6,7 +6,7 @@ turns and exposes no network control API.
 
 ## Install And Open
 
-Remote 0.2.23 pairs with manager 0.2.4. Download the Windows installer or macOS
+Remote 0.2.25 pairs with manager 0.2.4. Download the Windows installer or macOS
 DMG/ZIP from the [project distribution or official fallback](update-downloads.md).
 Windows packages target x64; macOS packages target Apple Silicon (arm64).
 Initial packages are unsigned; normal Windows reputation/Gatekeeper approval may
