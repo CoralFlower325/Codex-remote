@@ -1,4 +1,4 @@
-const repository = 'CoralFlower325/Codex-remote';
+import { releaseRepository as repository } from './release-identity.mjs';
 export const distributionOrigin = 'https://downloads.73916482.xyz';
 export const releaseEndpoints = [
   `${distributionOrigin}/releases/latest`,

@@ -6,20 +6,24 @@ import { useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { SubagentsContext, SubagentRows } from './Subagents';
 import { collectSubagents } from '../subagents';
 import { useThreadSummary } from '../useThreadSummary';
-import type { RemoteState } from '../useRemote';
+import type { ConnectionView, ConversationView } from '../remote-contracts';
 import type { SideChat } from '../useSideChats';
 import type { SummaryResource } from '../../shared/thread-summary';
 import { PreviewLink } from './PreviewLinks';
+import type { ChatTransport } from '../chat-transport';
 import './summary-panel.css';
 
-export function SummaryPanel({ remote, open, pinned, inline, onClose, sideChats, onSideChat, onDraft, onServers }: {
-  remote: RemoteState; open: boolean; pinned: boolean; inline: boolean; onClose: () => void;
+export function SummaryPanel({ connection, conversation, open, pinned, inline, onClose, sideChats, onSideChat, onDraft, onServers }: {
+  connection: Pick<ConnectionView, 'authenticated' | 'chatTransport'>;
+  conversation: Pick<ConversationView, 'activeThread' | 'items' | 'isNewThread'>;
+  open: boolean; pinned: boolean; inline: boolean; onClose: () => void;
   sideChats: SideChat[]; onSideChat: (id?: string) => void; onDraft: (text: string) => void; onServers: () => void;
 }) {
-  const thread = remote.activeThread;
-  const summary = useThreadSummary(thread?.id, open && remote.authenticated && !remote.isNewThread, remote.chatTransport);
+  const thread = conversation.activeThread;
+  const summary = useThreadSummary(thread?.id, open && connection.authenticated && !conversation.isNewThread,
+    connection.chatTransport);
   const { threads, states } = useContext(SubagentsContext);
-  const agents = collectSubagents(remote.items, threads, thread?.id).map(agent =>
+  const agents = collectSubagents(conversation.items, threads, thread?.id).map(agent =>
     states?.[agent.threadId] ? { ...agent, status: states[agent.threadId]! } : agent);
   const [expandedAgents, setExpandedAgents] = useState(false);
   const [menu, setMenu] = useState<'outputs' | 'sources' | null>(null);
@@ -123,7 +127,8 @@ export function SummaryPanel({ remote, open, pinned, inline, onClose, sideChats,
       {summary.data.nextCursor && !summary.loading && <button type="button" className="summary-row summary-show-all"
         onClick={summary.loadMore}>加载更早的摘要</button>}
     </div>
-    {picker && <SourceFilePicker remote={remote} onClose={() => setPicker(false)} onSelect={path => {
+    {picker && <SourceFilePicker transport={connection.chatTransport} initialCwd={thread.cwd}
+      onClose={() => setPicker(false)} onSelect={path => {
       const label = (path.split(/[\\/]/).at(-1) ?? path).replace(/[\\[\]]/g, '\\$&');
       const target = encodeURI(path.replace(/\\/g, '/')).replace(/[()?#]/g,
         character => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -163,11 +168,11 @@ function ResourceList({ rows }: { rows: SummaryResource[] }) {
   </>;
 }
 
-function SourceFilePicker({ remote, onSelect, onClose }: {
-  remote: RemoteState; onSelect: (path: string) => void; onClose: () => void;
+function SourceFilePicker({ transport, initialCwd, onSelect, onClose }: {
+  transport: ChatTransport; initialCwd: string; onSelect: (path: string) => void; onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const [current, setCurrent] = useState(remote.activeThread?.cwd ?? '');
+  const [current, setCurrent] = useState(initialCwd);
   const [path, setPath] = useState(current);
   const [entries, setEntries] = useState<Array<{ fileName: string; isDirectory: boolean }>>([]);
   const [error, setError] = useState<string | null>(null);
@@ -176,11 +181,11 @@ function SourceFilePicker({ remote, onSelect, onClose }: {
   useEffect(() => {
     let disposed = false;
     setLoading(true); setError(null);
-    void remote.chatTransport.rpc<{ entries: typeof entries }>('fs/readDirectory', { path: current }).then(result => {
+    void transport.rpc<{ entries: typeof entries }>('fs/readDirectory', { path: current }).then(result => {
       if (!disposed) { setEntries(result.entries); setPath(current); }
     }).catch(failure => { if (!disposed) setError(failure.message); }).finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
-  }, [current, remote.chatTransport]);
+  }, [current, transport]);
   return <dialog ref={ref} className="workspace-folder-dialog summary-file-picker" aria-label="选择来源文件"
     onCancel={event => { event.preventDefault(); event.stopPropagation(); onClose(); }}
     onClose={event => { event.stopPropagation(); onClose(); }}>

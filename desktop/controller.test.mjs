@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { controlCommand, summarize, probe, serviceStatus, externalEntry, health, diagnostics, startupReady, publicDiagnosis } from './controller.mjs';
+import { controlCommand, summarize, probe, serviceStatus, externalEntry, health, diagnostics, startupReady,
+  publicDiagnosis, tunnelMetricsPort } from './controller.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -48,6 +49,17 @@ describe('local manager control boundary', () => {
     const fetcher = vi.fn().mockRejectedValue(new Error('offline'));
     expect((await probe('http://127.0.0.1/health', true, fetcher)).reachable).toBe(false);
     expect(fetcher.mock.calls[0][1].redirect).toBe('error');
+  });
+  it('reads the supervisor-owned tunnel metrics port and falls back for older roots', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'remote-tunnel-port-'));
+    try {
+      expect(await tunnelMetricsPort(root)).toBe(20241);
+      await fs.mkdir(path.join(root, 'data'));
+      await fs.writeFile(path.join(root, 'data/tunnel-metrics.json'), '{"port":49123}', 'utf8');
+      expect(await tunnelMetricsPort(root)).toBe(49123);
+      await fs.writeFile(path.join(root, 'data/tunnel-metrics.json'), '{"port":"invalid"}', 'utf8');
+      expect(await tunnelMetricsPort(root)).toBe(20241);
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
   });
   it('reports external public access separately without treating it as a managed tunnel', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'remote-external-health-'));

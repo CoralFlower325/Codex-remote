@@ -17,7 +17,8 @@ const scripts = ['web-update-worker.mjs', 'web-update-state.mjs', 'web-update-se
   'web-update-network.mjs', 'background-service.mjs', 'rotating-log.mjs'];
 const libraries = ['updater.mjs', 'update-prepare.mjs', 'update-inputs.mjs', 'update-transaction.mjs',
   'update-progress.mjs', 'runtime-package.mjs', 'controller.mjs', 'process.mjs', 'release.mjs',
-  'release-source.mjs', 'release-network.mjs', 'release-signature.mjs', 'release-keys.mjs'];
+  'release-source.mjs', 'release-identity.mjs', 'release-network.mjs', 'release-signature.mjs',
+  'release-keys.mjs'];
 
 async function copyDependencies(root, job) {
   const copied = new Map();

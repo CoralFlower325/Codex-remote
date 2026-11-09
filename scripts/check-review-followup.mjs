@@ -244,6 +244,4 @@ if (process.argv.includes('--serve')) {
     await browser.close();
     await close();
   }
-  // ConPTY's native handles can outlive its exited shells; this CLI has finished all owned cleanup.
-  if (process.platform === 'win32') process.exit(0);
 }

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { c as archive } from 'tar';
 import { prepareUpdate } from './update-prepare.mjs';
 import { buildFileNames, mergeBuildInputs } from './update-inputs.mjs';
-import { runtimeNames, sha256, sourceHash } from './runtime-package.mjs';
+import { runtimeNames, runtimeNodeAbi, sha256, sourceHash } from './runtime-package.mjs';
 import { signedFixture, signedSourceRelease } from '../scripts/test-release-signing.mjs';
 
 const temporary = [];
@@ -25,6 +25,7 @@ async function fixture({ baseline = true, baseFiles = {}, targetFiles = {} } = {
     'src/main.ts': 'export const value = 1;',
     'scripts/remote-control-windows.ps1': 'controls',
     'scripts/remote-control-macos.sh': 'controls',
+    'scripts/terminal-job-windows.ps1': 'job helper',
     ...baseFiles
   };
   const sources = { ...base, 'package.json': JSON.stringify({ name: 'codex-remote', version: '0.2.9' }),
@@ -41,6 +42,7 @@ async function fixture({ baseline = true, baseFiles = {}, targetFiles = {} } = {
     .map(([name, text]) => [name, sourceHash(Buffer.from(text))]));
   const manifest = { format: 1, repository: 'CoralFlower325/Codex-remote', version: '0.2.9',
     platform: process.platform, arch: process.arch, commit: 'a'.repeat(40),
+    node: runtimeNodeAbi('22.19.0', '127'),
     sources: hashes(sources), baselines: baseline ? { '0.2.7': hashes(base) } : {},
     files: Object.fromEntries(Object.entries(bytes).map(([name, text]) => [name, {
       size: Buffer.byteLength(text), sha256: sha256(Buffer.from(text)), mode: 0o644 }])),
@@ -55,6 +57,7 @@ async function fixture({ baseline = true, baseFiles = {}, targetFiles = {} } = {
     if (command === 'git') throw new Error('Synthetic source preparation stop.');
     if (args[0] === 'node') return 'node';
     if (args[0] === '--version') return 'v22.19.0';
+    if (args[0] === '-p' && args[1] === 'process.versions.modules') return '127';
     if (args[0] === 'scripts/check-runtime.mjs') return 'checked';
     throw new Error(`Unexpected command: ${command}`);
   });

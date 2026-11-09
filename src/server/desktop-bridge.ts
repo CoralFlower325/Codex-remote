@@ -189,8 +189,17 @@ export class DesktopBridge extends EventEmitter {
   async request(method: string, params: unknown): Promise<unknown> {
     if (!this.isConnected()) throw new Error('Codex Desktop is not connected.');
     const id = `codex-remote:${randomUUID()}`;
+    const readOnly = isAllowedRpcMethod(method) && rpcMethods[method] === 'read';
     const result = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
+        if (readOnly) {
+          const pending = this.requests.get(id);
+          if (!pending) return;
+          this.requests.delete(id);
+          console.warn(`[desktop-bridge] native read timed out { method: '${method}' }`);
+          pending.reject(new Error(`Desktop native read timed out: ${method}`));
+          return;
+        }
         const socket = this.socket;
         if (socket) this.disconnectSocket(socket, new Error('Desktop 响应超时，请重新连接后核对状态。'));
       }, this.responseTimeoutMs);

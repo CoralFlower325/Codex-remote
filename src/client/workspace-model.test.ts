@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   buildSidebarGroups,
   dedupeThreads,
+  findModelInfo,
   findProjectForThread,
   layoutForViewport,
   reasoningOptionsForModel,
+  reasoningOptionsWithInherit,
   resolveReasoningEffort
 } from './workspace-model';
 import type { ModelInfo, ProjectInfo, Thread } from './types';
@@ -103,6 +105,32 @@ describe('workspace model', () => {
       ]
     };
     expect(resolveReasoningEffort(model, 'unsupported')).toBe('high');
+  });
+
+  it('resolves model aliases with provider identity and exposes native inherit explicitly', () => {
+    const models: ModelInfo[] = [{
+      id: 'provider-a/model-id',
+      model: 'model-alias',
+      modelProvider: 'provider-a',
+      displayName: 'Provider A',
+      description: '',
+      isDefault: false,
+      hidden: false,
+      supportedReasoningEfforts: [{ reasoningEffort: 'high' }]
+    }, {
+      id: 'shared-id',
+      model: 'shared',
+      modelProvider: 'provider-b',
+      displayName: 'Provider B',
+      description: '',
+      isDefault: true,
+      hidden: false
+    }];
+
+    expect(findModelInfo(models, 'provider-a/model-id', 'provider-a')?.displayName).toBe('Provider A');
+    expect(findModelInfo(models, 'model-alias', 'provider-a')?.id).toBe('provider-a/model-id');
+    expect(findModelInfo(models, 'shared-id', 'provider-b')?.displayName).toBe('Provider B');
+    expect(reasoningOptionsWithInherit(models[0]).map(option => option.value)).toEqual(['', 'high']);
   });
 
   it('uses the Codex reasoning labels for every supported effort', () => {

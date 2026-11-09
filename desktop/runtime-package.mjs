@@ -4,9 +4,39 @@ import crypto from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { x as extract, t as list } from 'tar';
 import { assetEndpoints } from './release-source.mjs';
+import { releaseRepository } from './release-identity.mjs';
 
-export const runtimeRepository = 'CoralFlower325/Codex-remote';
+export const runtimeRepository = releaseRepository;
 export const sha256 = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+export const testedRuntimeNodeMajorMinor = '22.19';
+
+export function runtimeNodeAbi(version = process.versions.node, modules = process.versions.modules) {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(String(version));
+  if (!match || !/^\d+$/.test(String(modules))) throw new Error('运行包 Node ABI 信息无效。');
+  return {
+    version: `${Number(match[1])}.${Number(match[2])}.${Number(match[3])}`,
+    majorMinor: `${Number(match[1])}.${Number(match[2])}`,
+    modules: String(modules)
+  };
+}
+
+export function assertTestedRuntimeNode(runtime = runtimeNodeAbi()) {
+  if (runtime.majorMinor !== testedRuntimeNodeMajorMinor) {
+    throw new Error(`运行包必须在受测 Node ${testedRuntimeNodeMajorMinor}.x 下构建，`
+      + `当前为 ${runtime.version}（ABI ${runtime.modules}）。`);
+  }
+  return runtime;
+}
+
+export function assertManifestRuntimeNode(manifest, runtime = runtimeNodeAbi()) {
+  const required = manifest?.node;
+  if (!required || required.majorMinor !== runtime.majorMinor || required.modules !== runtime.modules) {
+    throw new Error(`运行包需要 Node ${required?.majorMinor ?? '未知'}（ABI ${required?.modules ?? '未知'}），`
+      + `当前为 ${runtime.version}（ABI ${runtime.modules}）。请使用匹配的 Node 运行，或改用源码更新。`);
+  }
+  return required;
+}
+
 export function sourceHash(bytes) {
   let content = bytes;
   if (!bytes.includes(0)) {
@@ -32,10 +62,15 @@ export function runtimePath(relative) {
 export function validateManifest(manifest, release, platform = process.platform, arch = process.arch) {
   if (manifest?.format !== 1 || manifest.repository !== runtimeRepository ||
     manifest.version !== release.version || manifest.platform !== platform || manifest.arch !== arch ||
+    !manifest.node || typeof manifest.node !== 'object' ||
     !/^[a-f0-9]{40}$/.test(manifest.commit) || !/^[a-f0-9]{64}$/.test(manifest.archive?.sha256) ||
     !Number.isSafeInteger(manifest.archive?.size) || manifest.archive.size <= 0 ||
     manifest.archive.size > 512 * 1024 * 1024 || !manifest.files || !manifest.sources || !manifest.baselines) {
     throw new Error('运行包版本、平台或校验信息不匹配。');
+  }
+  const node = runtimeNodeAbi(manifest.node.version, manifest.node.modules);
+  if (manifest.node.majorMinor !== node.majorMinor) {
+    throw new Error('运行包 Node ABI 信息不一致。');
   }
   const files = Object.entries(manifest.files);
   if (!files.length || files.length > 100_000) throw new Error('运行包文件数量无效。');
@@ -59,7 +94,7 @@ export function validateManifest(manifest, release, platform = process.platform,
     }
   }
   for (const name of ['package.json', 'dist/client/index.html', 'dist-server/server/index.js',
-    'node_modules/node-pty/package.json']) {
+    'node_modules/node-pty/package.json', 'scripts/terminal-job-windows.ps1']) {
     if (!manifest.files[name]) throw new Error(`运行包缺少必要文件：${name}`);
   }
   for (const name of Object.keys(manifest.sources)) {

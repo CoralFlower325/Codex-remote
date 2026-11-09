@@ -1,4 +1,5 @@
 import type { TurnTiming } from '../shared/turn-timing';
+import type { CatalogSnapshot } from '../shared/catalog';
 
 export interface ThreadStatus {
   type: 'notLoaded' | 'idle' | 'systemError' | 'active';
@@ -83,7 +84,8 @@ export type ThreadItem = (
     }
   | { type: 'subAgentActivity'; id: string; kind: 'started' | 'interacted' | 'interrupted' | 'completed';
       agentThreadId: string; agentPath: string; model: string | null; reasoningEffort: string | null }
-) & { turnId?: string; startedAtMs?: number | null; completedAtMs?: number | null; detailsDeferred?: boolean };
+) & { turnId?: string; startedAtMs?: number | null; completedAtMs?: number | null; detailsDeferred?: boolean;
+  optimistic?: 'sending' | 'unconfirmed' };
 
 export type SubagentStatus = 'pendingInit' | 'running' | 'interrupted' | 'completed' | 'errored' | 'shutdown' | 'notFound';
 
@@ -172,6 +174,8 @@ export interface ThreadHistoryPage {
 export interface ModelInfo {
   id: string;
   model: string;
+  modelProvider?: string;
+  provider?: string;
   displayName: string;
   description: string;
   isDefault: boolean;
@@ -192,8 +196,8 @@ export interface ProjectInfo {
 export interface WorkspaceBootstrap {
   cursor?: { epoch: string; sequence: number };
   threads: { data: Thread[]; nextCursor: string | null; snapshot?: { stale: boolean; savedAt: number } } | null;
-  models: { data: ModelInfo[] } | null;
-  projects: { data: ProjectInfo[] } | null;
+  models: CatalogSnapshot<ModelInfo> | null;
+  projects: CatalogSnapshot<ProjectInfo> | null;
 }
 
 export interface ServerRequest {

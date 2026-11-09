@@ -44,10 +44,7 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             desktop/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+      - uses: ./.github/actions/validate
       - run: npm run manager:install
       - run: npm run manager:build
       - name: Validate existing macOS tunnel repair

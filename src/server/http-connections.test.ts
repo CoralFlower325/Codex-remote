@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import express from 'express';
 import compression from 'compression';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { httpConnections, type RemotePeer } from './http-connections.js';
+import { httpConnections, MAX_HTTP_PEER_BUFFER, type RemotePeer } from './http-connections.js';
 
 const servers: http.Server[] = [];
 const streams: AbortController[] = [];
@@ -93,5 +93,12 @@ describe('authenticated HTTP realtime channel', () => {
     expect(f.message).toHaveBeenCalledOnce();
     f.controller.abort();
     await vi.waitFor(() => expect(f.disconnect).toHaveBeenCalledOnce());
+  });
+
+  it('closes an SSE peer before its bounded buffer can grow without limit', async () => {
+    const f = await fixture();
+    f.connected[0]!.send('x'.repeat(MAX_HTTP_PEER_BUFFER + 1));
+    await expect(f.reader.read()).resolves.toMatchObject({ done: true });
+    expect(f.disconnect).toHaveBeenCalledOnce();
   });
 });

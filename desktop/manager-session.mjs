@@ -161,8 +161,8 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
   async function security(request) {
     const selectedRoot = settings.root;
     if (!request || !['list', 'password', 'revoke', 'revoke-all'].includes(request.action)) throw new Error('未知认证操作。');
-    if (request.action === 'password' && (typeof request.password !== 'string' || request.password.trim().length < 6 ||
-      request.password.length > 256 || request.password !== request.confirm)) throw new Error('请输入两次相同的新密码，长度为 6 至 256 位。');
+    if (request.action === 'password' && (typeof request.password !== 'string' || request.password.trim().length < 12 ||
+      request.password.length > 256 || request.password !== request.confirm)) throw new Error('请输入两次相同的新密码，长度为 12 至 256 位。');
     if (request.action === 'revoke' && (typeof request.id !== 'string' || !/^[a-f0-9]{64}$/.test(request.id))) throw new Error('请选择有效设备。');
     if (request.action !== 'list') {
       const { response } = await dialog.showMessageBox(getWindow(), {

@@ -285,7 +285,7 @@ app.get('/api/threads', requireAuth, asyncRoute(async (req, res) => {
   res.json(await workspaceSnapshots.list(cursor, req.query.archived === 'true', req.query.fresh === '1'));
 }));
 
-app.use('/api/metadata', metadataRouter(requireAuth, metadataReader.read));
+app.use('/api/metadata', metadataRouter(requireAuth, metadataReader.read, metadataReader.clear));
 let backendUpdater: ReturnType<Parameters<typeof backendUpdateRouter>[2]> | undefined;
 app.use('/api/remote-update', backendUpdateRouter(requireAuth, (req, res, next) => {
   // Update mutations require a browser's explicit same-origin JSON request.

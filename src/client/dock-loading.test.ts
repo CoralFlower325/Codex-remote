@@ -74,7 +74,8 @@ vi.mock('./background-work', () => ({
 }));
 import { useRemote } from './useRemote';
 import { readDeviceChat } from './device-snapshots';
-import { useSubagentChats } from './useSubagentChats';
+import { useSubagentChats, type SubagentChatsController } from './useSubagentChats';
+import type { RemoteController } from './remote-contracts';
 import type { ChatTransport } from './chat-transport';
 import { pendingQuestionGroups } from './async-questions';
 import { useHistoryDetails } from './history-details';
@@ -114,7 +115,7 @@ function fixture(fetcher: typeof fetch, authenticated = true) {
   vi.stubGlobal('navigator', { onLine: true });
   vi.stubGlobal('WebSocket', { OPEN: 1 });
   vi.stubGlobal('fetch', fetcher);
-  let remote!: ReturnType<typeof useRemote>;
+  let remote!: RemoteController;
   let queue: ReturnType<typeof QueuedMessages> = null;
   let questions: ReturnType<typeof QuestionDock> = null;
   const bootstrap = { threads: { data: [thread], nextCursor: null }, models: { data: [] },
@@ -324,6 +325,23 @@ describe('native question interaction', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ method: 'turn/steer', params: { threadId: thread.id,
       expectedTurnId: 'active-native-turn', input: [{ type: 'text', text }] } });
+  });
+  it('shows a steer immediately and reconciles it with the native user item', async () => {
+    const f = fixture(() => new Promise(() => {}));
+    let message: any;
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const parsed = JSON.parse(payload);
+      if (parsed.type === 'rpc') message = parsed;
+    } });
+    const pending = f.remote.steerTurn(thread.id, 'active-native-turn', 'Immediate steer');
+    await settle();
+    const optimistic = f.remote.items.find(item => item.type === 'userMessage' && item.optimistic);
+    expect(optimistic).toMatchObject({ type: 'userMessage', optimistic: 'sending',
+      content: [{ type: 'text', text: 'Immediate steer' }] });
+    expect(message.params).toMatchObject({ clientUserMessageId: optimistic?.id });
+    connection.options.onMessage({ type: 'rpc.result', id: message.id, result: {} });
+    await pending;
+    expect(f.remote.items.filter(item => item.type === 'userMessage')).toHaveLength(1);
   });
 });
 
@@ -625,6 +643,33 @@ describe('cached history verification', () => {
     await settle();
     expect(f.remote.activeThread?.model).toBe('new-model');
   });
+  it('lets a newer native reasoning event win over an older settings acknowledgement and preserves null as inherit', async () => {
+    const f = fixture(path => String(path).includes('/thread/open?') ? json(page)
+      : String(path).includes('/thread/timings?') ? json(page) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    let finish!: () => void;
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type === 'rpc' && message.method === 'thread/settings/update') {
+        finish = () => connection.options.onMessage({
+          type: 'rpc.result', id: message.id, result: { threadSettings: { effort: 'low' } }
+        });
+      }
+    } });
+    const pending = f.remote.setThreadSettings(thread.id, { effort: 'low' });
+    await settle();
+    connection.options.onMessage({ type: 'event', method: 'thread/settings/updated',
+      params: { threadId: thread.id, threadSettings: { effort: 'high' } } });
+    scope.render();
+    expect(f.remote.activeThread?.reasoningEffort).toBe('high');
+    finish(); await pending; await settle();
+    expect(f.remote.activeThread?.reasoningEffort).toBe('high');
+
+    connection.options.onMessage({ type: 'event', method: 'thread/settings/updated',
+      params: { threadId: thread.id, threadSettings: { effort: null } } });
+    scope.render();
+    expect(f.remote.activeThread?.reasoningEffort).toBeNull();
+  });
   it.each(['text', 'timings'])('does not authorize actions after a second stale %s response', async stale => {
     const f = fixture(path => String(path).includes('/thread/open?') ? json({
       ...page, ...(stale === 'text' ? { snapshot: { stale: true, savedAt: 1 } } : {})
@@ -800,7 +845,7 @@ describe('subagent native history verification', () => {
         listeners.add(listener); return () => { listeners.delete(listener); };
       }, watch: vi.fn()
     } as unknown as ChatTransport;
-    let chats!: ReturnType<typeof useSubagentChats>;
+    let chats!: SubagentChatsController;
     scope = new hooks.Scope(); scope.root = () => { chats = useSubagentChats(transport, true, thread.id); };
     scope.render();
     return { get chats() { return chats; },

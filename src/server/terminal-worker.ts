@@ -3,56 +3,86 @@ import { createRequire } from 'node:module';
 
 let pty: IPty | undefined;
 let starting = false;
-let closed = false;
+let closing = false;
 let paused = false;
 let outstanding = 0;
 let messages = 0;
+let hardExitTimer: ReturnType<typeof setTimeout> | undefined;
 const LIMIT = 1024 * 1024;
-function send(message: unknown, callback?: () => void) {
-  if (!process.connected || !process.send) return terminate();
+const CLEANUP_TIMEOUT_MS = 3_000;
+
+function send(message: unknown, callback?: () => void): boolean {
+  if (!process.connected || !process.send) return false;
   try {
     process.send(message as object, error => {
-      if (error) terminate();
+      if (error) shutdown(1);
       else callback?.();
     });
-  } catch { terminate(); }
+    return true;
+  } catch {
+    return false;
+  }
 }
-function terminate() {
-  if (closed) return;
-  closed = true;
-  try { pty?.kill(); } finally { process.exit(1); }
+
+function releasePty(): void {
+  const native = pty;
+  pty = undefined;
+  if (!native) return;
+  try { native.kill(); } catch { /* The shell may already be gone. */ }
 }
-function finish(exitCode: number) {
-  if (closed) return;
-  closed = true;
-  send({ type: 'exit', exitCode }, () => process.exit(0));
-  setTimeout(() => process.exit(0), 1000).unref();
+
+/**
+ * Keep the worker alive long enough for node-pty to release ConPTY handles.
+ * The event loop performs a graceful exit when those handles close; the hard
+ * timer is the bounded fallback for a stuck native cleanup.
+ */
+function shutdown(exitCode: number, signal?: string | number, report = true): void {
+  if (closing) return;
+  closing = true;
+  releasePty();
+  process.exitCode = exitCode;
+  hardExitTimer = setTimeout(() => process.exit(exitCode), CLEANUP_TIMEOUT_MS);
+  hardExitTimer.unref();
+
+  const leave = () => {
+    try { process.disconnect?.(); } catch { /* Parent already disconnected. */ }
+  };
+  if (!report || !send({
+    type: 'exit',
+    exitCode,
+    ...(signal === undefined ? {} : { signal })
+  }, leave)) {
+    leave();
+  }
 }
-process.on('disconnect', terminate);
+
+process.on('disconnect', () => shutdown(1, undefined, false));
 process.on('message', async value => {
   try {
-    if (!value || typeof value !== 'object' || !('type' in value)) return terminate();
+    if (closing) return;
+    if (!value || typeof value !== 'object' || !('type' in value)) return shutdown(1);
     const message = value as Record<string, unknown>;
-    if (message.type === 'kill') return terminate();
+    if (message.type === 'kill') return shutdown(0);
     if (message.type === 'start') {
       if (starting || typeof message.file !== 'string' || !Array.isArray(message.args) ||
-        !message.options || typeof message.options !== 'object') return terminate();
+        !message.options || typeof message.options !== 'object') return shutdown(1);
       starting = true;
       const native = createRequire(import.meta.url)('node-pty') as typeof import('node-pty');
-      if (closed) return;
+      if (closing) return;
       pty = native.spawn(message.file, message.args as string[], message.options as IPtyForkOptions);
       pty.onData(data => {
+        if (closing) return;
         outstanding += Buffer.byteLength(data);
         messages++;
-        if (outstanding > LIMIT || messages > 4096) return terminate();
+        if (outstanding > LIMIT || messages > 4096) return shutdown(1);
         if (outstanding > 128 * 1024 || messages > 1024) pty?.pause();
-        send({ type: 'data', data });
+        if (!send({ type: 'data', data })) shutdown(1);
       });
-      pty.onExit(({ exitCode }) => finish(exitCode));
-      send({ type: 'ready' });
+      pty.onExit(({ exitCode, signal }) => shutdown(exitCode, signal));
+      if (!send({ type: 'ready' })) shutdown(1);
       return;
     }
-    if (!pty || closed) return terminate();
+    if (!pty || closing) return shutdown(1);
     if (message.type === 'input' && typeof message.data === 'string' && Buffer.byteLength(message.data) <= 64 * 1024) {
       pty.write(message.data);
     } else if (message.type === 'resize' && Number.isInteger(message.cols) && Number.isInteger(message.rows) &&
@@ -64,9 +94,12 @@ process.on('message', async value => {
       outstanding = Math.max(0, outstanding - Number(message.size));
       messages = Math.max(0, messages - 1);
       if (!paused && outstanding < 32 * 1024 && messages < 256) pty.resume();
-    } else terminate();
+    } else shutdown(1);
   } catch (error) {
-    send({ type: 'data', data: `\r\n[Terminal worker error: ${error instanceof Error ? error.message : String(error)}]\r\n` });
-    finish(1);
+    send({
+      type: 'data',
+      data: `\r\n[Terminal worker error: ${error instanceof Error ? error.message : String(error)}]\r\n`
+    });
+    shutdown(1);
   }
 });

@@ -1,9 +1,11 @@
 import { Router, type RequestHandler } from 'express';
 import type { ClientRpcMethod } from '../shared/protocol.js';
+import { readCompleteCatalog, type CatalogKind } from '../shared/catalog.js';
 
 type Read = (method: ClientRpcMethod, params: unknown) => Promise<unknown>;
+type Clear = (kind?: 'model/list' | 'project/list') => void;
 
-export function metadataRouter(requireAuth: RequestHandler, read: Read): Router {
+export function metadataRouter(requireAuth: RequestHandler, read: Read, clear?: Clear): Router {
   const router = Router();
   router.get('/', requireAuth, async (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -13,9 +15,11 @@ export function metadataRouter(requireAuth: RequestHandler, read: Read): Router 
       return;
     }
     try {
-      res.json(await (kind === 'projects'
-        ? read('project/list', { limit: 200 })
-        : read('model/list', { limit: 100, includeHidden: false })));
+      const catalogKind: CatalogKind = kind;
+      if (req.query.fresh === '1') {
+        clear?.(catalogKind === 'models' ? 'model/list' : 'project/list');
+      }
+      res.json(await readCompleteCatalog(read, catalogKind));
     } catch (error) { next(error); }
   });
   return router;

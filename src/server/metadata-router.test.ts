@@ -20,7 +20,7 @@ async function fixture(native = vi.fn(async () => ({ data: [] as unknown[] }))) 
     res.setHeader('Cache-Control', 'no-store');
     if (req.get('Cookie') !== 'session=operator') { res.status(401).end(); return; }
     next();
-  }, reader.read));
+  }, reader.read, reader.clear));
   app.use((_error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     res.status(500).json({ error: 'Native read failed.' });
   });
@@ -49,19 +49,25 @@ describe('independent authenticated workspace metadata', () => {
     expect(f.native).not.toHaveBeenCalled();
   });
 
-  it('returns the existing fixed native catalog pages and shares bootstrap handoff results', async () => {
-    const f = await fixture(vi.fn(async () => ({ data: [{ id: 'native' }], nextCursor: 'next' })));
-    await f.reader.read('project/list', { limit: 200 });
+  it('returns atomic complete catalog snapshots and supports explicit refreshes', async () => {
+    const native = vi.fn(async (_method: string, params: unknown) =>
+      (params as { cursor?: string }).cursor
+        ? { data: [{ id: 'second' }], nextCursor: null }
+        : { data: [{ id: 'first' }], nextCursor: 'page-2' });
+    const f = await fixture(native);
     for (const kind of ['projects', 'models']) {
       const response = await f.get(`kind=${kind}&limit=999&method=thread/list`);
       expect(response.status).toBe(200);
       expect(response.headers.get('cache-control')).toBe('no-store');
-      expect(await response.json()).toEqual({ data: [{ id: 'native' }], nextCursor: 'next' });
+      expect(await response.json()).toMatchObject({
+        data: [{ id: 'first' }, { id: 'second' }],
+        nextCursor: null,
+        complete: true
+      });
     }
-    expect(f.native.mock.calls).toEqual([
-      ['project/list', { limit: 200 }],
-      ['model/list', { limit: 100, includeHidden: false }]
-    ]);
+    expect(f.native.mock.calls).toContainEqual(['project/list', { limit: 200 }]);
+    expect(f.native.mock.calls).toContainEqual(['project/list', { limit: 200, cursor: 'page-2' }]);
+    expect(f.native.mock.calls).toContainEqual(['model/list', { limit: 100, includeHidden: false }]);
   });
 
   it('does not let one slow catalog block the other and retries a failed native read', async () => {
@@ -75,10 +81,10 @@ describe('independent authenticated workspace metadata', () => {
     expect((await f.get('kind=models')).status).toBe(500);
     const retry = await f.get('kind=models');
     expect(retry.status).toBe(200);
-    expect(await retry.json()).toEqual({ data: [] });
+    expect(await retry.json()).toMatchObject({ data: [], nextCursor: null, complete: true });
     finish({ data: [{ id: 'project' }] });
     const response = await projects;
-    expect(await response.json()).toEqual({ data: [{ id: 'project' }] });
+    expect(await response.json()).toMatchObject({ data: [{ id: 'project' }], nextCursor: null, complete: true });
     expect(native).toHaveBeenCalledTimes(3);
   });
 });

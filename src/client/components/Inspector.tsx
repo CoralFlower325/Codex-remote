@@ -7,15 +7,21 @@ import { itemKey } from '../remote-state';
 import { HistoryThreadContext, useHistoryDetails } from '../history-details';
 import { buildReviewTurns, splitDiffLines, type DiffLine, type ReviewFile } from '../review-model';
 import type { Thread, ThreadItem } from '../types';
-import type { RemoteState } from '../useRemote';
+import type {
+  AttentionActions,
+  AttentionView,
+  ConnectionView,
+  ConversationActions,
+  DirectoryView
+} from '../remote-contracts';
 import type { ChatInput } from '../queued-messages';
-import { useSideChats } from '../useSideChats';
-import { resolveReasoningEffort } from '../workspace-model';
+import type { SideChatsController } from '../useSideChats';
+import { findModelInfo } from '../workspace-model';
 import { SideChatView } from './SideChatView';
 import type { PreviewTarget } from '../../shared/file-preview';
 import { previewLabel } from '../preview-links';
 import { PreviewLink } from './PreviewLinks';
-import type { useSubagentChats } from '../useSubagentChats';
+import type { SubagentChatsController } from '../useSubagentChats';
 import { SubagentChatView } from './SubagentChatView';
 import { SubagentRows } from './Subagents';
 import { PanelBoundary } from './PanelBoundary';
@@ -30,16 +36,21 @@ interface InspectorProps {
   onClose: () => void;
   layout: 'desktop' | 'mobile';
   view: 'launcher' | 'changes' | 'activity' | 'files';
-  remote: RemoteState;
+  connection: Pick<ConnectionView, 'connected'>;
+  directory: Pick<DirectoryView, 'models'>;
+  attention: Pick<AttentionView, 'serverRequests'>;
+  actions: Pick<ConversationActions, 'listSkills' | 'interruptTurn' | 'listModes' | 'listMcp'> &
+    Pick<AttentionActions, 'respondToRequest'>;
   sideChatRequest: { id: number; input?: ChatInput; chatId?: string } | null;
   previewRequest: { id: number; target: PreviewTarget } | null;
   cwd?: string | undefined;
-  subagentChats: ReturnType<typeof useSubagentChats>;
+  subagentChats: SubagentChatsController;
   subagentRequest: { id: number; threadId: string } | null;
-  sideChats: ReturnType<typeof useSideChats>;
+  sideChats: SideChatsController;
 }
 
-export function Inspector({ open, thread, items, onClose, layout, view, remote, sideChatRequest, previewRequest, cwd,
+export function Inspector({ open, thread, items, onClose, layout, view, connection, directory, attention, actions,
+  sideChatRequest, previewRequest, cwd,
   subagentChats, subagentRequest, sideChats }: InspectorProps) {
   const [tab, setTab] = useState<string>(view);
   const [openedTools, setOpenedTools] = useState<string[]>(view === 'launcher' ? [] : [view]);
@@ -71,9 +82,10 @@ export function Inspector({ open, thread, items, onClose, layout, view, remote, 
       ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [tab, open]);
   function addSideChat(input?: ChatInput) {
-    const model = thread?.model || remote.models.find(entry => entry.isDefault)?.model || remote.models[0]?.model || '';
+    const model = thread?.model || directory.models.find(entry => entry.isDefault)?.model || directory.models[0]?.model || '';
     const id = sideChats.add({
-      model, effort: resolveReasoningEffort(remote.models.find(entry => entry.model === model), thread?.reasoningEffort ?? ''),
+      model, effort: thread?.reasoningEffort ?? '',
+      ...(thread?.modelProvider ? { modelProvider: thread.modelProvider } : {}),
       permissions: thread?.permissionProfile || '', ...((thread?.cwd || cwd) ? { cwd: (thread?.cwd || cwd)! } : {}),
       ...(thread && items.length ? { sourceThreadId: thread.id } : {}),
       ...(thread?.projectId ? { projectId: thread.projectId } : {}),
@@ -198,7 +210,8 @@ export function Inspector({ open, thread, items, onClose, layout, view, remote, 
         </div>
         {sideChats.chats.map(chat => <div key={chat.id} hidden={tab !== chat.id} className="side-chat-tab"
           role="tabpanel" id={`side-chat-${chat.id}`} aria-labelledby={`inspector-tab-${chat.id}`}>
-          <SideChatView chat={chat} remote={remote} layout={layout}
+          <SideChatView chat={chat} connection={connection} models={directory.models}
+            serverRequests={attention.serverRequests} actions={actions} layout={layout}
             onPatch={changes => sideChats.patch(chat.id, changes)}
             onSend={input => sideChats.send(chat.id, input)}
             onNew={() => addSideChat()} />

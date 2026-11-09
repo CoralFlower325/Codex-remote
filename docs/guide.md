@@ -11,7 +11,7 @@ See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
-Remote 0.2.25 pairs with stable manager 0.2.4, using manual installer upgrades.
+Remote 0.2.26 pairs with stable manager 0.2.4, using manual installer upgrades.
 Install 0.2.4 over the old app, select the same host root and retry the update.
 Updating Remote cannot change the old manager's bundled updater.
 Manager self-update is preserved on the paused 0.2.0AU development line;
@@ -277,7 +277,11 @@ npm run tunnel:windows -- -PublicHost codex.example.com
 
 The helper creates or reuses a remotely managed tunnel, sets its ingress, creates a matching DNS record when absent, saves the tunnel token locally, updates `.env`, and installs login tasks. An existing DNS record pointing elsewhere is not overwritten.
 
-The tunnel targets `http://127.0.0.1:4545`. Its readiness endpoint is `http://127.0.0.1:20241/ready`; ordinary connection logs are written to `data/cloudflared.log`. These are local diagnostics.
+The tunnel targets `http://127.0.0.1:4545`. A managed supervisor writes its
+owned metrics port to `data/tunnel-metrics.json` and exposes readiness below
+that loopback port; older installations may use the legacy port `20241`.
+Ordinary connection logs are written to `data/cloudflared.log`. These are local
+diagnostics.
 
 ### macOS
 
@@ -623,10 +627,13 @@ Remote. Runtime packages do not bundle LibreOffice. Missing converters,
 encrypted/damaged documents and conversion failures show a retryable error;
 the original file remains downloadable.
 
-Conversion copies the input into a private temporary directory with a fresh
-profile and disables macros, active OLE/DDE content and automatic document-link
-updates. It does not upload the document to an online viewer. It is not an OS
-sandbox: only preview files you trust. Original files are never rewritten.
+Conversion runs in an isolated low-privilege worker and copies the input into a
+private temporary directory with a fresh profile. It disables macros, active
+OLE/DDE content and automatic document-link updates, and does not upload the
+document to an online viewer. The worker has bounded queue and process
+timeouts, and subsequent conversions recover stale owned temporary
+directories. It is still not an OS sandbox: only preview files you trust.
+Original files are never rewritten.
 Input and rendered PDF are each limited to 32 MiB; one conversion runs at a time,
 with at most three distinct pending files and a 45-second process budget per
 file. The client allows 150 seconds including queueing. Hiding a preview releases
@@ -757,7 +764,7 @@ Commands call the owning App Server or open the corresponding UI. A failed comma
 
 - Models are read from native `model/list`; reasoning levels use each model's `supportedReasoningEfforts`. There is no fixed universal set of available levels.
 - Custom providers are configured in Codex, not in a separate Remote provider editor. Their exposed catalog determines the available choices.
-- Model and project metadata load in the authenticated bootstrap and refresh on reconnection. They are not continuously refreshed while the connection stays open. Currently, these two lists read their first requested page; task history, task lists, and permission profiles have separate pagination.
+- Model and project metadata load in the authenticated bootstrap and refresh on reconnection. They are not continuously refreshed while the connection stays open. Both catalogs follow native cursors to a complete snapshot with cycle and page limits; incomplete pages are discarded, while task history, task lists, and permission profiles retain separate pagination.
 - New chats currently initialize reasoning from the model catalog default. This can differ from a global Codex configuration override; select the desired level explicitly.
 - Permission profiles come from `permissionProfile/list` and update the current chat. Builtins include `:read-only`, `:workspace`, and `:danger-full-access`.
 - Main-chat drafts use tab-scoped `sessionStorage`: text, ready document references, skills and bounded image data. Attachment context is limited to 2 MiB per draft, 4 MiB total and 24 hours. Unfinished or oversized attachments show a recovery notice. Signing out or expired authentication clears private attachment context. Images have preview and removal controls. Successful sends clear only the submitted input; failures retain it, including when a new thread was created before its first send failed. Drafts do not synchronize with Desktop or other devices. Temporary side-chat drafts remain in memory only.

@@ -2,9 +2,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { releaseRepository as repository } from '../desktop/release-identity.mjs';
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const repository = 'CoralFlower325/Codex-remote';
 const version = '(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)';
 const filename = new RegExp(`^(?:codex-remote-runtime-${version}-(?:win32-x64|darwin-arm64)\\.(?:json|tar\\.gz)|Codex-Remote-Manager-${version}-(?:win-x64\\.exe|mac-arm64\\.(?:dmg|zip)))$`);
 

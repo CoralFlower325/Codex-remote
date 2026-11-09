@@ -9,6 +9,7 @@ import {
   mergeOlderHistoryItems,
   mergeOlderTurnTimings,
   reconcileActiveTurnId,
+  reconcileOptimisticUserMessages,
   reconcileThreadList,
   upsertItem
 } from './remote-state';
@@ -16,6 +17,17 @@ import type { TurnTiming } from '../shared/turn-timing';
 import type { Thread, ThreadItem } from './types';
 
 describe('remote thread state', () => {
+  it('drops an optimistic steer only when the native user message arrives', () => {
+    const optimistic: ThreadItem = {
+      type: 'userMessage', id: 'pending', turnId: 't', optimistic: 'sending',
+      content: [{ type: 'text', text: 'Steer now' }]
+    };
+    expect(reconcileOptimisticUserMessages([optimistic], [])).toEqual([optimistic]);
+    expect(reconcileOptimisticUserMessages([optimistic], [{
+      type: 'userMessage', id: 'native', turnId: 't', content: [{ type: 'text', text: 'Steer now' }]
+    }])).toEqual([]);
+  });
+
   it('does not clear or rewind a known live turn omitted by a lagging timing snapshot', () => {
     const live: TurnTiming = { id: 'live', status: 'inProgress', startedAt: 20, completedAt: null, durationMs: null };
     const old = { ...live, id: 'old', startedAt: 10 };

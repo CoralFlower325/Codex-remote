@@ -19,6 +19,7 @@ the authority for what is actually installed.
 | --- | --- | --- |
 | Full guide / 完整指南 | [User guide](guide.md) | [使用指南](guide.zh-CN.md) |
 | Setup / 安装 | [Quick start](guide.md#quick-start) | [快速开始](guide.zh-CN.md#快速开始) |
+| Physical devices / 真机验收 | [iPhone and macOS checklist](physical-device-acceptance.md) | [iPhone 与 macOS 验收](physical-device-acceptance.md) |
 | Configuration / 配置 | [Environment](guide.md#configuration) | [环境配置](guide.zh-CN.md#配置) |
 | Hosting / 公网访问 | [HTTPS access](guide.md#public-access) | [HTTPS 访问](guide.zh-CN.md#公网访问) |
 | Models and permissions / 模型与权限 | [Native state](guide.md#models-permissions-and-state) | [原生状态](guide.zh-CN.md#模型权限与状态) |
@@ -66,6 +67,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
+| [Remote 0.2.26 发布验收](remote-0.2.26-release-acceptance.md) | 0.2.26：完整目录、插话同步、终端隔离、预览/网络与发布治理；真机边界保留 |
 | [手机输入栏单行与单主操作](mobile-composer-single-action-0.2.25.md) | 0.2.25：移除听写、手机工具栏单行、运行中停止/引导单主按钮及八视口合成验收；真机边界保留 |
 | [0.2.22 对抗审查修复对账](adversarial-review-0.2.22-fixes.md) | 已发布 0.2.23 / manager 0.2.4：31 项对账、正式签名、三平台 CI、下载分发及 Windows 安装；真机边界保留 |
 | [Windows / macOS 调试端口自动发现](desktop-debug-discovery.md) | 0.2.24-rc：动态启动器端口、双平台可信路径、回环 CDP 校验与回退 |

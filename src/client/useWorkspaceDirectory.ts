@@ -7,6 +7,15 @@ import { dedupeThreads } from './workspace-model';
 import { isTaskThread } from '../shared/thread-source';
 import { markStartup } from './startup';
 import type { ModelInfo, ProjectInfo, Thread, WorkspaceBootstrap } from './types';
+import type { CatalogSnapshot } from '../shared/catalog';
+import type { DirectoryView } from './remote-contracts';
+import {
+  appendDirectoryThread,
+  removeDirectoryThread,
+  replaceDirectoryThread,
+  restoreSavedThreads,
+  updateDirectoryThread
+} from './workspace-directory-state';
 
 interface DirectoryOptions {
   bootstrap: WorkspaceBootstrap | null;
@@ -15,11 +24,53 @@ interface DirectoryOptions {
   setLastError: Dispatch<SetStateAction<string | null>>;
 }
 
-export function useWorkspaceDirectory({ bootstrap, disposedRef, authExpiredRef, setLastError }: DirectoryOptions) {
+type MetadataKind = 'models' | 'projects';
+type SeenKind = MetadataKind | 'threads';
+
+interface WorkspaceDirectoryCommands {
+  refreshThreads(firstPage?: NonNullable<WorkspaceBootstrap['threads']>): Promise<Thread[]>;
+  restartTaskRead(): void;
+  retryThreadsIfNeeded(): boolean;
+  recoverTaskRead(resumed: boolean): 'restarted' | 'retried' | null;
+  refreshMetadata(kind: MetadataKind): Promise<void>;
+  refreshProjects(): Promise<void>;
+  setMetadataRecovery(handler: ((force?: boolean) => void) | null): void;
+  requestMetadataRecovery(force?: boolean): void;
+  toggleArchivedMode(): Promise<void>;
+  isArchived(): boolean;
+  getThreads(): Thread[];
+  getThread(threadId: string): Thread | undefined;
+  appendThread(thread: Thread): void;
+  replaceThread(thread: Thread): void;
+  updateThread(threadId: string, update: (thread: Thread) => Thread): void;
+  removeThread(threadId: string): void;
+  restoreThreadsIfEmpty(saved: Thread[]): void;
+  hasSeenNative(kind: SeenKind): boolean;
+  markNativeSeen(kind: SeenKind): void;
+  replaceCatalog(kind: MetadataKind, data: ModelInfo[] | ProjectInfo[]): void;
+  restoreProjectsIfEmpty(projects: ProjectInfo[]): void;
+  metadataVersion(kind: MetadataKind): number;
+  metadataFailed(kind: MetadataKind): boolean;
+  metadataError(kind: MetadataKind): string | undefined;
+  disposeReads(): void;
+}
+
+export interface WorkspaceDirectoryController {
+  state: DirectoryView;
+  commands: WorkspaceDirectoryCommands;
+}
+
+export function useWorkspaceDirectory({
+  bootstrap,
+  disposedRef,
+  authExpiredRef,
+  setLastError
+}: DirectoryOptions): WorkspaceDirectoryController {
   const [threads, setThreads] = useState<Thread[]>(() => dedupeThreads((bootstrap?.threads?.data ?? []).filter(isTaskThread)));
   const [threadsLoading, setThreadsLoading] = useState(!bootstrap?.threads);
   const [models, setModels] = useState<ModelInfo[]>(bootstrap?.models?.data ?? []);
   const [projects, setProjects] = useState<ProjectInfo[]>(bootstrap?.projects?.data ?? []);
+  const [showArchived, setShowArchived] = useState(false);
   const threadsRef = useRef(threads);
   const listRefreshRef = useRef<Promise<Thread[]> | null>(null);
   const listPaginationRef = useRef<AbortController | null>(null);
@@ -36,7 +87,7 @@ export function useWorkspaceDirectory({ bootstrap, disposedRef, authExpiredRef, 
   const metadataVersionsRef = useRef({ models: 0, projects: 0 });
   const metadataFailuresRef = useRef(new Set<'models' | 'projects'>());
   const metadataErrorsRef = useRef<Partial<Record<'models' | 'projects', string>>>({});
-  const retryMetadataRef = useRef<() => void>(() => {});
+  const retryMetadataRef = useRef<(force?: boolean) => void>(() => {});
   const provisionalListRef = useRef(new Map<string, Thread>());
   const listRequestsRef = useRef(new ReadRequests());
   const metadataRequestsRef = useRef(new ReadRequests());
@@ -150,9 +201,12 @@ export function useWorkspaceDirectory({ bootstrap, disposedRef, authExpiredRef, 
   const refreshMetadata = useCallback(async (kind: 'models' | 'projects') => {
     const version = ++metadataVersionsRef.current[kind];
     try {
-      const result = await metadataRequestsRef.current.get<{ data: ModelInfo[] | ProjectInfo[] }>(
-        `/api/metadata?kind=${kind}`, 10000, 3);
+      const result = await metadataRequestsRef.current.get<CatalogSnapshot<ModelInfo | ProjectInfo>>(
+        `/api/metadata?kind=${kind}&fresh=1`, 10000, 3);
       if (disposedRef.current || metadataVersionsRef.current[kind] !== version) return;
+      if (!result.complete || result.nextCursor !== null) {
+        throw new Error('Native catalog is incomplete. Please retry.');
+      }
       metadataFailuresRef.current.delete(kind);
       const previousError = metadataErrorsRef.current[kind];
       delete metadataErrorsRef.current[kind];
@@ -160,10 +214,10 @@ export function useWorkspaceDirectory({ bootstrap, disposedRef, authExpiredRef, 
         ? metadataErrorsRef.current.models ?? metadataErrorsRef.current.projects ?? null : current);
       if (kind === 'models') {
         nativeModelsSeenRef.current = true;
-        setModels((result.data ?? []) as ModelInfo[]);
+        setModels(result.data as ModelInfo[]);
       } else {
         nativeProjectsSeenRef.current = true;
-        setProjects((result.data ?? []) as ProjectInfo[]);
+        setProjects(result.data as ProjectInfo[]);
       }
     } catch (error) {
       if (disposedRef.current || metadataVersionsRef.current[kind] !== version || isAbortedRequest(error)) return;
@@ -180,5 +234,128 @@ export function useWorkspaceDirectory({ bootstrap, disposedRef, authExpiredRef, 
 
   const refreshProjects = useCallback(() => refreshMetadata('projects'), [refreshMetadata]);
 
-  return { threads, threadsLoading, models, projects, setThreads, setThreadsLoading, setModels, setProjects, threadsRef, listRefreshRef, listPaginationRef, listRetryTimerRef, listFailuresRef, listStartedAtRef, listFirstPagePendingRef, listErrorRef, retryThreadsRef, archivedRef, nativeListSeenRef, nativeProjectsSeenRef, nativeModelsSeenRef, metadataVersionsRef, metadataFailuresRef, metadataErrorsRef, retryMetadataRef, provisionalListRef, listRequestsRef, metadataRequestsRef, refreshThreads, restartTaskRead, refreshMetadata, refreshProjects };
+  const retryThreadsIfNeeded = useCallback(() => {
+    if (listFailuresRef.current <= 0) return false;
+    retryThreadsRef.current();
+    return true;
+  }, []);
+
+  const recoverTaskRead = useCallback((resumed: boolean): 'restarted' | 'retried' | null => {
+    if (resumed && listFirstPagePendingRef.current && Date.now() - listStartedAtRef.current >= 2000) {
+      restartTaskRead();
+      return 'restarted';
+    }
+    return retryThreadsIfNeeded() ? 'retried' : null;
+  }, [restartTaskRead, retryThreadsIfNeeded]);
+
+  const setMetadataRecovery = useCallback((handler: ((force?: boolean) => void) | null) => {
+    retryMetadataRef.current = handler ?? (() => {});
+  }, []);
+
+  const requestMetadataRecovery = useCallback((force = false) => {
+    retryMetadataRef.current(force);
+  }, []);
+
+  const toggleArchivedMode = useCallback(async () => {
+    const next = !archivedRef.current;
+    archivedRef.current = next;
+    setShowArchived(next);
+    setThreads([]);
+    provisionalListRef.current.clear();
+    listPaginationRef.current?.abort();
+    listRequestsRef.current.cancel();
+    await listRefreshRef.current?.catch(() => undefined);
+    listRefreshRef.current = null;
+    await refreshThreads();
+  }, [refreshThreads]);
+
+  const getThreads = useCallback(() => threadsRef.current, []);
+  const getThread = useCallback((threadId: string) => threadsRef.current.find(thread => thread.id === threadId), []);
+  const appendThread = useCallback((thread: Thread) => {
+    setThreads(current => appendDirectoryThread(current, thread));
+  }, []);
+  const replaceThread = useCallback((thread: Thread) => {
+    setThreads(current => replaceDirectoryThread(current, thread));
+  }, []);
+  const updateThread = useCallback((threadId: string, update: (thread: Thread) => Thread) => {
+    setThreads(current => updateDirectoryThread(current, threadId, update));
+  }, []);
+  const removeThread = useCallback((threadId: string) => {
+    setThreads(current => {
+      const next = removeDirectoryThread(current, threadId);
+      threadsRef.current = next;
+      return next;
+    });
+  }, []);
+  const restoreThreadsIfEmpty = useCallback((saved: Thread[]) => {
+    setThreads(current => {
+      if (current.length) return current;
+      saved.forEach(thread => provisionalListRef.current.set(thread.id, thread));
+      const next = restoreSavedThreads(current, saved);
+      threadsRef.current = next;
+      return next;
+    });
+  }, []);
+  const hasSeenNative = useCallback((kind: SeenKind) => kind === 'threads'
+    ? nativeListSeenRef.current : kind === 'models' ? nativeModelsSeenRef.current : nativeProjectsSeenRef.current, []);
+  const markNativeSeen = useCallback((kind: SeenKind) => {
+    if (kind === 'threads') nativeListSeenRef.current = true;
+    else if (kind === 'models') nativeModelsSeenRef.current = true;
+    else nativeProjectsSeenRef.current = true;
+  }, []);
+  const replaceCatalog = useCallback((kind: MetadataKind, data: ModelInfo[] | ProjectInfo[]) => {
+    if (kind === 'models') setModels(data as ModelInfo[]);
+    else setProjects(data as ProjectInfo[]);
+  }, []);
+  const restoreProjectsIfEmpty = useCallback((saved: ProjectInfo[]) => {
+    setProjects(current => current.length ? current : saved);
+  }, []);
+  const metadataVersion = useCallback((kind: MetadataKind) => metadataVersionsRef.current[kind], []);
+  const metadataFailed = useCallback((kind: MetadataKind) => metadataFailuresRef.current.has(kind), []);
+  const metadataError = useCallback((kind: MetadataKind) => metadataErrorsRef.current[kind], []);
+  const disposeReads = useCallback(() => {
+    window.clearTimeout(listRetryTimerRef.current);
+    listPaginationRef.current?.abort();
+    listRequestsRef.current.cancel();
+    metadataRequestsRef.current.cancel();
+    listRefreshRef.current = null;
+    retryMetadataRef.current = () => {};
+  }, []);
+
+  return {
+    state: {
+      threads,
+      threadsLoading,
+      models,
+      projects,
+      showArchived
+    },
+    commands: {
+      refreshThreads,
+      restartTaskRead,
+      retryThreadsIfNeeded,
+      recoverTaskRead,
+      refreshMetadata,
+      refreshProjects,
+      setMetadataRecovery,
+      requestMetadataRecovery,
+      toggleArchivedMode,
+      isArchived: () => archivedRef.current,
+      getThreads,
+      getThread,
+      appendThread,
+      replaceThread,
+      updateThread,
+      removeThread,
+      restoreThreadsIfEmpty,
+      hasSeenNative,
+      markNativeSeen,
+      replaceCatalog,
+      restoreProjectsIfEmpty,
+      metadataVersion,
+      metadataFailed,
+      metadataError,
+      disposeReads
+    }
+  };
 }

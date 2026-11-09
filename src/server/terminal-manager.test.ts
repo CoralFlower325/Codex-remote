@@ -29,6 +29,10 @@ describe('workspace terminals with a real PTY', () => {
       .map((message) => message.data).join(''), { timeout: 20_000, interval: 50 }).toContain(text);
   }
 
+  function processAlive(pid: number): boolean {
+    try { process.kill(pid, 0); return true; } catch { return false; }
+  }
+
   it('starts in the workspace and preserves output and shell state across detach/reattach', async () => {
     const workspace = manager.open();
     const id = manager.create(workspace);
@@ -82,6 +86,29 @@ describe('workspace terminals with a real PTY', () => {
     expect(manager.list(first)).toHaveLength(0);
     expect(manager.list(second)[0]?.id).toBe(otherId);
   }, 45_000);
+
+  it('reaps a descendant process after explicitly closing the terminal', async () => {
+    const workspace = manager.open();
+    const id = manager.create(workspace);
+    const messages: TerminalServerMessage[] = [];
+    manager.attach(workspace, id, message => messages.push(message));
+    const helper = path.join(directory, 'descendant.cjs');
+    const pidFile = path.join(directory, 'descendant.pid');
+    fs.writeFileSync(helper,
+      "require('node:fs').writeFileSync(process.argv[2], String(process.pid)); setInterval(() => {}, 1000);\n");
+    const powershell = value => `'${value.replace(/'/g, "''")}'`;
+    const posix = value => `'${value.replace(/'/g, "'\\''")}'`;
+    manager.input(workspace, id, command(
+      `Start-Process -FilePath ${powershell(process.execPath)} -ArgumentList @(${powershell(helper)},${powershell(pidFile)}) -WindowStyle Hidden | Out-Null`,
+      `${posix(process.execPath)} ${posix(helper)} ${posix(pidFile)} >/dev/null 2>&1 &`
+    ));
+    await expect.poll(() => fs.existsSync(pidFile), { timeout: 20_000, interval: 50 }).toBe(true);
+    const pid = Number(fs.readFileSync(pidFile, 'utf8'));
+    expect(pid).toBeGreaterThan(0);
+    expect(processAlive(pid)).toBe(true);
+    manager.close(workspace, id);
+    await expect.poll(() => processAlive(pid), { timeout: 20_000, interval: 100 }).toBe(false);
+  }, 30_000);
 
   it('restores ANSI screen content at the saved size and reports exit status', async () => {
     const workspace = manager.open();

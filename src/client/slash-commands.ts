@@ -68,7 +68,7 @@ export function slashOptions(query: SlashQuery, skills: SkillInfo[], context: {
   );
 }
 
-export function collaborationMode(mode: 'default' | 'plan', model: string, effort: string): CollaborationMode {
+export function collaborationMode(mode: 'default' | 'plan', model: string, effort: string | null | undefined): CollaborationMode {
   return { mode, settings: { model, reasoning_effort: effort || null, developer_instructions: null } };
 }
 

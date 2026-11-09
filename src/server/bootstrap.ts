@@ -1,4 +1,5 @@
 import type { ClientRpcMethod } from '../shared/protocol.js';
+import { readCompleteCatalog } from '../shared/catalog.js';
 
 type Request = (method: ClientRpcMethod, params: unknown) => Promise<unknown>;
 
@@ -47,12 +48,12 @@ export class MetadataReader {
     return entry.promise;
   };
 
-  clear(method?: 'model/list' | 'project/list'): void {
+  clear = (method?: 'model/list' | 'project/list'): void => {
     if (!method) this.entries.clear();
     else for (const key of this.entries.keys()) {
       if (key.startsWith(`${method}:`)) this.entries.delete(key);
     }
-  }
+  };
 }
 
 export async function readWorkspaceBootstrap(
@@ -74,8 +75,8 @@ export async function readWorkspaceBootstrap(
   const threads = readThreadListPage(read).catch(() => null);
   let models: unknown = null;
   let projects: unknown = null;
-  void read('model/list', { limit: 100, includeHidden: false }).then(value => { models = value; }, () => {});
-  void read('project/list', { limit: 200 }).then(value => { projects = value; }, () => {});
+  void readCompleteCatalog(read, 'models').then(value => { models = value; }, () => {});
+  void readCompleteCatalog(read, 'projects').then(value => { projects = value; }, () => {});
   return {
     threads: await threads,
     models,

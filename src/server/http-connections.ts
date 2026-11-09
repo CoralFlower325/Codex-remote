@@ -1,5 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 
+export const MAX_HTTP_PEER_BUFFER = 2 * 1024 * 1024;
+
 export interface RemotePeer {
   readonly readyState: number;
   readonly bufferedAmount: number;
@@ -9,12 +11,30 @@ export interface RemotePeer {
 
 class HttpPeer implements RemotePeer {
   readyState = 1;
-  constructor(private response: Response) {}
+  constructor(private readonly response: Response) {}
   get bufferedAmount(): number { return this.response.writableLength; }
   send(data: string): void {
-    if (this.readyState === 1) this.response.write(`data: ${data}\n\n`);
+    if (this.readyState !== 1) return;
+    const frame = `data: ${data}\n\n`;
+    if (Buffer.byteLength(frame) + this.bufferedAmount > MAX_HTTP_PEER_BUFFER) {
+      this.close(1013, 'Connection congested; resume.');
+      return;
+    }
+    try {
+      if (!this.response.write(frame)) {
+        // Node will buffer writes internally. Stop accepting more once the
+        // bounded stream has crossed the limit instead of growing without bound.
+        if (this.bufferedAmount >= MAX_HTTP_PEER_BUFFER) this.close(1013, 'Connection congested; resume.');
+      }
+    } catch {
+      this.close(1011, 'Message delivery failed.');
+    }
   }
-  close(): void {
+  sendKeepalive(): void {
+    if (this.readyState !== 1 || this.bufferedAmount >= MAX_HTTP_PEER_BUFFER) return;
+    try { this.response.write(': keepalive\n\n'); } catch { this.close(1011, 'Message delivery failed.'); }
+  }
+  close(_code = 1000, _reason = ''): void {
     if (this.readyState !== 1) return;
     this.readyState = 3;
     this.response.end();
@@ -44,7 +64,7 @@ export function httpConnections({
     const peer = new HttpPeer(res);
     peers.set(id, peer);
     const keepalive = setInterval(() => {
-      if (!res.destroyed) res.write(': keepalive\n\n');
+      if (!res.destroyed) peer.sendKeepalive();
     }, 15_000);
     keepalive.unref();
     res.on('close', () => {

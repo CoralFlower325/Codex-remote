@@ -3,7 +3,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { c as archive } from 'tar';
-import { sha256, sourceHash, runtimeNames, runtimePath, validateManifest, unpackRuntime, downloadAsset } from './runtime-package.mjs';
+import { assertManifestRuntimeNode, downloadAsset, runtimeNames, runtimeNodeAbi, runtimePath,
+  sha256, sourceHash, validateManifest, unpackRuntime } from './runtime-package.mjs';
 import { prepareUpdate, installUpdate } from './updater.mjs';
 import { signedFixture } from '../scripts/test-release-signing.mjs';
 
@@ -21,6 +22,7 @@ async function fixture() {
   const source = { 'package.json': JSON.stringify({ name: 'codex-remote', version: '0.1.14' }),
     'scripts/remote-control-windows.ps1': 'new controls',
     'scripts/remote-control-macos.sh': 'new controls',
+    'scripts/terminal-job-windows.ps1': 'new job helper',
     'scripts/check-runtime.mjs': '// runtime smoke',
     'src/main.ts': 'export const value = 1;' };
   const base = { ...source, 'package.json': JSON.stringify({ name: 'codex-remote', version: '0.1.13' }),
@@ -41,7 +43,8 @@ async function fixture() {
   await archive({ cwd: payload, file: filename, gzip: true, portable: true }, Object.keys(files));
   const bytes = await fs.readFile(filename);
   const manifest = { format: 1, repository: 'CoralFlower325/Codex-remote', version: '0.1.14',
-    commit: 'a'.repeat(40), platform: process.platform, arch: process.arch, files,
+    commit: 'a'.repeat(40), platform: process.platform, arch: process.arch,
+    node: runtimeNodeAbi('22.19.0', '127'), files,
     sources: Object.fromEntries(Object.entries(source).map(([name, value]) => [name, sourceHash(Buffer.from(value))])),
     baselines: { '0.1.13': Object.fromEntries(Object.entries(base).map(([name, value]) => [name, sourceHash(Buffer.from(value))])) },
     archive: { size: bytes.length, sha256: sha256(bytes) } };
@@ -55,6 +58,7 @@ async function fixture() {
   const execute = vi.fn(async (_command, args) => {
     if (args[0] === 'node') return 'node';
     if (args[0] === '--version') return 'v22.19.0';
+    if (args[0] === '-p' && args[1] === 'process.versions.modules') return '127';
     if (args[0] === 'scripts/check-runtime.mjs') return 'runtime smoke passed';
     throw new Error(`Unexpected command: ${args.join(' ')}`);
   });
@@ -76,12 +80,22 @@ describe('prebuilt runtime packages', () => {
     const result = await installUpdate(item, { stop: vi.fn(), start, verify: vi.fn(), isRunning: async () => false });
     expect(result.mode).toBe('runtime');
     expect(start).not.toHaveBeenCalled();
-    expect(execute.mock.calls).toHaveLength(3);
+    expect(execute.mock.calls).toHaveLength(4);
     expect(await fs.readFile(path.join(root, 'node_modules/dependency/index.js'), 'utf8')).toBe('new dependency');
     expect(await fs.readFile(path.join(root, 'data/auth.json'), 'utf8')).toBe('private');
     expect(await fs.readFile(path.join(root, 'README.md'), 'utf8')).toBe('private documentation');
     expect(progress.at(-1)).toMatchObject({ status: 'completed', percent: 100 });
     expect(progress.map((state) => state.percent)).toEqual(progress.map((state) => state.percent).sort((a, b) => a - b));
+  });
+  it('fails closed before installing a runtime when the system Node ABI differs', async () => {
+    const { root, release, fetcher, execute, trustedKeys } = await fixture();
+    const mismatched = vi.fn(async (command, args, options) => {
+      if (args[0] === '-p' && args[1] === 'process.versions.modules') return '137';
+      return execute(command, args, options);
+    });
+    await expect(prepareUpdate(root, release, () => {}, mismatched, { fetcher, trustedKeys }))
+      .rejects.toThrow('运行包需要 Node 22.19');
+    expect(await fs.readFile(path.join(root, 'dist-server/server/index.js'), 'utf8')).toBe('old server');
   });
   it('falls back to isolated source preparation for added local build inputs', async () => {
     const { root, release, fetcher, trustedKeys } = await fixture();
@@ -142,6 +156,10 @@ describe('prebuilt runtime packages', () => {
   it('verifies every extracted file and rejects an incompatible platform', async () => {
     const { output, filename, manifest } = await fixture();
     expect(() => validateManifest({ ...manifest, platform: 'invalid' }, { version: '0.1.14' })).toThrow();
+    expect(() => validateManifest({ ...manifest, node: undefined }, { version: '0.1.14' }))
+      .toThrow('版本、平台或校验信息');
+    expect(() => assertManifestRuntimeNode(manifest, runtimeNodeAbi('24.15.0', '137')))
+      .toThrow('运行包需要 Node 22.19');
     manifest.files['dist/client/index.html'].sha256 = '0'.repeat(64);
     await expect(unpackRuntime(filename, path.join(output, 'unpacked'), manifest)).rejects.toThrow('校验失败');
   });

@@ -15,37 +15,35 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.25** / manager **0.2.4**, tag
-`v0.2.25`, functional commit `e2300bc4e2ee7787dcc0eae803ce46cac819a925`.
+The current published release is Remote **0.2.26** / manager **0.2.4**, tag
+`v0.2.26`, functional commit `a7f27ec`.
 The [mobile composer acceptance](mobile-composer-single-action-0.2.25.md) records
 the single-row toolbar, removed browser dictation and single Stop/Steer action.
 The preceding [Windows / macOS discovery acceptance](desktop-debug-discovery.md)
 retains the trusted automatic port discovery work. The
 [adversarial-review reconciliation](adversarial-review-0.2.22-fixes.md) retains
 the 31-item 0.2.23 batch.
-Local validation passed 128 test files (1026 tests, two platform skips),
-typecheck, both builds and browser acceptance. Main CI `42548162945`, runtime CI
-`42548178124` and manager plan `42548178177` passed; the manager plan correctly
-skipped unchanged packaging.
+The 0.2.26 source batch adds the steer/bridge fixes and the previously reviewed
+terminal, preview, transport, catalog and structure changes. Local validation
+currently covers 136 test files (1054 passed, two platform skips), typecheck,
+the application and manager builds, synthetic browser acceptance and the
+Windows worker acceptance. Runtime packaging remains gated on the tested
+Node 22.19.x toolchain and signed assets.
 All four official runtime attachments and the refreshed distribution download
 metadata passed size and digest checks. The signed Windows/macOS archives passed
 pinned-key verification, exact source-tree comparison and individual checks of
 3079/3072 files.
-Local and public frontends report Remote 0.2.25 with build
-`assets/index-0UZFYoj4.js`; the distribution latest endpoint reports `v0.2.25`.
-Desktop transport is ready and anonymous private reads return 401. Only Remote
-and the Cloudflare static frontend changed; Desktop, Tunnel and the domestic
-relay were preserved. The unchanged manager 0.2.4 retains its configuration and
-prior rollback backups. Never start another App Server.
+The published 0.2.25 deployment surface remains Remote 0.2.25 with build
+`assets/index-0UZFYoj4.js` until a separate deployment is confirmed. The
+0.2.26 source release does not by itself change the installed or public
+frontend. Never start another App Server.
 
-Remote **0.2.25** promotes the accepted 0.2.25-rc work to the formal channel;
-manager **0.2.4** is unchanged. It keeps the mobile composer toolbar on one row
-without shrinking its 36px or 44px controls, removes browser dictation, and makes
-the active-turn composer expose one primary action: Stop for an empty input, then
-Steer when content is present. Queue mode remains in queued-message actions. The
-preceding 0.2.24-rc work adds macOS discovery through the fixed `/bin/ps` command
-for trusted Applications bundles, alongside Windows process discovery. The
-formal Release record will identify the exact promotion commit and signed assets.
+Remote **0.2.26** keeps the mobile composer toolbar on one row without shrinking
+its 36px or 44px controls. Active turns show a visible guidance/queue mode hint;
+an interjection is rendered immediately as a local user item until the native
+item arrives. Read-only Desktop RPC timeouts no longer tear down the live event
+bridge. Manager **0.2.4** is unchanged, and the formal Release record will
+identify the exact promotion commit and signed assets.
 
 Runtime updates now require Ed25519 publisher signatures against bundled public
 keys, including signed commit identity for source fallback. The private key stays
@@ -55,12 +53,26 @@ formal runtime release. Manager 0.2.4 requires its own installer; changing Remot
 does not patch an already installed manager. AU self-update and macOS application
 signing/notarization remain paused.
 
-Native PTYs are now isolated in owned processes with bounded IPC and session
-counts. A worker crash is visible and does not terminate Remote or replay input.
-The historical native access violation still has no established upstream root
-cause. Platform output uses bounded rotating logs; macOS controls use the
-same-PID background wrapper and retain ownership checks. Local synthetic checks
-do not establish signed-in macOS service behavior.
+Native PTYs are isolated in owned processes with bounded IPC and session counts.
+Windows workers attach to a kill-on-close Job Object before the shell starts;
+POSIX workers use an owned process group. A worker crash is visible and does not
+terminate Remote or replay input. The historical native access violation still
+has no established upstream root cause, but the new helper, descendant cleanup
+and real PTY lifecycle tests pass. Platform output uses bounded rotating logs;
+macOS controls use the same-PID background wrapper and retain ownership checks.
+Local synthetic checks do not establish signed-in macOS service behavior.
+
+The current implementation branch after `v0.2.25` adds complete cursor-following
+model/project catalogs, explicit reasoning inherit/default semantics, ordered
+settings acknowledgements, isolated Office conversion workers, bounded SSE
+backpressure, a supervisor-owned dynamic tunnel metrics port, explicit client
+view/action contracts and split Home/Thread screens. It also requires prebuilt
+runtime packages to match the tested Node 22.19.x ABI. These changes are not a
+claim that a new Release or host installation exists. The latest branch-level
+validation passed 135 test files (1049 tests, two platform skips), typecheck,
+the application and manager builds, synthetic browser acceptance and the
+Windows worker acceptance. Physical-device acceptance is tracked in
+[physical-device-acceptance.md](physical-device-acceptance.md).
 
 The following paragraphs retain historical 0.2.23 and earlier observations:
 Remote 0.2.22 pairs with unchanged manager 0.2.3; manager installers remain
@@ -145,9 +157,10 @@ Outstanding acceptance:
 - Sustained connection stability under real network/proxy changes. Earlier
   intermittent public failures are not proven eliminated by short live probes.
 
-Model/project catalogs currently read their first requested page. New-chat
-reasoning defaults can differ from global configuration overrides. Remote PTYs
-run as the host user outside model permission profiles.
+Model/project catalogs are read to completion and incomplete snapshots are
+rejected. A thread without an explicit effort still inherits native/global
+configuration rather than being silently rewritten to the catalog default.
+Remote PTYs run as the host user outside model permission profiles.
 
 ## Release and Recovery
 

@@ -168,9 +168,13 @@ export const MessageItem = memo(function MessageItem({ item, showFull = false, s
     const documents = documentReferences(item.content ?? []);
     const long = displayText.length > 900 && !showFull;
     return (
-      <article className="message message--user" data-user-key={itemKey(item)} data-turn-id={item.turnId}
+      <article className={`message message--user${item.optimistic ? ' message--optimistic' : ''}`}
+        data-user-key={itemKey(item)} data-turn-id={item.turnId}
         data-scroll-anchor={itemKey(item)}>
         <div className="user-message-body">
+          {item.optimistic && <div className="user-message-status" role="status">
+            {item.optimistic === 'sending' ? '正在引导当前任务…' : '等待原生确认…'}
+          </div>}
           {heartbeat && <div className="automation-run-label"><CalendarClock size={12} aria-hidden="true" />由自动任务发送</div>}
           {images.length > 0 && <div className="user-message-attachments" aria-label={`${images.length} 个图片附件`}>
             {images.map((entry, index) => (

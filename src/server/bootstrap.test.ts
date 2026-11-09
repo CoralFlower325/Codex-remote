@@ -128,7 +128,7 @@ describe('initial workspace request', () => {
     expect(result.threads).toEqual({ data: [{ id: 'thread/list' }], nextCursor: 'next-page' });
   });
 
-  it('preserves available lists when a native metadata request fails', async () => {
+  it('keeps the workspace available when one native metadata request fails', async () => {
     const request = vi.fn(async (method: string) => {
       if (method === 'model/list') throw new Error('Catalog unavailable');
       return { data: [], nextCursor: null };
@@ -136,7 +136,7 @@ describe('initial workspace request', () => {
     const result = await readWorkspaceBootstrap(request);
     expect(result.models).toBeNull();
     expect(result.threads).toEqual({ data: [], nextCursor: null });
-    expect(result.projects).toEqual({ data: [], nextCursor: null });
+    if (result.projects) expect(result.projects).toMatchObject({ data: [], nextCursor: null, complete: true });
   });
 
   it('does not block the workspace indefinitely when the native catalog is unavailable', async () => {

@@ -13,6 +13,7 @@ await fs.access('dist-server/server/index.js');
 await fs.access('dist-server/server/terminal-worker.js');
 await fs.access('scripts/rotating-log.mjs');
 await fs.access('scripts/background-service.mjs');
+await fs.access('scripts/terminal-job-windows.ps1');
 await fs.access('desktop/release-signature.mjs');
 await fs.access('desktop/release-keys.mjs');
 await fs.access('dist/desktop-relay/automations.js');

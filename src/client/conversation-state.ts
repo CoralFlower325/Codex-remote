@@ -11,6 +11,7 @@ export interface ChatViewState {
   sourceThreadId?: string;
   threadId?: string;
   model: string;
+  modelProvider?: string;
   effort: string;
   permissions: string;
   mode: 'default' | 'plan';

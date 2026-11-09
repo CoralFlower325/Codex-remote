@@ -79,7 +79,8 @@ export async function runtimeNode(execute) {
   const node = found.split(/\r?\n/)[0];
   const version = await execute(node, ['--version'], { env });
   if (compareVersions(version, '22.19.0') < 0) throw new Error('Node.js 22.19+ is required.');
-  return { node, env };
+  const modules = await execute(node, ['-p', 'process.versions.modules'], { env });
+  return { node, env, version: version.trim().replace(/^v/, ''), modules: modules.trim() };
 }
 
 export const hash = (bytes) => bytes ? crypto.createHash('sha256').update(bytes).digest('hex') : null;

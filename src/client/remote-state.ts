@@ -110,7 +110,8 @@ export function upsertItem(items: ThreadItem[], next: ThreadItem, append = false
 export function mergeEmbeddedTurnItems(items: ThreadItem[], turnId: string, incoming: unknown, viewingHistory: boolean,
   timings: Record<string, TurnTiming> = {}): ThreadItem[] {
   if (!Array.isArray(incoming) || !incoming.length) return items;
-  const currentTurn = items.filter(item => item.turnId === turnId);
+  const reconciled = reconcileOptimisticUserMessages(items, incoming, turnId);
+  const currentTurn = reconciled.filter(item => item.turnId === turnId);
   const existing = new Map(currentTurn.map(item => [itemKey(item), item]));
   const updates = new Map<string, ThreadItem>();
   for (const item of incoming) {
@@ -122,8 +123,8 @@ export function mergeEmbeddedTurnItems(items: ThreadItem[], turnId: string, inco
       ...(next.startedAtMs == null && current?.startedAtMs != null ? { startedAtMs: current.startedAtMs } : {}),
       ...(next.completedAtMs == null && current?.completedAtMs != null ? { completedAtMs: current.completedAtMs } : {}) });
   }
-  if (!updates.size) return items;
-  if (viewingHistory) return items.map(item => updates.get(itemKey(item)) ?? item);
+  if (!updates.size) return reconciled;
+  if (viewingHistory) return reconciled.map(item => updates.get(itemKey(item)) ?? item);
   // Reconcile inside the owning turn so delayed payloads cannot land after a later turn.
   // Keep local-only entries by their next known neighbour; the native array orders known items.
   const before = new Map<string, ThreadItem[]>();
@@ -142,17 +143,39 @@ export function mergeEmbeddedTurnItems(items: ThreadItem[], turnId: string, inco
   if (!anchored) { prefix = remaining; remaining = []; }
   const merged = [...prefix, ...[...updates].flatMap(([key, item]) => [...(before.get(key) ?? []), item])];
   merged.push(...remaining);
-  const start = items.findIndex(item => item.turnId === turnId);
+  const start = reconciled.findIndex(item => item.turnId === turnId);
   if (start === -1) {
-    const position = unseenTurnPosition(items, turnId, timings);
-    return position < 0 ? items : [...items.slice(0, position), ...merged, ...items.slice(position)];
+    const position = unseenTurnPosition(reconciled, turnId, timings);
+    return position < 0 ? reconciled : [...reconciled.slice(0, position), ...merged, ...reconciled.slice(position)];
   }
-  return [...items.slice(0, start), ...merged,
-    ...items.slice(start).filter(item => item.turnId !== turnId)];
+  return [...reconciled.slice(0, start), ...merged,
+    ...reconciled.slice(start).filter(item => item.turnId !== turnId)];
 }
 
 export function itemKey(item: { id: string; turnId?: string }): string {
   return JSON.stringify([item.turnId ?? '', item.id]);
+}
+
+function userMessageContentKey(item: Extract<ThreadItem, { type: 'userMessage' }>): string {
+  return JSON.stringify(item.content.map(entry =>
+    [entry.type, entry.text ?? '', entry.name ?? '', entry.path ?? '', entry.url ?? '']));
+}
+
+export function reconcileOptimisticUserMessages(items: ThreadItem[], incoming: unknown[],
+  fallbackTurnId?: string): ThreadItem[] {
+  const nativeUserMessages = incoming
+    .filter((item): item is Extract<ThreadItem, { type: 'userMessage' }> =>
+      Boolean(item) && typeof item === 'object' && (item as { type?: string }).type === 'userMessage' &&
+      typeof (item as { id?: unknown }).id === 'string' && Array.isArray((item as { content?: unknown }).content))
+    .map(item => ({ id: item.id, key: userMessageContentKey(item),
+      turnId: typeof item.turnId === 'string' ? item.turnId : fallbackTurnId }));
+  if (!nativeUserMessages.length) return items;
+  return items.filter(item => {
+    if (item.type !== 'userMessage' || !item.optimistic) return true;
+    return !nativeUserMessages.some(native => native.id === item.id ||
+      (!native.turnId || native.turnId === item.turnId) &&
+        native.key === userMessageContentKey(item));
+  });
 }
 
 export function mergeLatestHistoryItems(

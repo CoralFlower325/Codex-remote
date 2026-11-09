@@ -18,6 +18,7 @@ describe('runtime staging', () => {
       expect(runtimeFile(name.replaceAll('/', '\\'))).toBe(false);
     }
     for (const name of ['src/client/components/ThreadTimeline.tsx', 'scripts/prepare-terminal.mjs',
+      'scripts/terminal-job-windows.ps1',
       'node_modules/node-pty/lib/index.js', 'node_modules/unified/index.js', 'dist/client/assets/worker.js']) {
       expect(runtimeFile(name)).toBe(true);
     }

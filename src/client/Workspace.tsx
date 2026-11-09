@@ -14,29 +14,20 @@ import {
   X
 } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { v4 as randomUUID } from 'uuid';
 
 import { api } from './api';
-import { QuestionDock } from './components/QuestionDock';
-import { ApprovalDock } from './components/ApprovalDock';
-import { Composer } from './components/Composer';
 import { ComposerDrafts, createBrowserComposerDrafts } from './components/ComposerDrafts';
 import { Inspector } from './components/Inspector';
 import { WorkspacePanels } from './components/WorkspacePanels';
 import { Sidebar } from './components/Sidebar';
-import { ThreadTimeline } from './components/ThreadTimeline';
 import { CommandDialog, type CommandDialogState } from './components/CommandDialog';
 import { displayThreadTitle } from './remote-state';
 import { useRemote } from './useRemote';
-import type { ComposerAttachment, SkillInfo, Thread, WorkspaceBootstrap } from './types';
-import { layoutForViewport, modelDisplayName, reasoningLabel, resolveReasoningEffort } from './workspace-model';
+import type { ComposerAttachment, SkillInfo, WorkspaceBootstrap } from './types';
+import { findModelInfo, modelDisplayName, reasoningLabel, reasoningOptionsForModel } from './workspace-model';
 import { collaborationMode, slashCommands, type SlashCommandId } from './slash-commands';
 import { permissionLabel } from '../shared/permissions';
 import type { ChatInput } from './queued-messages';
-import { editableInterruptedMessage, type UserMessage } from './message-edit';
-import { EditMessageDialog } from './components/EditMessageDialog';
-import { turnInput } from './slash-commands';
-import { QueuedMessages } from './components/QueuedMessages';
 import { PreviewLinks } from './components/PreviewLinks';
 import { SubagentsContext } from './components/Subagents';
 import { useSubagentChats } from './useSubagentChats';
@@ -46,7 +37,6 @@ import type { PreviewTarget } from '../shared/file-preview';
 import { markStartup } from './startup';
 import { unlinkDeviceNotifications } from './push-notifications';
 import { toggleInspectorLauncher, type InspectorView } from './inspector-state';
-import { GoalStatus } from './components/GoalStatus';
 import { SummaryPanel } from './components/SummaryPanel';
 import { useSideChats } from './useSideChats';
 import { useWorkspaceLocation } from './useWorkspaceLocation';
@@ -54,6 +44,10 @@ import { ProjectRootPicker } from './components/ProjectRootPicker';
 import { readProjectRoots, rememberProjectRoot, selectedProjectRoot, threadProject } from './project-roots';
 import { clearComposerDraftContext, sendTransferredComposerDraft, type ComposerInput } from './composer-drafts';
 import { clearActionIntents } from './action-intents';
+import { projectRemoteViews } from './remote-contracts';
+import { HomeView } from './components/HomeView';
+import { ThreadScreen } from './components/ThreadScreen';
+import { useResponsiveLayout } from './useResponsiveLayout';
 import './styles/audit-followup.css';
 
 interface WorkspaceProps {
@@ -64,14 +58,12 @@ interface WorkspaceProps {
   startupError?: string | null;
   onStartupRetry?: () => void;
 }
-
-type LayoutMode = 'desktop' | 'mobile';
-
 const TerminalPanel = lazy(() => import('./components/TerminalPanel'));
 
 export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRequest,
   startupError, onStartupRetry }: WorkspaceProps) {
   const remote = useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRequest });
+  const views = projectRemoteViews(remote);
   const [composerDrafts] = useState(createBrowserComposerDrafts);
   useEffect(() => { markStartup('shell'); }, []);
   const layout = useResponsiveLayout();
@@ -160,13 +152,9 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
 
   const activeThread = remote.activeThread;
   const defaultModel = remote.models.find((model) => model.isDefault) ?? remote.models[0];
-  const activeModelInfo =
-    remote.models.find((model) => model.model === (activeThread?.model || newTaskModel)) ?? defaultModel;
-  const activeEffort = resolveReasoningEffort(
-    activeModelInfo,
-    activeThread?.reasoningEffort || newTaskEffort
-  );
   const effectiveModel = activeThread?.model || newTaskModel || defaultModel?.model || '';
+  const activeModelInfo = findModelInfo(remote.models, effectiveModel, activeThread?.modelProvider) ?? undefined;
+  const activeEffort = activeThread ? activeThread.reasoningEffort ?? '' : newTaskEffort;
   const effectivePermissions = activeThread?.permissionProfile || newTaskPermissions || remote.defaultPermissionProfile || '';
   const currentProject = activeThread ? threadProject(activeThread, remote.projects)
     : remote.projects.find(project => project.id === selectedProjectId);
@@ -222,12 +210,6 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   }, [defaultModel, newTaskModel]);
 
   useEffect(() => {
-    if (!newTaskEffort && defaultModel) {
-      setNewTaskEffort(resolveReasoningEffort(defaultModel, defaultModel.defaultReasoningEffort));
-    }
-  }, [defaultModel, newTaskEffort]);
-
-  useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.target instanceof Element && event.target.closest('dialog[open]')) return;
       const editing = event.target instanceof Element &&
@@ -277,13 +259,17 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   }
 
   async function changeModel(model: string) {
-    const info = remote.models.find((entry) => entry.model === model);
+    const info = findModelInfo(remote.models, model);
     if (!activeThread) {
       setNewTaskModel(model);
-      setNewTaskEffort(resolveReasoningEffort(info, newTaskEffort));
+      if (newTaskEffort && !reasoningOptionsForModel(info).some(option => option.value === newTaskEffort)) {
+        setNewTaskEffort('');
+      }
       return;
     }
-    const effort = resolveReasoningEffort(info, activeThread.reasoningEffort);
+    const effort = activeThread.reasoningEffort &&
+      reasoningOptionsForModel(info).some(option => option.value === activeThread.reasoningEffort)
+      ? activeThread.reasoningEffort : null;
     await remote.setThreadSettings(activeThread.id, {
       model, effort,
       ...(activeThread.collaborationMode ? { collaborationMode: collaborationMode(effectiveMode, model, effort) } : {})
@@ -296,8 +282,9 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       return;
     }
     await remote.setThreadSettings(activeThread.id, {
-      effort,
-      ...(activeThread.collaborationMode ? { collaborationMode: collaborationMode(effectiveMode, effectiveModel, effort) } : {})
+      effort: effort || null,
+      ...(activeThread.collaborationMode
+        ? { collaborationMode: collaborationMode(effectiveMode, effectiveModel, effort || null) } : {})
     });
   }
 
@@ -361,7 +348,8 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       ...(project?.id ? { projectId: project.id } : {}),
       ...(newTaskModel ? { model: newTaskModel } : {}),
       ...(newTaskEffort ? { effort: newTaskEffort } : {}),
-      ...(newTaskMode === 'plan' ? { collaborationMode: collaborationMode('plan', effectiveModel, activeEffort) } : {}),
+      ...(newTaskMode === 'plan'
+        ? { collaborationMode: collaborationMode('plan', effectiveModel, activeEffort || null) } : {}),
       ...(effectivePermissions ? { permissions: effectivePermissions } : {})
     });
     await sendTransferredComposerDraft(composerDrafts, 'home', thread.id, submitted ?? { text, attachments, skills },
@@ -369,7 +357,8 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         await remote.sendTurn(thread.id, text, {
           ...(newTaskModel ? { model: newTaskModel } : {}),
           ...(newTaskEffort ? { effort: newTaskEffort } : {}),
-          ...(newTaskMode === 'plan' ? { collaborationMode: collaborationMode('plan', effectiveModel, activeEffort) } : {})
+          ...(newTaskMode === 'plan'
+            ? { collaborationMode: collaborationMode('plan', effectiveModel, activeEffort || null) } : {})
         }, attachments, skills);
       });
   }
@@ -414,6 +403,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       onSidebarOpenChange={setSidebarOpen} inspectorOpen={inspectorOpen}>
       <Sidebar
         remote={remote}
+        activeThreadCwd={activeThread?.cwd}
         activeThreadId={remote.activeThreadId}
         layout={layout}
         open={sidebarOpen}
@@ -583,12 +573,17 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         {activeThread ? (
           <ThreadScreen
             key={activeThread.id}
-            remote={remote}
+            connection={views.connection}
+            directory={views.directory}
+            permissions={views.permissions}
+            conversation={views.conversation}
+            attention={views.attention}
+            actions={remote}
             thread={activeThread}
             layout={layout}
             model={effectiveModel}
             effort={activeEffort}
-            permissions={effectivePermissions}
+            permissionsValue={effectivePermissions}
             cwdChanging={changingRoot}
             onPermissionsChange={changePermissions}
             onModelChange={changeModel}
@@ -601,12 +596,14 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           />
         ) : (
           <HomeView
-            remote={remote}
             layout={layout}
+            connection={views.connection}
+            directory={views.directory}
+            permissions={views.permissions}
             selectedProjectId={selectedProjectId}
             model={newTaskModel}
             effort={newTaskEffort}
-            permissions={effectivePermissions}
+            permissionsValue={effectivePermissions}
             cwdChanging={changingRoot}
             onPermissionsChange={changePermissions}
             focusRequest={composerFocusRequest}
@@ -627,7 +624,8 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
             startAtCwd={terminalRootRequest === permissionCwd}
             onDirectoryOpened={cwd => setTerminalRootRequest(current => current === cwd ? null : current)} />
         </Suspense>}
-        <SummaryPanel key={`summary:${activeThread?.id ?? 'empty'}`} remote={remote} open={summaryOpen} pinned={summaryPinned}
+        <SummaryPanel key={`summary:${activeThread?.id ?? 'empty'}`} connection={views.connection}
+          conversation={views.conversation} open={summaryOpen} pinned={summaryPinned}
           inline={summaryInline} onClose={closeSummary}
           sideChats={sideChats.chats.filter(chat => chat.sourceThreadId === activeThread?.id)}
           onSideChat={chatId => {
@@ -644,7 +642,10 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         thread={activeThread}
         items={remote.items}
         onClose={() => setInspectorOpen(false)}
-        remote={remote}
+        connection={views.connection}
+        directory={views.directory}
+        attention={views.attention}
+        actions={remote}
         cwd={permissionCwd}
         sideChatRequest={sideChatRequest}
         previewRequest={previewRequest}
@@ -678,234 +679,4 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     </SubagentsContext.Provider>
     </ComposerDrafts>
   );
-}
-
-function HomeView({
-  remote,
-  layout,
-  selectedProjectId,
-  model,
-  effort,
-  permissions,
-  cwdChanging,
-  onPermissionsChange,
-  focusRequest,
-  onProjectChange,
-  onModelChange,
-  onEffortChange,
-  onSubmit,
-  onError,
-  commandProps
-}: {
-  remote: ReturnType<typeof useRemote>;
-  layout: LayoutMode;
-  selectedProjectId: string;
-  model: string;
-  effort: string;
-  permissions: string;
-  cwdChanging: boolean;
-  onPermissionsChange: (permissions: string) => Promise<void>;
-  focusRequest: number;
-  onProjectChange: (projectId: string) => void;
-  onModelChange: (model: string) => void;
-  onEffortChange: (effort: string) => void;
-  onSubmit: (text: string, attachments: ComposerAttachment[], skills: SkillInfo[], submitted?: ComposerInput) => Promise<void>;
-  onError: (error: unknown) => void;
-  commandProps: Pick<Parameters<typeof Composer>[0], 'onCommand' | 'loadSkills' | 'skillScope' | 'hasSavedThread' | 'mode'>;
-}) {
-  return (
-    <div className={`home-view home-view--${layout}`}>
-      <div className="home-hero">
-        <div className="home-symbol" aria-hidden="true">
-          <img src="/codex-mark.svg" width={48} height={48} alt="" />
-        </div>
-        <h1>{selectedProjectId ? `在 ${remote.projects.find((project) => project.id === selectedProjectId)?.name ?? '项目'} 中需要什么帮助？` : '有什么可以帮忙？'}</h1>
-      </div>
-      <div className="home-composer-dock">
-        <Composer
-          {...commandProps}
-          variant="home"
-          disabled={!remote.connected || cwdChanging}
-          layout={layout}
-          model={model}
-          effort={effort}
-          permissions={permissions}
-          permissionProfiles={remote.permissionProfiles}
-          onPermissionsChange={onPermissionsChange}
-          models={remote.models}
-          projects={remote.projects}
-          selectedProjectId={selectedProjectId}
-          focusRequest={focusRequest}
-          onProjectChange={onProjectChange}
-          onModelChange={onModelChange}
-          onEffortChange={onEffortChange}
-          onSubmit={onSubmit}
-          onError={onError}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ThreadScreen({
-  remote,
-  thread,
-  layout,
-  model,
-  effort,
-  permissions,
-  cwdChanging,
-  onPermissionsChange,
-  onModelChange,
-  onEffortChange,
-  onSubmit,
-  onError,
-  commandProps,
-  onOpenSideChat,
-  insertRequest
-}: {
-  remote: ReturnType<typeof useRemote>;
-  thread: Thread;
-  layout: LayoutMode;
-  model: string;
-  effort: string;
-  permissions: string;
-  cwdChanging: boolean;
-  onPermissionsChange: (permissions: string) => Promise<void>;
-  onModelChange: (model: string) => void;
-  onEffortChange: (effort: string) => void;
-  onSubmit: (text: string, attachments: ComposerAttachment[], skills: SkillInfo[]) => Promise<void>;
-  onError: (error: unknown) => void;
-  commandProps: Pick<Parameters<typeof Composer>[0], 'onCommand' | 'loadSkills' | 'skillScope' | 'hasSavedThread' | 'mode'>;
-  onOpenSideChat: (input: ChatInput) => void;
-  insertRequest: { id: number; text: string } | null;
-}) {
-  const [queueEnabled, updateQueueEnabled] = useState(() => {
-    try { return sessionStorage.getItem('composer-queue-mode') === 'queue'; } catch { return false; }
-  });
-  const setQueueEnabled = (enabled: boolean) => {
-    updateQueueEnabled(enabled);
-    try { sessionStorage.setItem('composer-queue-mode', enabled ? 'queue' : 'steer'); } catch { /* Optional preference. */ }
-  };
-  const [editing, setEditing] = useState<UserMessage | null>(null);
-  const editDisabled = !remote.connected || !remote.threadReady || remote.showArchived || Boolean(remote.activeTurnId) || cwdChanging;
-  const editable = !editDisabled && !remote.viewingHistory
-    ? editableInterruptedMessage(remote.items, remote.turnTimings, remote.activeTurnId) : null;
-  const forkReply = useCallback((turnId: string) => remote.forkThread(thread.id, turnId), [remote.forkThread, thread.id]);
-  return (
-    <div className="thread-screen">
-      <ThreadTimeline
-        key={thread.id}
-        threadId={thread.id}
-        items={remote.items}
-        loading={remote.loadingThread}
-        snapshotState={remote.historySnapshot}
-        onRetrySnapshot={() => { void remote.openThread(thread.id, { force: true }).catch(onError); }}
-        activeTurnId={remote.activeTurnId}
-        threadIdle={thread.status.type === 'idle'}
-        turnTimings={remote.turnTimings}
-        hasMoreHistory={remote.hasMoreHistory}
-        loadingHistory={remote.loadingHistory}
-        onLoadEarlier={remote.loadEarlierHistory}
-        onPrefetchEarlier={remote.prefetchEarlierHistory}
-        outlineTurns={remote.outlineTurns}
-        outlineError={remote.outlineError}
-        viewingHistory={remote.viewingHistory}
-        hasNewerHistory={remote.hasNewerHistory}
-        newerHistoryCursor={remote.newerHistoryCursor}
-        loadingLaterHistory={remote.loadingLaterHistory}
-        revealingHistory={remote.revealingHistory}
-        onLoadLater={remote.loadLaterHistory}
-        onRevealHistory={remote.revealHistory}
-        onCancelHistoryReveal={remote.cancelHistoryReveal}
-        onReturnToLatest={remote.returnToLatest}
-        onHistoryReading={remote.setHistoryReading}
-        onFork={forkReply}
-        onActionError={onError}
-        editableMessageId={!remote.messageEditPending ? editable?.id : undefined}
-        onEditMessage={setEditing}
-      />
-      {editing && <EditMessageDialog item={editing} threadId={thread.id} disabled={editDisabled}
-        onClose={() => setEditing(null)}
-        onSubmit={text => remote.editInterruptedMessage(thread.id, editing, text, {
-          model, effort, permissions
-        })} />}
-
-      <div className="thread-bottom">
-        {remote.threadResumeError && <div className="thread-recovery" role="alert">
-          <span>{remote.threadResumeError}</span>
-          <button type="button" className="secondary-button" disabled={!remote.connected}
-            onClick={remote.retryThreadResume}>重试连接此会话</button>
-        </div>}
-        <div className="thread-pending">
-        <GoalStatus key={thread.id} goal={remote.activeGoal} disabled={!remote.connected || !remote.threadReady || remote.showArchived || remote.messageEditPending}
-          onUpdate={update => remote.setGoal(thread.id, update)} onDelete={() => remote.clearGoal(thread.id)} onError={onError} />
-        {!remote.viewingHistory && <QuestionDock items={remote.items}
-          disabled={!remote.connected || !remote.threadReady || remote.showArchived || remote.messageEditPending || cwdChanging}
-          onSubmit={text => onSubmit(text, [], [])} onError={onError} />}
-        <ApprovalDock
-          requests={remote.serverRequests.filter((request) => request.params.threadId === thread.id)}
-          onRespond={remote.respondToRequest}
-          onError={onError}
-        />
-        {!remote.isNewThread && <QueuedMessages transport={remote.chatTransport} threadId={thread.id}
-          readable={remote.authenticated && !remote.showArchived}
-          activeTurnId={remote.activeTurnId} connected={remote.connected && remote.threadReady && !remote.messageEditPending}
-          onError={onError} onOpenSideChat={onOpenSideChat}
-          queueEnabled={queueEnabled} onQueueEnabledChange={setQueueEnabled} />}
-        </div>
-        <Composer
-          {...commandProps}
-          variant="thread"
-          draftKey={thread.id}
-          insertRequest={insertRequest}
-          disabled={!remote.connected || !remote.threadReady || remote.showArchived || remote.messageEditPending || cwdChanging}
-          layout={layout}
-          model={model}
-          effort={effort}
-          permissions={permissions}
-          permissionProfiles={remote.permissionProfiles}
-          onPermissionsChange={onPermissionsChange}
-          models={remote.models}
-          activeTurnId={remote.activeTurnId}
-          queueMessages={queueEnabled}
-          {...(remote.contextUsage ? { contextUsage: remote.contextUsage } : {})}
-          onModelChange={onModelChange}
-          onEffortChange={onEffortChange}
-          onSubmit={async (text, attachments, skills) => {
-            if (remote.activeTurnId && queueEnabled) {
-              await remote.chatTransport.rpc('thread/queue/add', {
-                threadId: thread.id, clientUserMessageId: randomUUID(), input: turnInput(text, attachments, skills)
-              });
-            } else await onSubmit(text, attachments, skills);
-          }}
-          {...(remote.activeTurnId
-            ? { onStop: () => remote.interruptTurn(thread.id, remote.activeTurnId!) }
-            : {})}
-          onError={onError}
-        />
-      </div>
-    </div>
-  );
-}
-
-function useResponsiveLayout(): LayoutMode {
-  const getLayout = (): LayoutMode => {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    return layoutForViewport(width, height, matchMedia('(pointer: coarse)').matches);
-  };
-  const [layout, setLayout] = useState<LayoutMode>(getLayout);
-
-  useEffect(() => {
-    const update = () => setLayout(getLayout());
-    window.addEventListener('resize', update);
-    window.addEventListener('orientationchange', update);
-    return () => {
-      window.removeEventListener('resize', update);
-      window.removeEventListener('orientationchange', update);
-    };
-  }, []);
-
-  return layout;
 }

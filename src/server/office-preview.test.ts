@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { OfficePreviews, runOffice } from './office-preview.js';
+import { cleanupStalePreviewDirectories, OfficePreviews, runOffice } from './office-preview.js';
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -92,3 +92,18 @@ it('terminates only an owned converter process tree when its time budget expires
     expect(exists).toBe(false);
   });
 }, 10_000);
+
+it('removes only stale owned preview directories', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'office-preview-cleanup-'));
+  directories.push(root);
+  const stale = path.join(root, 'codex-remote-preview-stale');
+  const fresh = path.join(root, 'codex-remote-preview-fresh');
+  const foreign = path.join(root, 'another-application');
+  await Promise.all([stale, fresh, foreign].map(directory => fs.mkdir(directory)));
+  const now = Date.now();
+  await fs.utimes(stale, new Date(now - 48 * 60 * 60 * 1000), new Date(now - 48 * 60 * 60 * 1000));
+  expect(await cleanupStalePreviewDirectories(root, now)).toBe(1);
+  await expect(fs.stat(stale)).rejects.toHaveProperty('code', 'ENOENT');
+  expect((await fs.stat(fresh)).isDirectory()).toBe(true);
+  expect((await fs.stat(foreign)).isDirectory()).toBe(true);
+});
