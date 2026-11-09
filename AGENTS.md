@@ -47,8 +47,8 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   An explicit user version takes precedence.
   Remote and the desktop manager have independent versions. Remote's version lives
   in the root package/lockfile; the manager's lives in desktop/package/lockfile.
-  The stable manager is independently versioned at 0.2.4; installers are in
-  v0.2.23. Remote-only changes must not increment, rebuild
+  The stable manager is independently versioned at 0.2.5; installers are in
+  v0.2.26. Remote-only changes must not increment, rebuild
   or install the manager. Increment the manager patch only for its own changes.
   Manager self-update is paused as 0.2.0AU on archive/manager-0.2.0AU;
   keep AU self-update out of the stable manager and formal releases. Preserve AU history,
@@ -56,7 +56,7 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Runtime manifest authentication is separate: all new runtime releases require
   Ed25519 publisher signatures verified against pinned public keys. Source
   fallback must match a signed release commit; never bypass missing signatures.
-  Remote 0.2.26 / manager 0.2.4 are the current formal release.
+  Remote 0.2.26 / manager 0.2.5 are the current formal release.
   Verify each installation against its own current acceptance record.
 - After completing and validating project changes, push the public repository
   by default unless the user explicitly asks not to. Never push the separate
@@ -107,7 +107,7 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Cache public metadata for 60 seconds; stream assets with no-store.
   Prepare it with scripts/prepare-distribution.mjs and deploy cf deploy --prebuilt
   from distribution. See docs/update-downloads.md.
-  Installed managers load their bundled updater: install manager 0.2.4 manually
+  Installed managers load their bundled updater: install manager 0.2.5 manually
   over 0.2.0 and retry the same host root; a Remote update cannot patch the old app.
 - Restart the local Remote service after every application update, including
   frontend-only updates. Verify its old listener and owned process exited before

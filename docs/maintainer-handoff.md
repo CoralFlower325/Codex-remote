@@ -15,7 +15,7 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.26** / manager **0.2.4**, tag
+The current published release is Remote **0.2.26** / manager **0.2.5**, tag
 `v0.2.26`, functional commit `a7f27ec`.
 The [mobile composer acceptance](mobile-composer-single-action-0.2.25.md) records
 the single-row toolbar, removed browser dictation and single Stop/Steer action.
@@ -42,14 +42,15 @@ Remote **0.2.26** keeps the mobile composer toolbar on one row without shrinking
 its 36px or 44px controls. Active turns show a visible guidance/queue mode hint;
 an interjection is rendered immediately as a local user item until the native
 item arrives. Read-only Desktop RPC timeouts no longer tear down the live event
-bridge. Manager **0.2.4** is unchanged, and the formal Release record will
-identify the exact promotion commit and signed assets.
+bridge. Manager **0.2.5** aligns the local password IPC validation with the
+server's 12–256 character rule; the formal Release record will identify the
+exact promotion commit and signed assets.
 
 Runtime updates now require Ed25519 publisher signatures against bundled public
 keys, including signed commit identity for source fallback. The private key stays
 outside the repository; the `RELEASE_SIGNING_KEY` GitHub secret and formal
 two-platform signing workflow have been validated. Follow [release-signing.md](release-signing.md) before a
-formal runtime release. Manager 0.2.4 requires its own installer; changing Remote
+formal runtime release. Manager 0.2.5 requires its own installer; changing Remote
 does not patch an already installed manager. AU self-update and macOS application
 signing/notarization remain paused.
 
