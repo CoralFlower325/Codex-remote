@@ -13,6 +13,9 @@ Release and privacy policy remains in AGENTS.md.
   components must not derive their props from a hook implementation.
 - `src/client/workspace-directory-state.ts`: pure task/catalog row reconciliation
   and snapshot restoration used by the directory controller.
+- `src/client/remote-request-registry.ts`: RPC ids, action intent lifetime,
+  bounded request timeouts and transport-loss rejection; keep it independent
+  from React and from the chat state machine.
 - `src/client/useWorkspaceDirectory.ts`: task/catalog reads and reconciliation;
   `useRemote.ts` retains native chat lifecycle and transport orchestration.
 - `src/client/conversation-state.ts`: shared side/subagent event projection;

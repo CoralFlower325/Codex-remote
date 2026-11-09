@@ -1,7 +1,6 @@
 import { useWorkspaceDirectory } from './useWorkspaceDirectory';
 import { historyConfig } from './history-config';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { v4 as randomUUID } from 'uuid';
 
 import type { ClientRpcMethod, ServerMessage } from '../shared/protocol';
 import { projectTurnTiming, runtimeTurnError, type TurnTiming } from '../shared/turn-timing';
@@ -35,16 +34,11 @@ import { markStartup } from './startup';
 import { parseThreadGoal, goalUpdateParams, type GoalUpdate } from './goal';
 import { replaceInterruptedMessage, type UserMessage } from './message-edit';
 import { useErrorNotices } from './error-notices';
-import { actionIntent, clearActionIntents } from './action-intents';
+import { clearActionIntents } from './action-intents';
 import { clearComposerDraftContext } from './composer-drafts';
 import { applyHistoryWindow, historyPageQuery } from './history-window-controller';
 import type { CreateThreadOptions, RemoteController, ThreadSettingsPatch } from './remote-contracts';
-
-interface PendingRpc {
-  resolve: (value: unknown) => void;
-  reject: (error: Error) => void;
-  timer: number;
-}
+import { RemoteRequestRegistry } from './remote-request-registry';
 
 interface PendingServerResponse {
   resolve: () => void;
@@ -102,7 +96,7 @@ export function useRemote({
   const messageEditRef = useRef(false);
   const editSelectionRef = useRef(0);
   const socketRef = useRef<RemoteChannel | null>(null);
-  const pendingRef = useRef(new Map<string, PendingRpc>());
+  const requestRegistryRef = useRef(new RemoteRequestRegistry());
   const pendingServerResponsesRef = useRef(new Map<string, PendingServerResponse>());
   const refreshThreadsTimerRef = useRef<number | null>(null);
   const activeThreadRef = useRef<string | null>(null);
@@ -202,31 +196,11 @@ export function useRemote({
   }, [activeThreadId, activeThread?.id, threads]);
 
   const rpc = useCallback(<T,>(method: ClientRpcMethod, params: unknown = {}): Promise<T> => {
-    if (/^(turn\/|thread\/queue\/|review\/)/.test(method)) prioritizeInteraction();
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error('Remote connection is not ready.'));
     }
-    const id = randomUUID();
-    const intent = actionIntent(method, params);
-    return new Promise<T>((resolve, reject) => {
-      const timer = window.setTimeout(() => {
-        if (!pendingRef.current.has(id)) return;
-        pendingRef.current.delete(id);
-        reject(new Error(intent ? '操作结果尚未确认，请先核对 Desktop 中的记录；重新连接不会重发此操作。' : `请求超时：${method}`));
-      }, 120_000);
-      pendingRef.current.set(id, { resolve: (value) => { intent?.complete(); resolve(value as T); }, reject: error => {
-        if (intent && !('code' in error)) reject(new Error(
-          '操作结果尚未确认，可能已经执行。请先核对 Desktop 中的记录；重新连接不会重发此操作。', { cause: error }));
-        else { intent?.complete(); reject(error); }
-      }, timer });
-      try { socket.send(JSON.stringify({ type: 'rpc', id, method, params, ...(intent ? { actionId: intent.id } : {}) })); }
-      catch (error) {
-        window.clearTimeout(timer);
-        pendingRef.current.delete(id);
-        reject(error instanceof Error ? error : new Error(String(error)));
-      }
-    });
+    return requestRegistryRef.current.request<T>(socket, method, params);
   }, []);
 
   const watchThread = useCallback((threadId: string | null) => {
@@ -1542,11 +1516,7 @@ export function useRemote({
         setConnected(false);
         setConnectionError(true);
         flushStreamingDeltas();
-        for (const pending of pendingRef.current.values()) {
-          window.clearTimeout(pending.timer);
-          pending.reject(error);
-        }
-        pendingRef.current.clear();
+        requestRegistryRef.current.rejectAll(error);
         rejectPendingServerResponses(error);
       }
     });
@@ -1593,11 +1563,7 @@ export function useRemote({
       clearStreamingDeltas();
       connection.dispose();
       if (connectionRef.current === connection) connectionRef.current = null;
-      for (const pending of pendingRef.current.values()) {
-        window.clearTimeout(pending.timer);
-        pending.reject(new Error('Remote connection closed.'));
-      }
-      pendingRef.current.clear();
+      requestRegistryRef.current.rejectAll(new Error('Remote connection closed.'));
       rejectPendingServerResponses(new Error('Remote connection closed.'));
     };
   }, [authenticated, bootstrap, bootstrapRequest, clearStreamingDeltas, disposeReads, flushStreamingDeltas,
@@ -1643,23 +1609,14 @@ export function useRemote({
       replayCursorRef.current.sequence = message.sequence;
     }
     if (message.type === 'rpc.result') {
-      const pending = pendingRef.current.get(message.id);
-      if (pending) {
-        window.clearTimeout(pending.timer);
-        pendingRef.current.delete(message.id);
-        pending.resolve(message.result);
-      }
+      requestRegistryRef.current.resolve(message.id, message.result);
       return;
     }
 
     if (message.type === 'rpc.error') {
-      const pending = pendingRef.current.get(message.id);
-      if (pending) {
-        window.clearTimeout(pending.timer);
-        pendingRef.current.delete(message.id);
-        pending.reject(Object.assign(new Error(nativeRpcErrorMessage(message.error)),
+      requestRegistryRef.current.reject(message.id,
+        Object.assign(new Error(nativeRpcErrorMessage(message.error)),
           Number.isInteger(message.error.code) ? { code: message.error.code } : {}));
-      }
       return;
     }
 
