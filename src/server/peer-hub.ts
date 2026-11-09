@@ -17,6 +17,8 @@ import { isAllowedRpcMethod } from '../shared/rpc-methods.js';
 import type { ActionLedger } from './action-ledger.js';
 import { needsActionIdentity } from '../shared/action-policy.js';
 
+const MAX_PEER_BUFFER = 2 * 1024 * 1024;
+
 function validMessage(value: unknown): value is ClientMessage {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const message = value as Record<string, unknown>;
@@ -123,7 +125,7 @@ export function createPeerHub({ codexBridge, eventJournal, questionTracker, meta
       const replay = eventJournal.resume(message.epoch, message.after, ids);
       for (const entry of replay.entries) {
         if (!sessionConnections.allowed(socket)) break;
-        socket.send(entry.payload);
+        if (!safeSend(socket, entry.payload)) break;
       }
       send(socket, { type: 'questions.snapshot', counts: questionTracker.snapshot() });
       send(socket, { type: 'server.request.snapshot', requests: codexBridge.getPendingServerRequests() });
@@ -209,17 +211,27 @@ export function createPeerHub({ codexBridge, eventJournal, questionTracker, meta
     if (recipients.length === 0) return;
     for (const client of recipients) {
       if (!sessionConnections.allowed(client, false)) continue;
-      if (client.bufferedAmount > 2 * 1024 * 1024) client.close(1013, 'Connection congested; resume.');
-      else client.send(entry.payload);
+      safeSend(client, entry.payload);
+    }
+  }
+
+  function safeSend(socket: RemotePeer, raw: string): boolean {
+    if (socket.readyState !== WebSocket.OPEN) return false;
+    if (socket.bufferedAmount + Buffer.byteLength(raw) > MAX_PEER_BUFFER) {
+      try { socket.close(1013, 'Connection congested; resume.'); } catch { /* Already closed. */ }
+      return false;
+    }
+    try { socket.send(raw); return true; }
+    catch {
+      disconnectClient(socket);
+      try { socket.close(1011, 'Message delivery failed'); } catch { /* Already closed. */ }
+      return false;
     }
   }
 
   function send(socket: RemotePeer, message: ServerMessage): void {
     if (!sessionConnections.allowed(socket, false)) return;
-    if (socket.readyState === WebSocket.OPEN) {
-      try { socket.send(JSON.stringify(message)); }
-      catch { disconnectClient(socket); try { socket.close(1011, 'Message delivery failed'); } catch { /* Already closed. */ } }
-    }
+    safeSend(socket, JSON.stringify(message));
   }
 
   return { clients, connectClient, disconnectClient, handleClientMessage, broadcast };

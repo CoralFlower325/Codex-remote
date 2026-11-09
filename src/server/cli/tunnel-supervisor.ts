@@ -3,8 +3,10 @@ import { existsSync } from 'node:fs';
 import { createConnection } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { TunnelSupervisor, type TunnelChild } from '../tunnel-supervisor.js';
 import { boundedLogWriter } from '../../../scripts/rotating-log.mjs';
+import { allocateLoopbackPort, clearTunnelMetricsState, writeTunnelMetricsState } from '../tunnel-metrics-state.js';
 
 const [binary, protocol = 'http2'] = process.argv.slice(2);
 const root = process.cwd();
@@ -15,6 +17,8 @@ if (!binary || !existsSync(binary) || !existsSync(token) || !['auto', 'http2', '
 const supervisorLog = boundedLogWriter(path.join(root, 'data/tunnel-supervisor.log'));
 const cloudflaredLog = boundedLogWriter(path.join(root, 'data/cloudflared.log'));
 const log = (message: string) => { supervisorLog(`${new Date().toISOString()} ${message}\n`); };
+const metricsOwner = randomUUID();
+let metricsPort = 20241;
 
 const supervisor = new TunnelSupervisor({
   log,
@@ -22,27 +26,41 @@ const supervisor = new TunnelSupervisor({
     (addresses ?? []).filter(address => !address.internal)
       .map(address => `${name}:${address.family}:${address.address}`)).sort().join('|'),
   start: () => new Promise<TunnelChild>((resolve, reject) => {
+    void (async () => {
+      metricsPort = await allocateLoopbackPort();
     const child = spawn(binary, ['tunnel', '--protocol', protocol, '--no-autoupdate',
-      '--metrics', '127.0.0.1:20241', '--loglevel', 'info',
+      '--metrics', `127.0.0.1:${metricsPort}`, '--loglevel', 'info',
       'run', '--token-file', token],
     { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     const capture = (data: Buffer) => { cloudflaredLog(data); };
     child.stdout.on('data', capture);
     child.stderr.on('data', capture);
     const exited = new Promise<void>(done => child.once('exit', () => done()));
-    child.once('error', reject);
-    child.once('spawn', () => resolve({
-      exited,
-      stop: async () => {
-        if (child.exitCode !== null || child.signalCode !== null) return;
+    child.once('error', error => { void clearTunnelMetricsState(root, metricsOwner); reject(error); });
+    child.once('spawn', async () => {
+      try {
+        await writeTunnelMetricsState(root, {
+          port: metricsPort, pid: child.pid ?? 0, owner: metricsOwner, startedAt: Date.now()
+        });
+        resolve({
+          exited,
+          stop: async () => {
+            if (child.exitCode === null && child.signalCode === null) child.kill();
+            await exited;
+            await clearTunnelMetricsState(root, metricsOwner);
+          }
+        });
+      } catch (error) {
         child.kill();
-        await exited;
+        reject(error);
       }
-    }));
+    });
+    void exited.then(() => clearTunnelMetricsState(root, metricsOwner));
+    })().catch(reject);
   }),
   ready: async () => {
     try {
-      const response = await fetch('http://127.0.0.1:20241/metrics', { signal: AbortSignal.timeout(1000) });
+      const response = await fetch(`http://127.0.0.1:${metricsPort}/metrics`, { signal: AbortSignal.timeout(1000) });
       return response.ok && Number((await response.text()).match(
         /^cloudflared_tunnel_ha_connections\s+(\d+)/m)?.[1] ?? 0) > 0;
     } catch { return false; }

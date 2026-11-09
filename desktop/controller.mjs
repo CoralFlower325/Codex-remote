@@ -31,6 +31,15 @@ export async function installation(directory) {
   return { root, version: pkg.version, localUrl: `http://127.0.0.1:${port}`, publicUrl, desktopDebugPort };
 }
 
+export async function tunnelMetricsPort(root) {
+  try {
+    const state = JSON.parse(await fs.readFile(path.join(root, 'data/tunnel-metrics.json'), 'utf8'));
+    const port = Number(state.port);
+    if (Number.isInteger(port) && port > 0 && port < 65536) return port;
+  } catch { /* Older installations still use the legacy fixed port. */ }
+  return 20241;
+}
+
 export function controlCommand(platform, root, action) {
   if (!['Start', 'Stop', 'Status'].includes(action)) throw new Error('Invalid action.');
   if (platform === 'win32') return ['powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass',
@@ -146,10 +155,11 @@ export function startupReady(status, requireDesktop = true) {
 
 export async function health(directory, execute = run, platform = process.platform, fetcher = fetch, { publicTimeout = 5000 } = {}) {
   const info = await installation(directory);
+  const tunnelPort = await tunnelMetricsPort(info.root);
   const service = await serviceStatus(info, execute, platform);
   const [local, tunnel, listening, external] = await Promise.all([
     probe(`${info.localUrl}/health`, true, fetcher),
-    service.tunnelManaged ? probe('http://127.0.0.1:20241/ready', false, fetcher)
+    service.tunnelManaged ? probe(`http://127.0.0.1:${tunnelPort}/ready`, false, fetcher)
       : Promise.resolve({ reachable: false, body: null }),
     portListening(info.localUrl),
     info.publicUrl ? probe(`${info.publicUrl}/health`, true, fetcher, publicTimeout) : Promise.resolve(null)

@@ -43,6 +43,14 @@ function fixture(actionLedger?: ActionLedger) {
   return { ...hub, native, peer, send, eventJournal, ephemeralChats };
 }
 describe('shared realtime peer policy', () => {
+  it('closes a targeted peer before a result can exceed the bounded buffer', async () => {
+    const hub = fixture(), peer = hub.peer();
+    hub.connectClient(peer.socket);
+    Object.defineProperty(peer.socket, 'bufferedAmount', { value: 3 * 1024 * 1024 });
+    const close = vi.spyOn(peer.socket, 'close');
+    await hub.send(peer.socket, { type: 'ping' });
+    expect(close).toHaveBeenCalledWith(1013, expect.stringContaining('congested'));
+  });
   it('requires write identities and returns cached confirmations without duplicate native or ephemeral input', async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'remote-peer-actions-'));
     directories.push(directory);

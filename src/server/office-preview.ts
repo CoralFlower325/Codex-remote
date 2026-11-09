@@ -1,7 +1,9 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { execFile, spawn } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
 
 export const officeExtensions = new Set([
@@ -12,6 +14,28 @@ const TIMEOUT = 45_000;
 
 export class OfficePreviewError extends Error {
   constructor(message: string, public readonly status = 422) { super(message); }
+}
+
+const TEMP_PREFIX = 'codex-remote-preview-';
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+export async function cleanupStalePreviewDirectories(root = os.tmpdir(), now = Date.now()): Promise<number> {
+  let removed = 0;
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = await fs.readdir(root, { withFileTypes: true });
+  } catch { return 0; }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(TEMP_PREFIX)) continue;
+    const candidate = path.join(root, entry.name);
+    try {
+      const info = await fs.stat(candidate);
+      if (now - info.mtimeMs < STALE_AFTER_MS) continue;
+      await fs.rm(candidate, { recursive: true, force: true, maxRetries: 2 });
+      removed++;
+    } catch { /* Another conversion or cleanup may already own it. */ }
+  }
+  return removed;
 }
 
 export async function findOfficeBinary(): Promise<string | null> {
@@ -81,7 +105,8 @@ export function runOffice(binary: string, args: string[], environment: NodeJS.Pr
   });
 }
 
-async function convert(source: string, extension: string): Promise<Buffer> {
+export async function convert(source: string, extension: string): Promise<Buffer> {
+  void cleanupStalePreviewDirectories();
   if (['.docx', '.xlsx', '.pptx', '.odt', '.ods', '.odp'].includes(extension)) {
     const file = await fs.open(source, 'r');
     try {
@@ -126,11 +151,102 @@ async function convert(source: string, extension: string): Promise<Buffer> {
   }
 }
 
+function killProcessTree(child: ChildProcess): void {
+  if (!child.pid) return;
+  if (process.platform === 'win32') {
+    void new Promise<void>(resolve => {
+      execFile(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe'),
+        ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true }, () => resolve());
+    });
+    child.kill();
+    return;
+  }
+  try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
+}
+
+function isolatedWorkerCommand(): { command: string; args: string[] } {
+  const source = fileURLToPath(new URL('./office-preview-worker.ts', import.meta.url));
+  const compiled = source.replace(/\.ts$/, '.js');
+  if (existsSync(compiled)) return { command: process.execPath, args: [compiled] };
+  const tsx = fileURLToPath(new URL('../../node_modules/tsx/dist/cli.mjs', import.meta.url));
+  if (existsSync(tsx)) return { command: process.execPath, args: [tsx, source] };
+  return { command: process.execPath, args: [compiled] };
+}
+
+export function runIsolatedConversion(source: string, extension: string, timeout = TIMEOUT): Promise<Buffer> {
+  const { command, args } = isolatedWorkerCommand();
+  const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+    /^(?:PATH|HOME|USERPROFILE|APPDATA|LOCALAPPDATA|TEMP|TMP|TMPDIR|SYSTEMROOT|WINDIR|LANG|LC_.*|FONTCONFIG_.*)$/i.test(key)));
+  return new Promise<Buffer>((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: process.cwd(),
+      env: environment,
+      windowsHide: true,
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc']
+    });
+    let settled = false;
+    let timedOut = false;
+    let stderr = '';
+    let response: { pdf?: string; error?: string; status?: number } | null = null;
+    const finish = (error?: Error, value?: Buffer) => {
+      if (settled) return;
+      settled = true;
+      if (error) reject(error);
+      else resolve(value!);
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killProcessTree(child);
+    }, timeout);
+    child.stderr?.on('data', (chunk: Buffer | string) => {
+      stderr = `${stderr}${chunk}`.slice(-16 * 1024);
+    });
+    child.on('message', (message: unknown) => {
+      if (!message || typeof message !== 'object') return;
+      const value = message as { pdf?: unknown; error?: unknown; status?: unknown };
+      if (value.pdf !== undefined && typeof value.pdf !== 'string') return;
+      response = {
+        ...(typeof value.pdf === 'string' ? { pdf: value.pdf } : {}),
+        ...(typeof value.error === 'string' ? { error: value.error } : {}),
+        ...(typeof value.status === 'number' ? { status: value.status } : {})
+      };
+    });
+    child.once('error', error => {
+      clearTimeout(timer);
+      finish(new OfficePreviewError(`文档预览隔离进程无法启动：${error.message}`, 503));
+    });
+    child.once('close', code => {
+      clearTimeout(timer);
+      if (timedOut) {
+        finish(new OfficePreviewError('文档预览超时，请下载原文件或稍后重试。'));
+        return;
+      }
+      if (code !== 0 || !response) {
+        finish(new OfficePreviewError(
+          response?.error || (stderr.trim() ? '文档预览隔离进程异常退出，请下载原文件。' : '文档预览隔离进程异常退出。'),
+          response?.status ?? 422));
+        return;
+      }
+      if (response.error) {
+        finish(new OfficePreviewError(response.error, response.status ?? 422));
+        return;
+      }
+      const pdf = Buffer.from(response.pdf ?? '', 'base64');
+      if (!pdf.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+        finish(new OfficePreviewError('文档预览生成失败，请下载原文件。'));
+        return;
+      }
+      finish(undefined, pdf);
+    });
+    child.send({ source, extension });
+  });
+}
+
 export class OfficePreviews {
   private pending = new Map<string, Promise<Buffer>>();
   private tail: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly render = convert) {}
+  constructor(private readonly render = runIsolatedConversion) {}
 
   async read(requestedPath: string): Promise<Buffer> {
     if (!path.isAbsolute(requestedPath) || !officeExtensions.has(path.extname(requestedPath).toLowerCase())) {

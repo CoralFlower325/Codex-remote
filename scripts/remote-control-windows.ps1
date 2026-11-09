@@ -51,6 +51,34 @@ function Wait-HttpReady {
   throw "Readiness check timed out: $Url. Check scheduled tasks and data\cloudflared.log."
 }
 
+function Get-TunnelMetricsPort {
+  $statePath = Join-Path $Root "data\tunnel-metrics.json"
+  if (Test-Path -LiteralPath $statePath) {
+    try {
+      $state = Get-Content -LiteralPath $statePath -Raw -Encoding UTF8 | ConvertFrom-Json
+      $candidate = 0
+      if ([int]::TryParse([string]$state.port, [ref]$candidate) -and $candidate -ge 1 -and $candidate -le 65535) {
+        return $candidate
+      }
+    } catch { }
+  }
+  return 20241
+}
+
+function Wait-TunnelReady {
+  param([int]$Seconds = 30)
+  $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
+  do {
+    $metricsPort = Get-TunnelMetricsPort
+    try {
+      $response = Invoke-WebRequest -Uri "http://127.0.0.1:$metricsPort/ready" -UseBasicParsing -TimeoutSec 2
+      if ($response.StatusCode -eq 200) { return }
+    } catch { }
+    Start-Sleep -Milliseconds 500
+  } while ([DateTime]::UtcNow -lt $deadline)
+  throw "Tunnel readiness check timed out. Check data\cloudflared.log and data\tunnel-supervisor.log."
+}
+
 $port = if ($env:PORT) { $env:PORT } else { "4545" }
 $publicOrigin = $env:PUBLIC_ORIGIN
 $envPath = Join-Path $Root ".env"
@@ -96,8 +124,9 @@ if ($Action -eq "Status") {
   }
   if (Test-Path -LiteralPath (Join-Path $Root "data\cloudflared-token")) {
     try {
-      Invoke-WebRequest -Uri "http://127.0.0.1:20241/ready" -UseBasicParsing -TimeoutSec 2 | Out-Null
-      $metrics = Invoke-WebRequest -Uri "http://127.0.0.1:20241/metrics" -UseBasicParsing -TimeoutSec 2
+      $metricsPort = Get-TunnelMetricsPort
+      Invoke-WebRequest -Uri "http://127.0.0.1:$metricsPort/ready" -UseBasicParsing -TimeoutSec 2 | Out-Null
+      $metrics = Invoke-WebRequest -Uri "http://127.0.0.1:$metricsPort/metrics" -UseBasicParsing -TimeoutSec 2
       if ($metrics.Content -match '(?m)^cloudflared_tunnel_ha_connections\s+(\d+)') {
         Write-Host "Tunnel: ready; edge connections: $($Matches[1])."
       } else {
@@ -163,7 +192,7 @@ if ($hasTunnel) {
   if ((Get-RemoteTask $TunnelTaskName).State -ne "Running") {
     Start-ScheduledTask -TaskName $TunnelTaskName
   }
-  Wait-HttpReady "http://127.0.0.1:20241/ready"
+  Wait-TunnelReady
 }
 $health = Invoke-RestMethod -Uri "$localUrl/health" -TimeoutSec 3
 Write-Host "Codex Remote is ON. Backend: $($health.codex); transport: $($health.transport)."
