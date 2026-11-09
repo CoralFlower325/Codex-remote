@@ -17,6 +17,13 @@ export function mergeTurnTimings(current: Record<string, TurnTiming>, latest: Tu
   const next = { ...current };
   for (const turn of latest) {
     const existing = current[turn.id];
+    // Turn status is monotonic: once a turn is known to be finished, a
+    // lagging snapshot must not rewind it to inProgress. A turn whose error
+    // will retry is exempt; its specialized merge below handles resumption.
+    if (existing && !existing.errorWillRetry && existing.status !== 'inProgress' && turn.status === 'inProgress') {
+      next[turn.id] = existing;
+      continue;
+    }
     next[turn.id] = existing && existing !== baseline[turn.id] ? existing
       : existing?.errorWillRetry && existing.error && turn.status === 'inProgress'
         ? { ...turn, error: existing.error, errorWillRetry: true } : turn;
@@ -29,6 +36,12 @@ export function reconcileActiveTurnId(
   currentTimings: Record<string, TurnTiming>,
   snapshot: { activeTurnId: string | null; turns: TurnTiming[] }
 ): string | null {
+  // A turn the live event stream already finished cannot become active
+  // again; a snapshot naming it as active is behind the stream, not newer.
+  if (snapshot.activeTurnId) {
+    const local = currentTimings[snapshot.activeTurnId];
+    if (local && local.status !== 'inProgress') return null;
+  }
   if (!currentId || snapshot.activeTurnId === currentId) return snapshot.activeTurnId;
   const current = snapshot.turns.find(turn => turn.id === currentId);
   if (current && current.status !== 'inProgress') return snapshot.activeTurnId;
@@ -173,7 +186,9 @@ export function reconcileOptimisticUserMessages(items: ThreadItem[], incoming: u
   return items.filter(item => {
     if (item.type !== 'userMessage' || !item.optimistic) return true;
     return !nativeUserMessages.some(native => native.id === item.id ||
-      (!native.turnId || native.turnId === item.turnId) &&
+      // An optimistic new-turn send has no turnId until its RPC is answered;
+      // its content key alone identifies the native echo.
+      (!native.turnId || !item.turnId || native.turnId === item.turnId) &&
         native.key === userMessageContentKey(item));
   });
 }

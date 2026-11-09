@@ -121,6 +121,7 @@ describe('extracted workspace views', () => {
         setGoal: asyncNoop,
         clearGoal: asyncNoop,
         interruptTurn: asyncNoop,
+        steerQueued: asyncNoop,
         retryThreadResume: noop,
         respondToRequest: asyncNoop
       },

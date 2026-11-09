@@ -183,7 +183,7 @@ export function Automations({ models, projects, onClose, onOpenThread }: {
           disabled={Boolean(busyId) || saving}
           onClick={() => dialog.current?.close()}><X size={18} /></button>
       </header>
-      {error && <div className="automations-error" role="alert">{error}</div>}
+      {error && automations !== null && <div className="automations-error" role="alert">{error}</div>}
       <div className="automations-native">Codex Desktop · {timeZone ?? '主机时区'}</div>
       {editing === null ? (
         <div className="automations-body">

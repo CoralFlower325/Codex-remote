@@ -15,7 +15,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
   if (signal?.aborted) abort();
   else signal?.addEventListener('abort', abort, { once: true });
   const timer = timeoutMs ? setTimeout(() => {
-    timeoutError = new DOMException('Connection timed out. Please retry.', 'TimeoutError');
+    timeoutError = new DOMException('连接超时，请重试。', 'TimeoutError');
     controller!.abort(timeoutError);
   }, timeoutMs) : undefined;
   try {
@@ -41,7 +41,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
       const message =
         body && typeof body === 'object' && 'error' in body
           ? String((body as { error: unknown }).error)
-          : `Request failed (${response.status})`;
+          : `请求失败（HTTP ${response.status}）`;
       throw new HttpError(message, response.status);
     }
 

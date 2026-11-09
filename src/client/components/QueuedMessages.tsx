@@ -7,7 +7,7 @@ import { mergeQueuedMessages, queuedDraft, replaceQueuedText, type ChatInput, ty
 import { api, isAbortedRequest } from '../api';
 
 export function QueuedMessages({ transport, threadId, activeTurnId, connected, readable, onError, onOpenSideChat,
-  queueEnabled, onQueueEnabledChange, optimisticMessages = [], onOptimisticSettled, refreshToken = 0 }: {
+  onSteerQueued, forceCollapsed = false, queueEnabled, onQueueEnabledChange, optimisticMessages = [], onOptimisticSettled, refreshToken = 0 }: {
   transport: ChatTransport;
   threadId: string;
   activeTurnId: string | null;
@@ -15,6 +15,8 @@ export function QueuedMessages({ transport, threadId, activeTurnId, connected, r
   readable: boolean;
   onError: (error: unknown) => void;
   onOpenSideChat: (input: ChatInput) => void;
+  onSteerQueued?: ((message: QueuedSubmission) => Promise<void>) | undefined;
+  forceCollapsed?: boolean;
   queueEnabled: boolean;
   onQueueEnabledChange: (enabled: boolean) => void;
   optimisticMessages?: QueuedSubmission[];
@@ -22,6 +24,7 @@ export function QueuedMessages({ transport, threadId, activeTurnId, connected, r
   refreshToken?: number;
 }) {
   const [messages, setMessages] = useState<QueuedSubmission[]>([]);
+  const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [text, setText] = useState('');
@@ -96,6 +99,18 @@ export function QueuedMessages({ transport, threadId, activeTurnId, connected, r
       } else {
         if (action === 'send') {
           const turnId = turnRef.current;
+          if (turnId && onSteerQueued) {
+            // Optimistic path: the message appears in the timeline at once
+            // via remote.steerQueued, reusing this submission's own
+            // clientUserMessageId. The steer is the point of no return, so
+            // queue cleanup afterwards never reports a failure: the native
+            // queue read re-asserts the truth on its next refresh.
+            await onSteerQueued(message);
+            await transport.rpc('thread/queue/delete', { threadId, queuedSubmissionId: message.id })
+              .catch(() => null);
+            setMessages(current => current.filter(entry => entry.id !== message.id));
+            return;
+          }
           if (turnId) await transport.rpc('turn/steer', {
             threadId, expectedTurnId: turnId, input: message.input,
             clientUserMessageId: message.clientUserMessageId
@@ -115,8 +130,13 @@ export function QueuedMessages({ transport, threadId, activeTurnId, connected, r
   const display = mergeQueuedMessages(messages, optimisticMessages).messages;
   const optimisticClientIds = new Set(optimisticMessages.map(message => message.clientUserMessageId));
   if (!display.length) return null;
+  // Keep the pending region bounded: a blocking approval collapses the whole
+  // strip to one summary row, and long queues fold past four rows. Expanding
+  // is always one tap away and never changes the queue itself.
+  const collapsedCount = expanded ? 0 : forceCollapsed ? display.length : Math.max(0, display.length - 4);
+  const visible = collapsedCount ? display.slice(0, display.length - collapsedCount) : display;
   return <div className="queued-messages" aria-label="待发消息">
-    {display.map(message => {
+    {visible.map(message => {
       const pending = optimisticClientIds.has(message.clientUserMessageId);
       return <div className={`queued-message${pending ? ' queued-message--pending' : ''}`} key={message.id}
         aria-busy={pending || undefined}>
@@ -140,6 +160,16 @@ export function QueuedMessages({ transport, threadId, activeTurnId, connected, r
       </>}
     </div>;
     })}
+    {collapsedCount > 0 && <div className="queued-message queued-summary">
+      <ListEnd size={15} aria-hidden="true" />
+      <span className="queued-message-text">{forceCollapsed
+        ? `${display.length} 条待发消息（处理审批后恢复显示）`
+        : `还有 ${collapsedCount} 条待发消息`}</span>
+      <button type="button" className="queued-steer" onClick={() => setExpanded(true)}>展开</button>
+    </div>}
+    {expanded && (forceCollapsed || display.length > 4) && <div className="queued-message queued-summary">
+      <button type="button" className="queued-steer" onClick={() => setExpanded(false)}>收起待发消息</button>
+    </div>}
     {menu && createPortal(<>
       <button type="button" className="queue-menu-backdrop" aria-label="关闭待发消息菜单" onClick={() => setMenu(null)} />
       <div className="queue-menu" role="menu" style={{ top: menu.top, right: menu.right }}>

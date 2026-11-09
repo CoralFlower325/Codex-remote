@@ -23,6 +23,7 @@ import type {
   ThreadItem
 } from './types';
 import type { PermissionProfile } from '../shared/permissions';
+import type { QueuedSubmission } from './queued-messages';
 
 export type ConnectionStatus = 'authenticated' | 'disconnected' | BridgeStatus['status'];
 
@@ -147,6 +148,7 @@ export interface ConversationActions {
   archiveThread(threadId: string, archived: boolean): Promise<void>;
   steerTurn(threadId: string, turnId: string, text: string,
     attachments?: ComposerAttachment[], skills?: SkillInfo[]): Promise<void>;
+  steerQueued(threadId: string, turnId: string, message: QueuedSubmission): Promise<void>;
   interruptTurn(threadId: string, turnId: string): Promise<void>;
 }
 
