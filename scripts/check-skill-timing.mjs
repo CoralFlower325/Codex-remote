@@ -136,6 +136,10 @@ try {
       { type: 'skill', name: skill.name, path: skill.path }]);
     const owner = async () => page.locator('.turn-response[data-turn-id="work"]').evaluateAll(nodes =>
       nodes.find(node => node.querySelector('.turn-duration'))?.dataset.scrollAnchor);
+    // Sends render optimistically, so the user text can precede the native
+    // turn projection; wait for the duration anchor before reading it.
+    await page.waitForFunction(() =>
+      document.querySelector('.turn-response[data-turn-id="work"] .turn-duration'));
     const firstOwner = await owner();
     assert(firstOwner);
     const workLabel = page.locator('.turn-response[data-turn-id="work"] .turn-duration');

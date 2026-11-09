@@ -26,7 +26,7 @@ import { ThreadTimeline } from './ThreadTimeline';
 type ThreadScreenActions = Pick<ConversationActions,
   'forkThread' | 'openThread' | 'loadEarlierHistory' | 'prefetchEarlierHistory' | 'loadLaterHistory' |
   'revealHistory' | 'cancelHistoryReveal' | 'returnToLatest' | 'setHistoryReading' |
-  'editInterruptedMessage' | 'setGoal' | 'clearGoal' | 'interruptTurn'>;
+  'editInterruptedMessage' | 'setGoal' | 'clearGoal' | 'interruptTurn' | 'steerQueued'>;
 
 export interface ThreadScreenProps {
   connection: Pick<ConnectionView, 'authenticated' | 'connected' | 'chatTransport'>;
@@ -136,20 +136,24 @@ export function ThreadScreen({
               attention.messageEditPending}
             onUpdate={update => actions.setGoal(thread.id, update)}
             onDelete={() => actions.clearGoal(thread.id)} onError={onError} />
-          {!conversation.viewingHistory && <QuestionDock items={conversation.items}
-            disabled={!connection.connected || !conversation.threadReady || directory.showArchived ||
-              attention.messageEditPending || cwdChanging}
-            onSubmit={text => onSubmit(text, [], [])} onError={onError} />}
           <ApprovalDock
             requests={attention.serverRequests.filter(request => request.params.threadId === thread.id)}
             onRespond={actions.respondToRequest}
             onError={onError}
           />
+          {!conversation.viewingHistory && <QuestionDock items={conversation.items}
+            disabled={!connection.connected || !conversation.threadReady || directory.showArchived ||
+              attention.messageEditPending || cwdChanging}
+            onSubmit={text => onSubmit(text, [], [])} onError={onError} />}
           {!conversation.isNewThread && <QueuedMessages transport={connection.chatTransport} threadId={thread.id}
             readable={connection.authenticated && !directory.showArchived}
             activeTurnId={conversation.activeTurnId}
             connected={connection.connected && conversation.threadReady && !attention.messageEditPending}
             onError={onError} onOpenSideChat={onOpenSideChat}
+            onSteerQueued={conversation.activeTurnId
+              ? message => actions.steerQueued(thread.id, conversation.activeTurnId!, message)
+              : undefined}
+            forceCollapsed={attention.serverRequests.some(request => request.params.threadId === thread.id)}
             queueEnabled={queueEnabled} onQueueEnabledChange={setQueueEnabled}
             optimisticMessages={optimisticQueue}
             onOptimisticSettled={clientUserMessageIds => setOptimisticQueue(current =>

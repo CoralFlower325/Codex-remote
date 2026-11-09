@@ -78,6 +78,7 @@ import { useSubagentChats, type SubagentChatsController } from './useSubagentCha
 import type { RemoteController } from './remote-contracts';
 import type { ChatTransport } from './chat-transport';
 import { pendingQuestionGroups } from './async-questions';
+import type { QueuedSubmission } from './queued-messages';
 import { useHistoryDetails } from './history-details';
 import type { ThreadItem } from './types';
 import { QuestionDock, QuestionCard } from './components/QuestionDock';
@@ -342,6 +343,93 @@ describe('native question interaction', () => {
     connection.options.onMessage({ type: 'rpc.result', id: message.id, result: {} });
     await pending;
     expect(f.remote.items.filter(item => item.type === 'userMessage')).toHaveLength(1);
+  });
+});
+
+describe('optimistic new-turn sends', () => {
+  const openFetcher: typeof fetch = (path) => {
+    const url = String(path);
+    if (url.includes('/thread/open?')) return json({ result: { thread }, items: [], turns: [],
+      nextCursor: null, turnsCursor: null, activeTurnId: null });
+    if (url.includes('/thread/timings')) return json({ turns: [], turnsCursor: null, activeTurnId: null });
+    return new Promise(() => {});
+  };
+  function captureSocket(onStart: (message: any) => void) {
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type !== 'rpc') return;
+      if (message.method === 'turn/start') return onStart(message);
+      connection.options.onMessage({ type: 'rpc.result', id: message.id, result: {} });
+    } });
+  }
+
+  it('shows a send immediately and reconciles it with the native user item', async () => {
+    const f = fixture(openFetcher);
+    synchronizeConnection();
+    await f.remote.openThread(thread.id);
+    await settle();
+    let startMessage: any;
+    captureSocket(message => { startMessage = message; });
+    const pending = f.remote.sendTurn(thread.id, 'Immediate send');
+    await settle();
+    const optimistic = f.remote.items.find(item => item.type === 'userMessage' && item.optimistic);
+    expect(optimistic).toMatchObject({ type: 'userMessage', optimistic: 'sending',
+      content: [{ type: 'text', text: 'Immediate send' }] });
+    expect(startMessage.params).toMatchObject({ threadId: thread.id, clientUserMessageId: optimistic?.id });
+    connection.options.onMessage({ type: 'rpc.result', id: startMessage.id,
+      result: { turn: { id: 'turn-new', status: 'inProgress', startedAt: 10 } } });
+    await pending;
+    await settle();
+    connection.options.onMessage({ type: 'event', method: 'item/started', params: {
+      threadId: thread.id, turnId: 'turn-new',
+      item: { type: 'userMessage', id: optimistic!.id, content: [{ type: 'text', text: 'Immediate send' }] } } });
+    await settle();
+    const userMessages = f.remote.items.filter(item => item.type === 'userMessage');
+    expect(userMessages).toHaveLength(1);
+    expect(userMessages[0]?.optimistic).toBeUndefined();
+  });
+
+  it('steers a queued submission immediately with its own client id', async () => {
+    const f = fixture(() => new Promise(() => {}));
+    let steerMessage: any;
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type !== 'rpc') return;
+      if (message.method === 'turn/steer') steerMessage = message;
+      else connection.options.onMessage({ type: 'rpc.result', id: message.id, result: {} });
+    } });
+    const queuedMessage = { id: 'native-q', clientUserMessageId: 'queued-client-id',
+      input: [{ type: 'text', text: 'Queued steer', text_elements: [] }] } as QueuedSubmission;
+    const pending = f.remote.steerQueued(thread.id, 'active-native-turn', queuedMessage);
+    await settle();
+    const optimistic = f.remote.items.find(item => item.type === 'userMessage' && item.optimistic);
+    expect(optimistic?.id).toBe('queued-client-id');
+    expect(optimistic).toMatchObject({ optimistic: 'sending', turnId: 'active-native-turn',
+      content: [{ type: 'text', text: 'Queued steer' }] });
+    expect(steerMessage.params).toMatchObject({ threadId: thread.id,
+      expectedTurnId: 'active-native-turn', clientUserMessageId: 'queued-client-id' });
+    connection.options.onMessage({ type: 'rpc.result', id: steerMessage.id, result: {} });
+    await pending;
+    await settle();
+    expect(f.remote.items.filter(item => item.type === 'userMessage')).toHaveLength(1);
+  });
+
+  it('removes the optimistic send when turn/start is rejected', async () => {
+    const f = fixture(openFetcher);
+    synchronizeConnection();
+    await f.remote.openThread(thread.id);
+    await settle();
+    let startMessage: any;
+    captureSocket(message => { startMessage = message; });
+    const pending = f.remote.sendTurn(thread.id, 'Rejected send');
+    const rejection = expect(pending).rejects.toThrow('Synthetic rejection');
+    await settle();
+    expect(f.remote.items.some(item => item.type === 'userMessage' && item.optimistic)).toBe(true);
+    connection.options.onMessage({ type: 'rpc.error', id: startMessage.id,
+      error: { message: 'Synthetic rejection', code: -1 } });
+    await rejection;
+    await settle();
+    expect(f.remote.items.some(item => item.type === 'userMessage')).toBe(false);
   });
 });
 

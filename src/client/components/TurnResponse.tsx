@@ -173,7 +173,7 @@ export const MessageItem = memo(function MessageItem({ item, showFull = false, s
         data-scroll-anchor={itemKey(item)}>
         <div className="user-message-body">
           {item.optimistic && <div className="user-message-status" role="status">
-            {item.optimistic === 'sending' ? '正在引导当前任务…' : '等待原生确认…'}
+            {item.optimistic === 'sending' ? (item.turnId ? '正在引导当前任务…' : '正在发送…') : '等待原生确认…'}
           </div>}
           {heartbeat && <div className="automation-run-label"><CalendarClock size={12} aria-hidden="true" />由自动任务发送</div>}
           {images.length > 0 && <div className="user-message-attachments" aria-label={`${images.length} 个图片附件`}>

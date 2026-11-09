@@ -8,6 +8,7 @@ import {
   mergeLatestHistoryItems,
   mergeOlderHistoryItems,
   mergeOlderTurnTimings,
+  mergeTurnTimings,
   reconcileActiveTurnId,
   reconcileOptimisticUserMessages,
   reconcileThreadList,
@@ -41,6 +42,40 @@ describe('remote thread state', () => {
     expect(reconcileActiveTurnId('live', { live }, { activeTurnId: 'newer', turns: [newer] })).toBe('newer');
     expect(reconcileActiveTurnId(null, {}, { activeTurnId: 'live', turns: [live] })).toBe('live');
   });
+  it('reconciles a turn-less optimistic send with its native echo by content', () => {
+    const optimistic: ThreadItem = {
+      type: 'userMessage', id: 'client-id', optimistic: 'sending',
+      content: [{ type: 'text', text: 'New turn' }, { type: 'skill', name: 's', path: '/s' }]
+    };
+    expect(reconcileOptimisticUserMessages([optimistic], [{
+      type: 'userMessage', id: 'native-id', turnId: 'turn-9',
+      content: [{ type: 'text', text: 'New turn' }, { type: 'skill', name: 's', path: '/s' }]
+    }])).toEqual([]);
+    expect(reconcileOptimisticUserMessages([optimistic], [{
+      type: 'userMessage', id: 'native-id', turnId: 'turn-9',
+      content: [{ type: 'text', text: 'Different text' }, { type: 'skill', name: 's', path: '/s' }]
+    }])).toEqual([optimistic]);
+  });
+
+  it('does not resurrect a finished turn named active by a lagging snapshot', () => {
+    const done: TurnTiming = { id: 'done', status: 'interrupted', startedAt: 20, completedAt: 26, durationMs: 6000 };
+    const lagging: TurnTiming = { id: 'done', status: 'inProgress', startedAt: 20, completedAt: null, durationMs: null };
+    expect(reconcileActiveTurnId(null, { done }, { activeTurnId: 'done', turns: [lagging] })).toBeNull();
+    expect(reconcileActiveTurnId('done', { done }, { activeTurnId: 'done', turns: [lagging] })).toBeNull();
+  });
+
+  it('never rewinds a finished turn timing to inProgress from a lagging page', () => {
+    const done: TurnTiming = { id: 't', status: 'interrupted', startedAt: 20, completedAt: 26, durationMs: 6000 };
+    const lagging: TurnTiming = { id: 't', status: 'inProgress', startedAt: 20, completedAt: null, durationMs: null };
+    expect(mergeTurnTimings({ t: done }, [lagging], { t: done }).t).toBe(done);
+    expect(mergeTurnTimings({ t: done }, [lagging], {}).t).toBe(done);
+    const retrying = { ...done, status: 'failed', errorWillRetry: true,
+      error: { message: 'boom' } } as unknown as TurnTiming;
+    const resumed = mergeTurnTimings({ t: retrying }, [lagging], { t: retrying }).t!;
+    expect(resumed.status).toBe('inProgress');
+    expect(resumed.error?.message).toBe('boom');
+  });
+
   it('does not roll completed child timing back when an earlier speculative page is consumed', () => {
     const completed: TurnTiming = { id: 'child', status: 'completed', startedAt: 1, completedAt: 2, durationMs: 1000 };
     const prefetched: TurnTiming = { ...completed, status: 'inProgress', completedAt: null, durationMs: null };

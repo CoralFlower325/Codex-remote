@@ -26,6 +26,7 @@ import type {
 import type { WorkspaceBootstrap } from './types';
 import type { CollaborationMode, ComposerAttachment, ContextUsage, McpStatus, ReviewTarget, SkillInfo, SkillsResult } from './types';
 import { turnInput } from './slash-commands';
+import type { QueuedSubmission } from './queued-messages';
 import { loadedOutline, mergeOutlineTurns } from './thread-navigation';
 import type { ChatEventListener, ChatTransport } from './chat-transport';
 import { isTaskThread } from '../shared/thread-source';
@@ -1096,28 +1097,72 @@ export function useRemote({
     [clearStreamingDeltas, rpc, watchThread]
   );
 
+  const insertOptimisticUserMessage = useCallback((item: ThreadItem) => {
+    setItems(current => {
+      const next = upsertItem(current, item, false, turnTimingsRef.current);
+      itemsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const removeOptimisticUserMessage = useCallback((id: string) => {
+    setItems(current => {
+      const next = current.filter(item => !(item.type === 'userMessage' &&
+        item.id === id && item.optimistic));
+      itemsRef.current = next;
+      return next;
+    });
+  }, []);
+
   const sendTurn = useCallback(
     async (threadId: string, text: string, settings: ThreadSettingsPatch = {}, attachments: ComposerAttachment[] = [], skills: SkillInfo[] = []) => {
       const clean = text.trim();
       if (!clean && attachments.length === 0 && skills.length === 0) return;
 
-      if (!newThreadsRef.current.has(threadId)) await rpc('thread/resume', { threadId, excludeTurns: true });
-      const result = await rpc<{ turn: TurnTiming }>('turn/start', {
-        threadId,
-        input: turnInput(clean, attachments, skills),
-        ...(settings.model ? { model: settings.model } : {}),
-        ...(settings.effort ? { effort: settings.effort } : {}),
-        ...(settings.permissions ? permissionProfileUpdate(settings.permissions) : {}),
-        ...(settings.collaborationMode ? { collaborationMode: settings.collaborationMode } : {})
-      });
-      newThreadsRef.current.delete(threadId);
-      if (result.turn?.id && activeThreadRef.current === threadId) {
-        turnRevisionRef.current += 1;
-        activeTurnIdRef.current = result.turn.id;
-        setActiveTurnId(result.turn.id);
-        setTurnTimings((current) => ({ ...current, [result.turn.id]: projectTurnTiming(result.turn) }));
+      const input = turnInput(clean, attachments, skills);
+      const clientUserMessageId = randomUUID();
+      // Mirror steerTurn's optimistic chain for an existing, currently open
+      // chat: show the user's message immediately and let the native echo
+      // reconcile it by clientUserMessageId. Brand-new chats keep the
+      // established path because their item list is not mounted yet.
+      const optimistic: ThreadItem | null =
+        activeThreadRef.current === threadId && !newThreadsRef.current.has(threadId)
+          ? { type: 'userMessage', id: clientUserMessageId, content: input,
+              startedAtMs: Date.now(), optimistic: 'sending' }
+          : null;
+      if (optimistic) insertOptimisticUserMessage(optimistic);
+      try {
+        if (!newThreadsRef.current.has(threadId)) await rpc('thread/resume', { threadId, excludeTurns: true });
+        const result = await rpc<{ turn: TurnTiming }>('turn/start', {
+          threadId,
+          input,
+          clientUserMessageId,
+          ...(settings.model ? { model: settings.model } : {}),
+          ...(settings.effort ? { effort: settings.effort } : {}),
+          ...(settings.permissions ? permissionProfileUpdate(settings.permissions) : {}),
+          ...(settings.collaborationMode ? { collaborationMode: settings.collaborationMode } : {})
+        });
+        newThreadsRef.current.delete(threadId);
+        if (result.turn?.id && activeThreadRef.current === threadId) {
+          turnRevisionRef.current += 1;
+          activeTurnIdRef.current = result.turn.id;
+          setActiveTurnId(result.turn.id);
+          setTurnTimings((current) => ({ ...current, [result.turn.id]: projectTurnTiming(result.turn) }));
+          // Attach the answered turn to the optimistic send so its native
+          // echo upserts in place when it carries the native item id.
+          if (optimistic) setItems(current => {
+            const next = current.map(item => item.type === 'userMessage' &&
+              item.id === clientUserMessageId && item.optimistic
+              ? { ...item, turnId: result.turn!.id, optimistic: 'unconfirmed' as const } : item);
+            itemsRef.current = next;
+            return next;
+          });
+        }
+        return result.turn?.id;
+      } catch (error) {
+        if (optimistic) removeOptimisticUserMessage(clientUserMessageId);
+        throw error;
       }
-      return result.turn?.id;
     },
     [rpc]
   );
@@ -1315,24 +1360,39 @@ export function useRemote({
         startedAtMs: Date.now(),
         optimistic: 'sending'
       };
-      if (optimisticUserMessage) {
-        setItems(current => {
-          const next = upsertItem(current, optimistic, false, turnTimingsRef.current);
-          itemsRef.current = next;
-          return next;
-        });
-      }
+      if (optimisticUserMessage) insertOptimisticUserMessage(optimistic);
       try {
         await rpc('turn/steer', { threadId, expectedTurnId: turnId, clientUserMessageId, input });
       } catch (error) {
-        if (optimisticUserMessage) {
-          setItems(current => {
-            const next = current.filter(item => !(item.type === 'userMessage' &&
-              item.id === clientUserMessageId && item.optimistic));
-            itemsRef.current = next;
-            return next;
-          });
-        }
+        if (optimisticUserMessage) removeOptimisticUserMessage(clientUserMessageId);
+        throw error;
+      }
+    },
+    [rpc]
+  );
+
+  const steerQueued = useCallback(
+    async (threadId: string, turnId: string, message: QueuedSubmission) => {
+      // Reuse the queued submission's own clientUserMessageId so the native
+      // echo reconciles with this optimistic row instead of duplicating it.
+      // Queued inputs are composer submissions, never question replies, so
+      // steerTurn's question-envelope exception does not apply here.
+      const optimistic: ThreadItem = {
+        type: 'userMessage',
+        id: message.clientUserMessageId,
+        turnId,
+        content: message.input,
+        startedAtMs: Date.now(),
+        optimistic: 'sending'
+      };
+      insertOptimisticUserMessage(optimistic);
+      try {
+        await rpc('turn/steer', {
+          threadId, expectedTurnId: turnId,
+          clientUserMessageId: message.clientUserMessageId, input: message.input
+        });
+      } catch (error) {
+        removeOptimisticUserMessage(message.clientUserMessageId);
         throw error;
       }
     },
@@ -2017,6 +2077,7 @@ export function useRemote({
     archiveThread,
     toggleArchived,
     steerTurn,
+    steerQueued,
     interruptTurn,
     respondToRequest,
     setLastError
