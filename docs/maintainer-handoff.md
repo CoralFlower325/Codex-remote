@@ -15,27 +15,28 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.24** / manager **0.2.4**, tag
-`v0.2.24`, functional commit `94077f48aad6f35d4e1e97d3566dea920726b101`
-merged through PR #16. The
-[Windows / macOS discovery acceptance](desktop-debug-discovery.md) records the
-implementation and security boundaries. The preceding
+The current published release is Remote **0.2.25** / manager **0.2.4**, tag
+`v0.2.25`, functional commit `e2300bc4e2ee7787dcc0eae803ce46cac819a925`.
+The [mobile composer acceptance](mobile-composer-single-action-0.2.25.md) records
+the single-row toolbar, removed browser dictation and single Stop/Steer action.
+The preceding [Windows / macOS discovery acceptance](desktop-debug-discovery.md)
+retains the trusted automatic port discovery work. The
 [adversarial-review reconciliation](adversarial-review-0.2.22-fixes.md) retains
 the 31-item 0.2.23 batch.
-Local validation passed 128 test files (1022 tests, two platform skips),
-typecheck, both builds, browser acceptance and a compiled on-host bridge check.
-Main CI `42491241874`, runtime CI `42491290265` and manager CI `42491290241`
-passed; the manager plan correctly skipped unchanged packaging.
-All four official and distribution runtime attachments passed complete size/digest
-checks. The signed Windows/macOS archives passed pinned-key verification, exact
-source-tree comparison and individual checks of 3078/3071 files.
-The authorized Windows installation runs Remote 0.2.24; local/public versions and
-nine asset digests agree, Desktop transport is ready through discovered port 4952,
-authenticated task/history reads succeed and anonymous private reads return 401.
-Only Remote restarted; Desktop, Tunnel and the domestic relay were preserved.
-The unchanged manager 0.2.4 retained its root/settings and reports the new host
-healthy. Its prior installation receipt and all rollback backups are retained in
-the private deployment record. Never start another App Server.
+Local validation passed 128 test files (1026 tests, two platform skips),
+typecheck, both builds and browser acceptance. Main CI `42548162945`, runtime CI
+`42548178124` and manager plan `42548178177` passed; the manager plan correctly
+skipped unchanged packaging.
+All four official runtime attachments and the refreshed distribution download
+metadata passed size and digest checks. The signed Windows/macOS archives passed
+pinned-key verification, exact source-tree comparison and individual checks of
+3079/3072 files.
+Local and public frontends report Remote 0.2.25 with build
+`assets/index-0UZFYoj4.js`; the distribution latest endpoint reports `v0.2.25`.
+Desktop transport is ready and anonymous private reads return 401. Only Remote
+and the Cloudflare static frontend changed; Desktop, Tunnel and the domestic
+relay were preserved. The unchanged manager 0.2.4 retains its configuration and
+prior rollback backups. Never start another App Server.
 
 Remote **0.2.25** promotes the accepted 0.2.25-rc work to the formal channel;
 manager **0.2.4** is unchanged. It keeps the mobile composer toolbar on one row
