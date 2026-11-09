@@ -23,8 +23,9 @@ The preceding [Windows / macOS discovery acceptance](desktop-debug-discovery.md)
 retains the trusted automatic port discovery work. The
 [adversarial-review reconciliation](adversarial-review-0.2.22-fixes.md) retains
 the 31-item 0.2.23 batch.
-Local validation passed 128 test files (1026 tests, two platform skips),
-typecheck, both builds and browser acceptance. Main CI `42548162945`, runtime CI
+At the published 0.2.25 tag, local validation passed 128 test files (1026 tests,
+two platform skips), typecheck, both builds and browser acceptance. Main CI
+`42548162945`, runtime CI
 `42548178124` and manager plan `42548178177` passed; the manager plan correctly
 skipped unchanged packaging.
 All four official runtime attachments and the refreshed distribution download
@@ -55,12 +56,26 @@ formal runtime release. Manager 0.2.4 requires its own installer; changing Remot
 does not patch an already installed manager. AU self-update and macOS application
 signing/notarization remain paused.
 
-Native PTYs are now isolated in owned processes with bounded IPC and session
-counts. A worker crash is visible and does not terminate Remote or replay input.
-The historical native access violation still has no established upstream root
-cause. Platform output uses bounded rotating logs; macOS controls use the
-same-PID background wrapper and retain ownership checks. Local synthetic checks
-do not establish signed-in macOS service behavior.
+Native PTYs are isolated in owned processes with bounded IPC and session counts.
+Windows workers attach to a kill-on-close Job Object before the shell starts;
+POSIX workers use an owned process group. A worker crash is visible and does not
+terminate Remote or replay input. The historical native access violation still
+has no established upstream root cause, but the new helper, descendant cleanup
+and real PTY lifecycle tests pass. Platform output uses bounded rotating logs;
+macOS controls use the same-PID background wrapper and retain ownership checks.
+Local synthetic checks do not establish signed-in macOS service behavior.
+
+The current implementation branch after `v0.2.25` adds complete cursor-following
+model/project catalogs, explicit reasoning inherit/default semantics, ordered
+settings acknowledgements, isolated Office conversion workers, bounded SSE
+backpressure, a supervisor-owned dynamic tunnel metrics port, explicit client
+view/action contracts and split Home/Thread screens. It also requires prebuilt
+runtime packages to match the tested Node 22.19.x ABI. These changes are not a
+claim that a new Release or host installation exists. The latest branch-level
+validation passed 135 test files (1049 tests, two platform skips), typecheck,
+the application and manager builds, synthetic browser acceptance and the
+Windows worker acceptance. Physical-device acceptance is tracked in
+[physical-device-acceptance.md](physical-device-acceptance.md).
 
 The following paragraphs retain historical 0.2.23 and earlier observations:
 Remote 0.2.22 pairs with unchanged manager 0.2.3; manager installers remain
@@ -145,9 +160,10 @@ Outstanding acceptance:
 - Sustained connection stability under real network/proxy changes. Earlier
   intermittent public failures are not proven eliminated by short live probes.
 
-Model/project catalogs currently read their first requested page. New-chat
-reasoning defaults can differ from global configuration overrides. Remote PTYs
-run as the host user outside model permission profiles.
+Model/project catalogs are read to completion and incomplete snapshots are
+rejected. A thread without an explicit effort still inherits native/global
+configuration rather than being silently rewritten to the catalog default.
+Remote PTYs run as the host user outside model permission profiles.
 
 ## Release and Recovery
 

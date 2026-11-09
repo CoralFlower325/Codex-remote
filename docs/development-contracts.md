@@ -9,8 +9,10 @@ Release and privacy policy remains in AGENTS.md.
 
 - `src/client/`: responsive workspace, native metadata menus, history, approvals.
 - `src/client/remote-connection.ts`: socket lifecycle and recovery.
-  - `src/client/remote-contracts.ts`: explicit state views and action capabilities;
-    components must not derive their props from a hook implementation.
+- `src/client/remote-contracts.ts`: explicit state views and action capabilities;
+  components must not derive their props from a hook implementation.
+- `src/client/workspace-directory-state.ts`: pure task/catalog row reconciliation
+  and snapshot restoration used by the directory controller.
 - `src/client/useWorkspaceDirectory.ts`: task/catalog reads and reconciliation;
   `useRemote.ts` retains native chat lifecycle and transport orchestration.
 - `src/client/conversation-state.ts`: shared side/subagent event projection;
@@ -24,6 +26,13 @@ Release and privacy policy remains in AGENTS.md.
 - `src/shared/rpc-methods.ts`: the native RPC allowlist; classification never
   authorizes automatic action retries.
 - `src/server/thread-history.ts`: native bounded history pagination.
+- `src/shared/catalog.ts`: complete native catalog pagination, cursor-cycle
+  detection, identity deduplication and atomic snapshots.
+- `src/server/office-preview-worker.ts`: bounded low-privilege LibreOffice
+  conversion worker; `office-preview.ts` owns queueing, temporary cleanup and
+  child-process termination.
+- `src/server/tunnel-metrics-state.ts`: private supervisor-owned metrics-port
+  state; never use a fixed port for a new managed tunnel.
 - `src/shared/`: protocol and permission profiles.
 - `scripts/`: Windows/macOS setup, services, tunnel, and platform controls.
 - `desktop/`: optional Electron manager, isolated IPC, tray/menu-bar controls and
@@ -36,6 +45,8 @@ Release and privacy policy remains in AGENTS.md.
   `updater.mjs` installs, and `update-transaction.mjs` persists recovery.
 - `scripts/runtime-files.mjs`: staging-only package exclusions. Preserve the
   target PTY binaries/helper and executable mode; archive debug symbols separately.
+- `desktop/release-identity.mjs` and `scripts/release-contract.mjs`: the single
+  release repository/version contract used by runtime, distribution and CI checks.
 - `scripts/web-update*.mjs`: independent backend update task, projected durable
   progress and backend-only service controls. The authenticated server router
   accepts only a checked official version, token and idempotency ID.
