@@ -224,6 +224,10 @@ if (process.argv.includes('--serve')) {
       await page.getByRole('menuitemradio', { name: 'Synthetic project', exact: true }).click();
       assert.equal(await picker.inputValue(), roots[1]);
       await page.locator('.home-view textarea').fill('Synthetic root acceptance');
+      await page.waitForFunction(() => {
+        const send = document.querySelector('.home-view .composer-send');
+        return send instanceof HTMLButtonElement && !send.disabled;
+      });
       const previousStarts = actions.filter(a => a.method === 'thread/start').length;
       await page.getByRole('button', { name: '\u53d1\u9001\u4efb\u52a1', exact: true }).click();
       await page.waitForFunction(() => !document.querySelector('.home-view'));
