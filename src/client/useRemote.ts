@@ -1,6 +1,7 @@
 import { useWorkspaceDirectory } from './useWorkspaceDirectory';
 import { historyConfig } from './history-config';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { v4 as randomUUID } from 'uuid';
 
 import type { ClientRpcMethod, ServerMessage } from '../shared/protocol';
 import { projectTurnTiming, runtimeTurnError, type TurnTiming } from '../shared/turn-timing';
@@ -12,7 +13,7 @@ import { beginForegroundRead, constrainedNetwork, prioritizeInteraction, yieldTo
 import { readDeviceWorkspace, saveDeviceWorkspace, readDeviceChat, saveDeviceChat, removeDeviceChat } from './device-snapshots';
 import { provisionalHistory, provisionalThread, type OpenThreadPage } from './loading-snapshots';
 import { RemoteConnection, type RemoteChannel } from './remote-connection';
-import { isThreadWriterConflict, isUnusableThreadError, itemKey, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings, reconcileActiveTurnId, upsertItem } from './remote-state';
+import { isThreadWriterConflict, isUnusableThreadError, itemKey, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings, reconcileActiveTurnId, reconcileOptimisticUserMessages, upsertItem } from './remote-state';
 import type {
   BridgeStatus,
   ServerRequest,
@@ -1300,7 +1301,32 @@ export function useRemote({
 
   const steerTurn = useCallback(
     async (threadId: string, turnId: string, text: string, attachments: ComposerAttachment[] = [], skills: SkillInfo[] = []) => {
-      await rpc('turn/steer', { threadId, expectedTurnId: turnId, input: turnInput(text, attachments, skills) });
+      const clientUserMessageId = randomUUID();
+      const input = turnInput(text, attachments, skills);
+      const optimistic: ThreadItem = {
+        type: 'userMessage',
+        id: clientUserMessageId,
+        turnId,
+        content: input,
+        startedAtMs: Date.now(),
+        optimistic: 'sending'
+      };
+      setItems(current => {
+        const next = upsertItem(current, optimistic, false, turnTimingsRef.current);
+        itemsRef.current = next;
+        return next;
+      });
+      try {
+        await rpc('turn/steer', { threadId, expectedTurnId: turnId, clientUserMessageId, input });
+      } catch (error) {
+        setItems(current => {
+          const next = current.filter(item => !(item.type === 'userMessage' &&
+            item.id === clientUserMessageId && item.optimistic));
+          itemsRef.current = next;
+          return next;
+        });
+        throw error;
+      }
     },
     [rpc]
   );
@@ -1831,10 +1857,13 @@ export function useRemote({
     if (method === 'item/started' && params.threadId === activeThreadRef.current) {
       const item = params.item as ThreadItem | undefined;
       if (item?.id) {
-        setItems((current) => viewingHistoryRef.current && !current.some(entry =>
-          itemKey(entry) === itemKey({ id: item.id, turnId: String(params.turnId ?? '') })) ? current
-          : upsertItem(current, { ...item, turnId: String(params.turnId ?? ''),
-            startedAtMs: params.startedAtMs as number | null ?? null }, false, turnTimingsRef.current));
+        setItems((current) => {
+          const reconciled = reconcileOptimisticUserMessages(current, [item], String(params.turnId ?? ''));
+          return viewingHistoryRef.current && !reconciled.some(entry =>
+            itemKey(entry) === itemKey({ id: item.id, turnId: String(params.turnId ?? '') })) ? reconciled
+            : upsertItem(reconciled, { ...item, turnId: String(params.turnId ?? ''),
+              startedAtMs: params.startedAtMs as number | null ?? null }, false, turnTimingsRef.current);
+        });
       }
     }
 
@@ -1855,10 +1884,13 @@ export function useRemote({
       const item = params.item as ThreadItem | undefined;
       if (item?.id) {
         flushStreamingDeltas();
-        setItems((current) => viewingHistoryRef.current && !current.some(entry =>
-          itemKey(entry) === itemKey({ id: item.id, turnId: String(params.turnId ?? '') })) ? current
-          : upsertItem(current, { ...item, turnId: String(params.turnId ?? ''),
-            completedAtMs: params.completedAtMs as number | null ?? null }, false, turnTimingsRef.current));
+        setItems((current) => {
+          const reconciled = reconcileOptimisticUserMessages(current, [item], String(params.turnId ?? ''));
+          return viewingHistoryRef.current && !reconciled.some(entry =>
+            itemKey(entry) === itemKey({ id: item.id, turnId: String(params.turnId ?? '') })) ? reconciled
+            : upsertItem(reconciled, { ...item, turnId: String(params.turnId ?? ''),
+              completedAtMs: params.completedAtMs as number | null ?? null }, false, turnTimingsRef.current);
+        });
       }
     }
 

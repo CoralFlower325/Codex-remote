@@ -180,6 +180,22 @@ describe('desktop RPC transport', () => {
     expect(commands.filter(command => command.params?.expression?.includes('"method":"turn/start"'))).toHaveLength(1);
   });
 
+  it('times out a native read without taking down the live event bridge', async () => {
+    const { bridge, relay } = await desktop([], undefined, {
+      responseTimeoutMs: 40,
+      hangRequests: 1
+    });
+    await bridge.connect();
+    await expect(bridge.request('thread/read', { threadId: 'slow-read' }))
+      .rejects.toThrow('Desktop native read timed out');
+    expect(bridge.isConnected()).toBe(true);
+    const notification = new Promise(resolve => bridge.once('event', resolve));
+    relay({ type: 'mcp-notification', method: 'item/started',
+      params: { threadId: 'slow-read', turnId: 'turn', item: { id: 'user', type: 'userMessage' } } });
+    expect(await notification).toMatchObject({ method: 'item/started' });
+    expect(await bridge.request('thread/read', { threadId: 'recovered' })).toEqual({ threadId: 'recovered' });
+  });
+
   it('uses the native automation relay and returns unsupported-service errors without fallback', async () => {
     const { bridge, commands } = await desktop([], (socket, command) => socket.send(JSON.stringify({
       id: command.id, result: { result: { value: { ok: false, error: 'Native service unavailable' } } }

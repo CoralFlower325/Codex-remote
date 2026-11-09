@@ -160,6 +160,18 @@
   white-space: pre-wrap;
 }
 
+.message--optimistic .user-message-body {
+  opacity: 0.72;
+}
+
+.user-message-status {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: right;
+  margin-bottom: 4px;
+}
+
 .automation-run-label {
   display: flex;
   align-items: center;

@@ -326,6 +326,23 @@ describe('native question interaction', () => {
     expect(sent[0]).toMatchObject({ method: 'turn/steer', params: { threadId: thread.id,
       expectedTurnId: 'active-native-turn', input: [{ type: 'text', text }] } });
   });
+  it('shows a steer immediately and reconciles it with the native user item', async () => {
+    const f = fixture(() => new Promise(() => {}));
+    let message: any;
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const parsed = JSON.parse(payload);
+      if (parsed.type === 'rpc') message = parsed;
+    } });
+    const pending = f.remote.steerTurn(thread.id, 'active-native-turn', 'Immediate steer');
+    await settle();
+    const optimistic = f.remote.items.find(item => item.type === 'userMessage' && item.optimistic);
+    expect(optimistic).toMatchObject({ type: 'userMessage', optimistic: 'sending',
+      content: [{ type: 'text', text: 'Immediate steer' }] });
+    expect(message.params).toMatchObject({ clientUserMessageId: optimistic?.id });
+    connection.options.onMessage({ type: 'rpc.result', id: message.id, result: {} });
+    await pending;
+    expect(f.remote.items.filter(item => item.type === 'userMessage')).toHaveLength(1);
+  });
 });
 
 describe('slow history transport regression', () => {

@@ -84,7 +84,8 @@ export type ThreadItem = (
     }
   | { type: 'subAgentActivity'; id: string; kind: 'started' | 'interacted' | 'interrupted' | 'completed';
       agentThreadId: string; agentPath: string; model: string | null; reasoningEffort: string | null }
-) & { turnId?: string; startedAtMs?: number | null; completedAtMs?: number | null; detailsDeferred?: boolean };
+) & { turnId?: string; startedAtMs?: number | null; completedAtMs?: number | null; detailsDeferred?: boolean;
+  optimistic?: 'sending' | 'unconfirmed' };
 
 export type SubagentStatus = 'pendingInit' | 'running' | 'interrupted' | 'completed' | 'errored' | 'shutdown' | 'notFound';
 

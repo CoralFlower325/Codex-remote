@@ -524,6 +524,11 @@ export function Composer({
         <span>{recoveryNotice}</span><button type="button" className="icon-button" title="关闭提示" aria-label="关闭草稿提示"
           onClick={() => owner.update(current => ({ ...current, recoveryNotice: undefined }))}><X size={13} /></button>
       </div>}
+      {activeTurnId && <div className="composer-active-mode" role="status">
+        <CornerDownRight size={12} aria-hidden="true" />
+        <strong>{queueMessages ? '排队模式' : '引导模式'}</strong>
+        <span>{queueMessages ? '当前任务结束后继续' : '发送后立即插话当前任务'}</span>
+      </div>}
       <div className="composer">
         {(attachments.length > 0 || selectedSkills.length > 0) && <div className="composer-context-tray">
           {selectedSkills.map((skill) => <div className="composer-context-chip" key={skill.path}>

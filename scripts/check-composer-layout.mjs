@@ -167,6 +167,7 @@ try {
       const composer = page.locator('.thread-screen > .thread-bottom .composer');
       await composer.locator('.composer-stop').waitFor();
       assert.equal(await composer.locator('.composer-send').count(), 0);
+      await page.getByText('引导模式', { exact: true }).waitFor();
       const emptyLayout = await toolbarGeometry(composer);
       await input.fill('Layout-only steering draft');
       await composer.locator('.composer-send').waitFor();
