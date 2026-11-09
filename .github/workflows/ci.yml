@@ -22,10 +22,7 @@ jobs:
         with:
           node-version: '22.19.0'
           cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+      - uses: ./.github/actions/validate
       - run: npm run manager:build
       - name: Validate release metadata and packaged receipts
         run: npm run check:release
@@ -62,10 +59,11 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             desktop/package-lock.json
-      - run: npm ci
       - run: npm --prefix desktop ci
       - run: node desktop/node_modules/playwright/cli.js install --with-deps chromium
-      - run: npm run build
+      - uses: ./.github/actions/validate
+        with:
+          build: 'true'
       - name: Validate React, history, composer and update recovery
         run: node scripts/run-acceptance.mjs browser
       - uses: actions/upload-artifact@v4

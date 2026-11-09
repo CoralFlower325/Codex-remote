@@ -23,10 +23,7 @@ jobs:
         with:
           node-version: '22.19.0'
           cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+      - uses: ./.github/actions/validate
       - run: npm run runtime:prune
       - run: node scripts/check-runtime.mjs
       - run: node scripts/archive-runtime-symbols.mjs
