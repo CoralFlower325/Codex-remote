@@ -1303,6 +1303,10 @@ export function useRemote({
     async (threadId: string, turnId: string, text: string, attachments: ComposerAttachment[] = [], skills: SkillInfo[] = []) => {
       const clientUserMessageId = randomUUID();
       const input = turnInput(text, attachments, skills);
+      // Question answers must stay in their native question dock until the
+      // bridge confirms them; inserting them as user rows would hide a
+      // failed answer and discard its retry state.
+      const optimisticUserMessage = !/^<send_user_message_question_reply>/.test(text.trim());
       const optimistic: ThreadItem = {
         type: 'userMessage',
         id: clientUserMessageId,
@@ -1311,20 +1315,24 @@ export function useRemote({
         startedAtMs: Date.now(),
         optimistic: 'sending'
       };
-      setItems(current => {
-        const next = upsertItem(current, optimistic, false, turnTimingsRef.current);
-        itemsRef.current = next;
-        return next;
-      });
-      try {
-        await rpc('turn/steer', { threadId, expectedTurnId: turnId, clientUserMessageId, input });
-      } catch (error) {
+      if (optimisticUserMessage) {
         setItems(current => {
-          const next = current.filter(item => !(item.type === 'userMessage' &&
-            item.id === clientUserMessageId && item.optimistic));
+          const next = upsertItem(current, optimistic, false, turnTimingsRef.current);
           itemsRef.current = next;
           return next;
         });
+      }
+      try {
+        await rpc('turn/steer', { threadId, expectedTurnId: turnId, clientUserMessageId, input });
+      } catch (error) {
+        if (optimisticUserMessage) {
+          setItems(current => {
+            const next = current.filter(item => !(item.type === 'userMessage' &&
+              item.id === clientUserMessageId && item.optimistic));
+            itemsRef.current = next;
+            return next;
+          });
+        }
         throw error;
       }
     },
