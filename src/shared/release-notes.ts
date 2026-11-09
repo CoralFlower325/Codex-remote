@@ -7,7 +7,7 @@ export const releaseNotes: ReleaseNote[] = [
     '插话发送后立即在 Remote 显示“正在引导当前任务”，原生用户条目到达后自动去重；只读 Desktop 请求超时不再断开实时事件桥，恢复活动会话的引导模式提示。',
     'Windows PTY worker 启动前接入 kill-on-close Job Object，POSIX 使用独立进程组，补充有界 stderr、信号诊断、强制回收和 Node 22.19.x ABI 校验。',
     'Office 转换迁入隔离低权限 worker，增加超时和陈旧临时目录恢复；SSE/WS 增加有界背压，受管隧道使用监督器拥有的动态指标端口。',
-    '客户端增加显式视图/动作契约并拆分 Home/Thread 界面与 RPC 请求生命周期；发布检查与 CI 验证集中到共享契约。管理器保持 0.2.4，无变更；iPhone 与已登录 macOS 真机仍按验收单单独执行。'
+    '客户端增加显式视图/动作契约并拆分 Home/Thread 界面与 RPC 请求生命周期；发布检查与 CI 验证集中到共享契约。管理器 0.2.5 对齐密码 IPC 的 12 字符最小长度；iPhone 与已登录 macOS 真机仍按验收单单独执行。'
   ] },
   { version: '0.2.25', changes: [
     '手机输入区改为单行工具栏并移除浏览器听写；附件、权限、模型、上下文和主操作不再换成第二行。',
