@@ -7,22 +7,6 @@
   margin-bottom: 0;
 }
 
-.composer-active-mode {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 20px;
-  padding: 0 6px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 20px;
-}
-
-.composer-active-mode strong {
-  color: var(--ink);
-  font-weight: 500;
-}
-
 .composer {
   position: relative;
   border: 1px solid #e2e2e2;

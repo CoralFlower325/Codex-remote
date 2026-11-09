@@ -1,13 +1,13 @@
 import { historyConfig } from '../history-config';
-import { Check, CornerDownRight, ListEnd, MoreHorizontal, Pencil, MessageCirclePlus, Trash2, X } from 'lucide-react';
+import { Check, CornerDownRight, ListEnd, LoaderCircle, MoreHorizontal, Pencil, MessageCirclePlus, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ChatTransport } from '../chat-transport';
-import { queuedDraft, replaceQueuedText, type ChatInput, type QueuedSubmission } from '../queued-messages';
+import { mergeQueuedMessages, queuedDraft, replaceQueuedText, type ChatInput, type QueuedSubmission } from '../queued-messages';
 import { api, isAbortedRequest } from '../api';
 
 export function QueuedMessages({ transport, threadId, activeTurnId, connected, readable, onError, onOpenSideChat,
-  queueEnabled, onQueueEnabledChange }: {
+  queueEnabled, onQueueEnabledChange, optimisticMessages = [], onOptimisticSettled, refreshToken = 0 }: {
   transport: ChatTransport;
   threadId: string;
   activeTurnId: string | null;
@@ -17,6 +17,9 @@ export function QueuedMessages({ transport, threadId, activeTurnId, connected, r
   onOpenSideChat: (input: ChatInput) => void;
   queueEnabled: boolean;
   onQueueEnabledChange: (enabled: boolean) => void;
+  optimisticMessages?: QueuedSubmission[];
+  onOptimisticSettled?: (clientUserMessageIds: string[]) => void;
+  refreshToken?: number;
 }) {
   const [messages, setMessages] = useState<QueuedSubmission[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -25,7 +28,11 @@ export function QueuedMessages({ transport, threadId, activeTurnId, connected, r
   const [menu, setMenu] = useState<{ id: string; top: number; right: number } | null>(null);
   const version = useRef(0);
   const turnRef = useRef(activeTurnId);
+  const optimisticRef = useRef(optimisticMessages);
+  const onOptimisticSettledRef = useRef(onOptimisticSettled);
   turnRef.current = activeTurnId;
+  optimisticRef.current = optimisticMessages;
+  onOptimisticSettledRef.current = onOptimisticSettled;
 
   useEffect(() => {
     if (!readable) { setMessages([]); return; }
@@ -53,7 +60,11 @@ export function QueuedMessages({ transport, threadId, activeTurnId, connected, r
         if (cursor) cursors.add(cursor);
       } while (cursor);
       console.debug('[thread-dock] queue read finished', { elapsedMs: performance.now() - startedAt, count: collected.length });
-      if (!disposed && request === version.current) setMessages(collected);
+      if (!disposed && request === version.current) {
+        setMessages(collected);
+        const { settledClientUserMessageIds } = mergeQueuedMessages(collected, optimisticRef.current);
+        if (settledClientUserMessageIds.length) onOptimisticSettledRef.current?.(settledClientUserMessageIds);
+      }
     };
     const load = () => { void refresh().catch(error => { if (!disposed && !isAbortedRequest(error)) onError(error); }); };
     load();
@@ -61,7 +72,7 @@ export function QueuedMessages({ transport, threadId, activeTurnId, connected, r
       if (params.threadId === threadId && ['thread/queue/changed', 'turn/started', 'turn/completed'].includes(method)) load();
     });
     return () => { disposed = true; controller.abort(); version.current++; unsubscribe(); };
-  }, [readable, connected, threadId, transport]);
+  }, [readable, connected, threadId, transport, refreshToken]);
 
   useEffect(() => {
     if (!menu) return;
@@ -101,28 +112,34 @@ export function QueuedMessages({ transport, threadId, activeTurnId, connected, r
     finally { setBusy(null); }
   }
 
-  if (!messages.length) return null;
+  const display = mergeQueuedMessages(messages, optimisticMessages).messages;
+  const optimisticClientIds = new Set(optimisticMessages.map(message => message.clientUserMessageId));
+  if (!display.length) return null;
   return <div className="queued-messages" aria-label="待发消息">
-    {messages.map(message => <div className="queued-message" key={message.id}>
+    {display.map(message => {
+      const pending = optimisticClientIds.has(message.clientUserMessageId);
+      return <div className={`queued-message${pending ? ' queued-message--pending' : ''}`} key={message.id}
+        aria-busy={pending || undefined}>
       {editing === message.id ? <form className="queued-edit" onSubmit={event => { event.preventDefault(); void act(message, 'save'); }}>
         <textarea aria-label="编辑待发消息" value={text} autoFocus onChange={event => setText(event.target.value)} />
         <button className="icon-button" type="submit" aria-label="保存待发消息" disabled={!connected || Boolean(busy)}><Check size={15} /></button>
         <button className="icon-button" type="button" aria-label="取消编辑" onClick={() => setEditing(null)}><X size={15} /></button>
       </form> : <>
-        <ListEnd size={15} aria-hidden="true" />
+        {pending ? <LoaderCircle size={15} className="spin" aria-hidden="true" /> : <ListEnd size={15} aria-hidden="true" />}
         <span className="queued-message-text" title={queuedDraft(message.input).text}>{queuedDraft(message.input).text ||
           queuedDraft(message.input).attachments.find(attachment => attachment.kind === 'document')?.name || '附件或技能'}</span>
-        <button type="button" className="queued-steer" disabled={!connected || Boolean(busy)}
+        <button type="button" className="queued-steer" disabled={pending || !connected || Boolean(busy)}
           onClick={() => void act(message, 'send')}><CornerDownRight size={14} />{activeTurnId ? '引导' : '发送'}</button>
         <button type="button" className="icon-button" aria-label="删除待发消息" title="删除待发消息"
-          disabled={!connected || Boolean(busy)} onClick={() => void act(message, 'delete')}><Trash2 size={14} /></button>
+          disabled={pending || !connected || Boolean(busy)} onClick={() => void act(message, 'delete')}><Trash2 size={14} /></button>
         <button type="button" className="icon-button" aria-label="待发消息操作" title="待发消息操作"
-          aria-haspopup="menu" aria-expanded={menu?.id === message.id} onClick={event => {
+          disabled={pending} aria-haspopup="menu" aria-expanded={menu?.id === message.id} onClick={event => {
             const rect = event.currentTarget.getBoundingClientRect();
             setMenu({ id: message.id, top: Math.max(8, rect.top - 130), right: Math.max(8, innerWidth - rect.right) });
           }}><MoreHorizontal size={17} /></button>
       </>}
-    </div>)}
+    </div>;
+    })}
     {menu && createPortal(<>
       <button type="button" className="queue-menu-backdrop" aria-label="关闭待发消息菜单" onClick={() => setMenu(null)} />
       <div className="queue-menu" role="menu" style={{ top: menu.top, right: menu.right }}>

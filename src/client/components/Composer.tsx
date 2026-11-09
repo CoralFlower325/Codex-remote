@@ -1,7 +1,7 @@
 import {
   ArrowLeft, ArrowUp, Check, ChevronDown, ChevronRight, Eye, Folder,
   LoaderCircle, ShieldAlert, ShieldCheck, Square, X, Plus, MessageSquare, Sparkles, ListTodo,
-  FileText, RotateCw, CornerDownRight, ListEnd
+  FileText, RotateCw
 } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
@@ -524,11 +524,6 @@ export function Composer({
         <span>{recoveryNotice}</span><button type="button" className="icon-button" title="关闭提示" aria-label="关闭草稿提示"
           onClick={() => owner.update(current => ({ ...current, recoveryNotice: undefined }))}><X size={13} /></button>
       </div>}
-      {activeTurnId && <div className="composer-active-mode" role="status">
-        <CornerDownRight size={12} aria-hidden="true" />
-        <strong>{queueMessages ? '排队模式' : '引导模式'}</strong>
-        <span>{queueMessages ? '当前任务结束后继续' : '发送后立即插话当前任务'}</span>
-      </div>}
       <div className="composer">
         {(attachments.length > 0 || selectedSkills.length > 0) && <div className="composer-context-tray">
           {selectedSkills.map((skill) => <div className="composer-context-chip" key={skill.path}>
@@ -657,7 +652,6 @@ export function Composer({
               {effort && <span className="composer-effort">{reasoningLabel(modelInfo, effort)}</span>}
               <ChevronDown size={13} aria-hidden="true" />
             </button>
-            <span className="composer-turn-slot" data-thread-navigation-slot={variant === 'thread' ? '' : undefined} />
           </div>
           <div className="composer-submit">
             {contextPercent !== null && <span className="context-usage" role="img" tabIndex={0}
@@ -669,6 +663,7 @@ export function Composer({
                 <circle className="context-usage-progress" cx="6" cy="6" r="5" pathLength="100" />
               </svg>
             </span>}
+            <span className="composer-turn-slot" data-thread-navigation-slot={variant === 'thread' ? '' : undefined} />
             {activeTurnId && !hasComposerContent && (
               <button type="button" className="composer-stop" disabled={stopping} onClick={() => void stop()}
                 aria-label="停止任务" title="停止任务">
@@ -679,10 +674,9 @@ export function Composer({
               <button type="button" className="composer-send" disabled={(!draft.trim() && attachments.length === 0 && selectedSkills.length === 0) ||
                 attachments.some(attachment => attachment.kind === 'document' && Boolean(attachment.status)) ||
                 sending || disabled || changing}
-                 onClick={() => void submit()} aria-label={activeTurnId ? queueMessages ? '加入队列' : '发送补充要求' : '发送任务'}
-                 title={activeTurnId ? queueMessages ? '加入队列' : '发送补充要求' : '发送任务'}>
-                {sending ? <LoaderCircle size={17} className="spin" /> : activeTurnId && queueMessages
-                  ? <ListEnd size={18} /> : activeTurnId ? <CornerDownRight size={18} /> : <ArrowUp size={18} />}
+                 onClick={() => void submit()} aria-label={activeTurnId ? queueMessages ? '加入队列' : '引导当前任务' : '发送任务'}
+                 title={activeTurnId ? queueMessages ? '加入队列' : '引导当前任务' : '发送任务'}>
+                {sending ? <LoaderCircle size={17} className="spin" /> : <ArrowUp size={18} />}
               </button>
             )}
           </div>

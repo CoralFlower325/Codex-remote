@@ -43,4 +43,4 @@ do {
   Start-Sleep -Milliseconds 300
 } while ([DateTime]::UtcNow -lt $deadline)
 if ($remaining) { throw "Owned service process is still exiting." }
-Start-ScheduledTask -TaskName $taskName
+& (Join-Path $Root "scripts\remote-control-windows.ps1") -Action Start -NoBrowser

@@ -18,6 +18,15 @@ describe('local manager control boundary', () => {
     expect(() => controlCommand('darwin', root, 'Start; rm')).toThrow();
     expect(() => controlCommand('linux', root, 'Start')).toThrow();
   });
+  it('stages the Windows task runtime outside per-user AppData', async () => {
+    const install = await fs.readFile(new URL('../scripts/install-task-windows.ps1', import.meta.url), 'utf8');
+    const control = await fs.readFile(new URL('../scripts/remote-control-windows.ps1', import.meta.url), 'utf8');
+    expect(install).toContain('$env:ProgramData');
+    expect(install).toContain('Resolve-NodeRuntime');
+    expect(install).toContain('background-task-windows.mjs');
+    expect(install).not.toContain('wscript.exe');
+    expect(control).toContain('nodeRuntimeRoot');
+  });
   it('requires owned backend, Desktop, password and managed tunnel readiness', () => {
     const service = { running: true, tunnelManaged: true };
     const local = { reachable: true, body: { ok: true, codex: 'ready', transport: 'desktop', passwordConfigured: true } };

@@ -11,8 +11,8 @@ See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
-Remote 0.2.26 pairs with stable manager 0.2.5, using manual installer upgrades.
-Install 0.2.5 over the old app, select the same host root and retry the update.
+Remote 0.2.27 pairs with stable manager 0.2.6, using manual installer upgrades.
+Install 0.2.6 over the old app, select the same host root and retry the update.
 Updating Remote cannot change the old manager's bundled updater.
 Manager self-update is preserved on the paused 0.2.0AU development line;
 see [the checkpoint](manager-self-update-checkpoints.md).
@@ -384,7 +384,7 @@ The mobile layout activates below 720 CSS pixels wide, or below 980 pixels when 
 
 Phones use compact header and composer spacing. Mobile layout follows the visible viewport when the keyboard opens and removes the duplicate bottom safe-area gap. Physical display safe areas remain protected. Desktop appearance is unchanged. Keyboard geometry has unit coverage; real iOS keyboard acceptance is separate.
 
-Mobile attachment and conversation-index buttons use 24px; model controls remain 36px. The composer has one primary action rather than separate stop and send buttons: an active turn with an empty input shows Stop, while text, attachments or skills replace it with Steer. Active-turn sends steer immediately by default; queue mode remains available from queued-message actions. The toolbar stays on one row without shrinking those controls. Desktop composer attachment/index controls use about 18.67px, and standalone/coarse-pointer side-chat index controls about 29.33px. Other controls retain their existing sizes. The mobile shell follows the visual viewport and suppresses duplicate bottom spacing while the keyboard is open; real Safari keyboard acceptance remains separate. Both layouts show a plain Codex sidebar title and omit the help shortcut; the bottom Settings button remains the menu entry.
+Mobile attachment and conversation-index buttons use 24px; model controls remain 36px. The composer has one primary action: an active turn with an empty input shows Stop, while text, attachments or skills replace it with Send. Active-turn sends enter the native queued-submission strip above the composer by default; edit, delete, open in side chat, or choose Guide to steer immediately. Disabling queue switches subsequent sends in that active turn to direct steering. The conversation-history trigger sits immediately left of the primary send button. The toolbar stays on one row without shrinking those controls. Desktop composer attachment/index controls use about 18.67px, and standalone/coarse-pointer side-chat index controls about 29.33px. Other controls retain their existing sizes. The mobile shell follows the visual viewport and suppresses duplicate bottom spacing while the keyboard is open; real Safari keyboard acceptance remains separate. Both layouts show a plain Codex sidebar title and omit the help shortcut; the bottom Settings button remains the menu entry.
 
 On phones, the conversation-index sheet uses the composer corner radius and a smaller close glyph within a 44px touch target. Opening focuses the sheet rather than highlighting its close button; keyboard navigation remains available. The phone composer index button keeps the input background and omits its touch/focus ring, using a darker glyph for keyboard focus. Desktop trigger backgrounds and focus outlines are preserved. The sidebar running indicator rotates an independent HTML layer instead of the SVG. Physical iOS Home Screen animation acceptance is still required.
 

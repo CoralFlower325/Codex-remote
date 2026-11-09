@@ -68,10 +68,14 @@ Release and privacy policy remains in AGENTS.md.
   conversation-index and coarse-pointer side-chat attachment/index controls shrink
   from 44px to about 29.33px. Preserve desktop model sizing and
   goal/queued-message corners. Keep one primary composer action: stop for an
-  empty input during an active turn, otherwise send or steer; default active-turn
-  sends to steer, with queue mode retained in queued-message actions. Do not expose
-  browser dictation. Keep the mobile toolbar on one row without shrinking its
-  36px or 44px controls. Other touch targets remain at least 44px.
+  empty input during an active turn, otherwise send. Active-turn sends enter the
+  native queued-submission strip by default; its Guide action uses native
+  `turn/steer`, and disabling queue switches later sends in that turn to direct
+  steering. Show optimistic queued rows immediately, reconcile them by
+  `clientUserMessageId`, and place the conversation-history trigger immediately
+  left of the primary action. Do not expose browser dictation. Keep the mobile
+  toolbar on one row without shrinking its 36px or 44px controls. Other touch
+  targets remain at least 44px.
   Conversation text follows native 14px/22.75px, weight 430; activity headers use
   14px/21px, weight 430. Keep the system font stack and lazy detail bodies.
 - Use native turn timing, including metadata cursors for older history. Never

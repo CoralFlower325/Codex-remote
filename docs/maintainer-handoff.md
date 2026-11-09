@@ -15,42 +15,38 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.26** / manager **0.2.5**, tag
-`v0.2.26`, functional commit `a7f27ec`.
-The [mobile composer acceptance](mobile-composer-single-action-0.2.25.md) records
-the single-row toolbar, removed browser dictation and single Stop/Steer action.
+The current published release is Remote **0.2.27** / manager **0.2.6**, tag
+`v0.2.27`.
+The [native queued-guide acceptance](native-queued-guide-0.2.27.md) records the
+single primary action, immediate queued-submission strip and history-trigger
+placement. The [mobile composer acceptance](mobile-composer-single-action-0.2.25.md)
+remains historical evidence for the single-row toolbar and removed browser dictation.
 The preceding [Windows / macOS discovery acceptance](desktop-debug-discovery.md)
 retains the trusted automatic port discovery work. The
 [adversarial-review reconciliation](adversarial-review-0.2.22-fixes.md) retains
 the 31-item 0.2.23 batch.
-The 0.2.26 source batch adds the steer/bridge fixes and the previously reviewed
-terminal, preview, transport, catalog and structure changes. Local validation
-currently covers 136 test files (1054 passed, two platform skips), typecheck,
-the application and manager builds, synthetic browser acceptance and the
-Windows worker acceptance. Runtime packaging remains gated on the tested
-Node 22.19.x toolchain and signed assets.
-All four official runtime attachments and the refreshed distribution download
-metadata passed size and digest checks. The signed Windows/macOS archives passed
-pinned-key verification, exact source-tree comparison and individual checks of
-3079/3072 files.
-The published 0.2.25 deployment surface remains Remote 0.2.25 with build
-`assets/index-0UZFYoj4.js` until a separate deployment is confirmed. The
-0.2.26 source release does not by itself change the installed or public
-frontend. Never start another App Server.
+The 0.2.27 source batch restores the native queued/Guide strip without restoring
+the old dual-button layout, moves the conversation-history trigger beside Send,
+and fixes Windows task ownership of its Node runtime. Manager 0.2.6 stages
+Node 22.19.x under `ProgramData`, migrates old task actions and lets the existing
+manager Start/Stop and repair controls perform the change without a console window.
+Runtime packaging remains gated on the tested Node 22.19.x toolchain and signed assets.
+The 0.2.26 release remains the previous signed baseline until 0.2.27 assets and
+the separate deployment are verified. A source release does not by itself change
+the installed or public frontend. Never start another App Server.
 
-Remote **0.2.26** keeps the mobile composer toolbar on one row without shrinking
-its 36px or 44px controls. Active turns show a visible guidance/queue mode hint;
-an interjection is rendered immediately as a local user item until the native
-item arrives. Read-only Desktop RPC timeouts no longer tear down the live event
-bridge. Manager **0.2.5** aligns the local password IPC validation with the
-server's 12–256 character rule; the formal Release record will identify the
-exact promotion commit and signed assets.
+Remote **0.2.27** keeps the mobile composer toolbar on one row without shrinking
+its 36px or 44px controls. Active turns keep one primary action and show an
+optimistic queued row until the native queue returns the same
+`clientUserMessageId`; Guide uses `turn/steer`, and disabling queue switches that
+turn to direct steering. Manager **0.2.6** owns the Windows runtime migration and
+repair path while retaining the 0.2.5 password IPC alignment.
 
 Runtime updates now require Ed25519 publisher signatures against bundled public
 keys, including signed commit identity for source fallback. The private key stays
 outside the repository; the `RELEASE_SIGNING_KEY` GitHub secret and formal
 two-platform signing workflow have been validated. Follow [release-signing.md](release-signing.md) before a
-formal runtime release. Manager 0.2.5 requires its own installer; changing Remote
+formal runtime release. Manager 0.2.6 requires its own installer; changing Remote
 does not patch an already installed manager. AU self-update and macOS application
 signing/notarization remain paused.
 

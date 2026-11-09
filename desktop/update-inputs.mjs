@@ -73,14 +73,40 @@ export async function nodeToolchain(execute = run) {
   return { node, npmPath, env };
 }
 
-export async function runtimeNode(execute) {
+export async function runtimeNode(execute, options = {}) {
   const env = commandEnvironment();
-  const found = await execute(process.platform === 'win32' ? 'where.exe' : '/usr/bin/which', ['node'], { env });
-  const node = found.split(/\r?\n/)[0];
-  const version = await execute(node, ['--version'], { env });
-  if (compareVersions(version, '22.19.0') < 0) throw new Error('Node.js 22.19+ is required.');
-  const modules = await execute(node, ['-p', 'process.versions.modules'], { env });
-  return { node, env, version: version.trim().replace(/^v/, ''), modules: modules.trim() };
+  const platform = options.platform ?? process.platform;
+  const probe = async (node) => {
+    const version = await execute(node, ['--version'], { env });
+    if (compareVersions(version, '22.19.0') < 0) return null;
+    const modules = await execute(node, ['-p', 'process.versions.modules'], { env });
+    return { node, env, version: version.trim().replace(/^v/, ''), modules: modules.trim() };
+  };
+  if (platform === 'win32') {
+    const runtimeRoot = options.runtimeRoot ?? path.join(process.env.ProgramData || 'C:\\ProgramData', 'CodexRemoteNode');
+    try {
+      const staged = (await fs.readdir(runtimeRoot, { withFileTypes: true }))
+        .filter(entry => entry.isFile() && /^node(?:-[0-9.]+-\d+)?\.exe$/i.test(entry.name))
+        .map(entry => path.join(runtimeRoot, entry.name))
+        .sort((left, right) => right.localeCompare(left, undefined, { numeric: true }));
+      for (const node of staged) {
+        try {
+          const runtime = await probe(node);
+          if (runtime) return runtime;
+        } catch { /* Try the next installed runtime. */ }
+      }
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  const found = await execute(platform === 'win32' ? 'where.exe' : '/usr/bin/which', ['node'], { env });
+  for (const node of [...new Set(found.split(/\r?\n/).filter(Boolean))]) {
+    try {
+      const runtime = await probe(node);
+      if (runtime) return runtime;
+    } catch { /* Try the next installed runtime. */ }
+  }
+  throw new Error('Node.js 22.19+ is required.');
 }
 
 export const hash = (bytes) => bytes ? crypto.createHash('sha256').update(bytes).digest('hex') : null;

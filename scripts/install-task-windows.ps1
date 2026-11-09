@@ -3,7 +3,8 @@ param(
   [switch]$Unregister,
   [switch]$NoStart,
   [ValidateSet("auto", "http2", "quic")]
-  [string]$TunnelProtocol = "http2"
+  [string]$TunnelProtocol = "http2",
+  [string]$NodePath
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,13 +50,15 @@ function Register-CodexRemoteTask {
   param(
     [string]$TaskName,
     [string]$Executable,
-    [string]$Arguments,
+    [string[]]$Arguments,
     [string]$Description
   )
 
+  $argumentParts = @((Join-Path $PSScriptRoot "background-task-windows.mjs")) + $Arguments
+  $argumentLine = ($argumentParts | ForEach-Object { '"' + $_ + '"' }) -join " "
   $action = New-ScheduledTaskAction `
-    -Execute (Join-Path $env:WINDIR "System32\wscript.exe") `
-    -Argument "//B //Nologo `"$(Join-Path $PSScriptRoot 'run-hidden-windows.vbs')`" `"$Executable`" `"$(Join-Path $PSScriptRoot 'background-task-windows.mjs')`" $Arguments" `
+    -Execute $Executable `
+    -Argument $argumentLine `
     -WorkingDirectory $Root
   Register-ScheduledTask `
     -TaskName $TaskName `
@@ -78,15 +81,42 @@ if ((Test-Path (Join-Path $Root "data\cloudflared-token")) -and
   throw "Tunnel supervisor build is missing. Run npm run build first."
 }
 
-$node = Get-Command node -ErrorAction SilentlyContinue
-if (-not $node) {
-  throw "node was not found in PATH."
+function Resolve-NodeRuntime {
+  $runtimeRoot = Join-Path $env:ProgramData "CodexRemoteNode"
+  $candidates = @()
+  if ($NodePath) {
+    $candidates += $NodePath
+  } else {
+    $staged = @(Get-ChildItem -LiteralPath $runtimeRoot -Filter "node-*.exe" -File -ErrorAction SilentlyContinue |
+      Sort-Object Name -Descending)
+    $legacy = Join-Path $runtimeRoot "node.exe"
+    if (Test-Path -LiteralPath $legacy) { $candidates += $legacy }
+    $candidates += $staged.FullName
+    $pathNode = Get-Command node -ErrorAction SilentlyContinue
+    if ($pathNode) { $candidates += $pathNode.Source }
+  }
+  foreach ($candidate in $candidates) {
+    if (-not (Test-Path -LiteralPath $candidate)) { continue }
+    $version = (& $candidate --version).Trim()
+    if ($version -notmatch '^v(22\.19)\.\d+$') { continue }
+    $modules = (& $candidate -p "process.versions.modules").Trim()
+    New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
+    $destination = Join-Path $runtimeRoot ("node-{0}-{1}.exe" -f $version.TrimStart("v"), $modules)
+    $source = (Resolve-Path -LiteralPath $candidate).Path
+    if ([IO.Path]::GetFullPath($source) -ne [IO.Path]::GetFullPath($destination)) {
+      Copy-Item -LiteralPath $source -Destination $destination -Force
+    }
+    & $destination --version | Out-Null
+    return $destination
+  }
+  throw "Codex Remote requires Node 22.19.x for its packaged native modules."
 }
+$node = Resolve-NodeRuntime
 
 Register-CodexRemoteTask `
   -TaskName $ServerTaskName `
-  -Executable $node.Source `
-  -Arguments "server" `
+  -Executable $node `
+  -Arguments @("server") `
   -Description "Codex Remote local server"
 
 $tokenFile = Join-Path $Root "data\cloudflared-token"
@@ -105,8 +135,8 @@ if (Test-Path $tokenFile) {
 
   Register-CodexRemoteTask `
     -TaskName $TunnelTaskName `
-    -Executable $node.Source `
-    -Arguments "tunnel `"$cloudflaredPath`" $TunnelProtocol" `
+    -Executable $node `
+    -Arguments @("tunnel", $cloudflaredPath, $TunnelProtocol) `
     -Description "Codex Remote Cloudflare Tunnel"
 }
 

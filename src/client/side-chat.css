@@ -24,6 +24,7 @@
 .app-shell[data-layout="desktop"]:has(.sidebar--collapsed) .inspector.inspector--expanded { left: 0; }
 .queued-messages { width: min(var(--content-max), 100%); max-height: 180px; overflow-y: auto; margin: 0 auto -1px; border: 1px solid var(--line); border-radius: 16px 16px 0 0; padding: 3px 7px 10px; }
 .queued-message { display: flex; min-width: 0; min-height: 34px; align-items: center; gap: 8px; color: var(--muted); }
+.queued-message--pending { opacity: 0.68; }
 .queued-message > svg { flex: none; }
 .queued-message-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; line-height: 22.75px; color: var(--ink-soft); }
 .queued-message .icon-button { width: 28px; height: 28px; flex: none; }
@@ -32,8 +33,8 @@
 .queued-edit { display: flex; width: 100%; min-width: 0; align-items: center; }
 .queued-edit textarea { flex: 1; min-width: 0; min-height: 60px; max-height: 120px; border: 0; background: transparent; resize: vertical; font: inherit; color: var(--ink); }
 .queue-menu-backdrop { position: fixed; z-index: calc(var(--z-inspector) + 1); inset: 0; border: 0; background: transparent; }
-.queue-menu { position: fixed; z-index: calc(var(--z-inspector) + 2); width: min(220px, calc(100vw - 16px)); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 5px; }
-.queue-menu > button { display: flex; width: 100%; min-height: 36px; align-items: center; gap: 10px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); padding: 6px 10px; font-size: 13px; text-align: left; }
+.queue-menu { position: fixed; z-index: calc(var(--z-inspector) + 2); width: min(184px, calc(100vw - 16px)); border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 4px; }
+.queue-menu > button { display: flex; width: 100%; min-height: 32px; align-items: center; gap: 8px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); padding: 5px 8px; font-size: 12px; text-align: left; }
 .queue-menu > button:hover { background: var(--surface-hover); }
 @container side-chat (max-width: 400px) {
   .side-chat-view .composer-permission { width: 28px; min-width: 28px; padding: 0; justify-content: center; }
@@ -46,7 +47,7 @@
   .queued-message { min-height: 44px; gap: 4px; }
   .queued-steer, .queued-message .icon-button { min-height: 44px; }
   .queued-message .icon-button { width: 36px; }
-  .queue-menu > button { min-height: 44px; }
+  .queue-menu > button { min-height: 40px; }
 }
 .sidebar-project-heading { display: flex; align-items: center; margin-bottom: 8px; }
 .sidebar-project-heading .sidebar-projects-button { flex: 1; min-width: 0; margin-bottom: 0; }

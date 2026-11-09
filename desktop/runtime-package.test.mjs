@@ -80,7 +80,9 @@ describe('prebuilt runtime packages', () => {
     const result = await installUpdate(item, { stop: vi.fn(), start, verify: vi.fn(), isRunning: async () => false });
     expect(result.mode).toBe('runtime');
     expect(start).not.toHaveBeenCalled();
-    expect(execute.mock.calls).toHaveLength(4);
+    expect(execute.mock.calls.filter(([, args]) => args[0] === 'scripts/check-runtime.mjs')).toHaveLength(1);
+    expect(execute.mock.calls.some(([command, args]) =>
+      command === 'git' || command === 'npm' || args[0] === 'npm')).toBe(false);
     expect(await fs.readFile(path.join(root, 'node_modules/dependency/index.js'), 'utf8')).toBe('new dependency');
     expect(await fs.readFile(path.join(root, 'data/auth.json'), 'utf8')).toBe('private');
     expect(await fs.readFile(path.join(root, 'README.md'), 'utf8')).toBe('private documentation');

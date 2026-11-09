@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { v4 as randomUUID } from 'uuid';
 
 import type {
@@ -10,7 +10,7 @@ import type {
   DirectoryView,
   PermissionView
 } from '../remote-contracts';
-import type { ChatInput } from '../queued-messages';
+import type { ChatInput, QueuedSubmission } from '../queued-messages';
 import { editableInterruptedMessage, type UserMessage } from '../message-edit';
 import { turnInput } from '../slash-commands';
 import type { ComposerAttachment, SkillInfo, Thread } from '../types';
@@ -73,13 +73,12 @@ export function ThreadScreen({
   onOpenSideChat,
   insertRequest
 }: ThreadScreenProps) {
-  const [queueEnabled, updateQueueEnabled] = useState(() => {
-    try { return sessionStorage.getItem('composer-queue-mode') === 'queue'; } catch { return false; }
-  });
-  const setQueueEnabled = (enabled: boolean) => {
-    updateQueueEnabled(enabled);
-    try { sessionStorage.setItem('composer-queue-mode', enabled ? 'queue' : 'steer'); } catch { /* Optional preference. */ }
-  };
+  const [queueEnabled, setQueueEnabled] = useState(true);
+  const [optimisticQueue, setOptimisticQueue] = useState<QueuedSubmission[]>([]);
+  const [queueRefreshToken, setQueueRefreshToken] = useState(0);
+  useEffect(() => {
+    if (!conversation.activeTurnId) setQueueEnabled(true);
+  }, [conversation.activeTurnId]);
   const [editing, setEditing] = useState<UserMessage | null>(null);
   const editDisabled = !connection.connected || !conversation.threadReady || directory.showArchived ||
     Boolean(conversation.activeTurnId) || cwdChanging;
@@ -151,7 +150,11 @@ export function ThreadScreen({
             activeTurnId={conversation.activeTurnId}
             connected={connection.connected && conversation.threadReady && !attention.messageEditPending}
             onError={onError} onOpenSideChat={onOpenSideChat}
-            queueEnabled={queueEnabled} onQueueEnabledChange={setQueueEnabled} />}
+            queueEnabled={queueEnabled} onQueueEnabledChange={setQueueEnabled}
+            optimisticMessages={optimisticQueue}
+            onOptimisticSettled={clientUserMessageIds => setOptimisticQueue(current =>
+              current.filter(message => !clientUserMessageIds.includes(message.clientUserMessageId)))}
+            refreshToken={queueRefreshToken} />}
         </div>
         <Composer
           {...commandProps}
@@ -174,9 +177,23 @@ export function ThreadScreen({
           onEffortChange={onEffortChange}
           onSubmit={async (text, attachments, skills) => {
             if (conversation.activeTurnId && queueEnabled) {
-              await connection.chatTransport.rpc('thread/queue/add', {
-                threadId: thread.id, clientUserMessageId: randomUUID(), input: turnInput(text, attachments, skills)
-              });
+              const clientUserMessageId = randomUUID();
+              const input = turnInput(text, attachments, skills);
+              setOptimisticQueue(current => [...current, {
+                id: `pending:${clientUserMessageId}`,
+                clientUserMessageId,
+                input
+              }]);
+              try {
+                await connection.chatTransport.rpc('thread/queue/add', {
+                  threadId: thread.id, clientUserMessageId, input
+                });
+                setQueueRefreshToken(value => value + 1);
+              } catch (error) {
+                setOptimisticQueue(current =>
+                  current.filter(message => message.clientUserMessageId !== clientUserMessageId));
+                throw error;
+              }
             } else await onSubmit(text, attachments, skills);
           }}
           {...(conversation.activeTurnId

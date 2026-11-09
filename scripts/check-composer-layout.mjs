@@ -167,7 +167,7 @@ try {
       const composer = page.locator('.thread-screen > .thread-bottom .composer');
       await composer.locator('.composer-stop').waitFor();
       assert.equal(await composer.locator('.composer-send').count(), 0);
-      await page.getByText('引导模式', { exact: true }).waitFor();
+      assert.equal(await page.locator('.composer-active-mode').count(), 0);
       const emptyLayout = await toolbarGeometry(composer);
       await input.fill('Layout-only steering draft');
       await composer.locator('.composer-send').waitFor();
@@ -175,10 +175,10 @@ try {
       assert.equal(await composer.getByRole('button', { name: /听写/ }).count(), 0);
       const contentLayout = await toolbarGeometry(composer);
       assert.equal(contentLayout.controls.filter(control =>
-        ['发送任务', '发送补充要求', '加入队列'].includes(control.name)).length, 1);
+        ['发送任务', '发送补充要求', '引导当前任务', '加入队列'].includes(control.name)).length, 1);
       await page.screenshot({ path: `${directory}/${size.name}-mobile-composer.png` });
       results.push({ viewport: size.name, composerOnly: true, emptyLayout, contentLayout,
-        singleRow: true, singlePrimaryAction: true, noDictation: true, errors });
+        singleRow: true, singlePrimaryAction: true, nativeQueuedComposer: true, noDictation: true, errors });
       await context.close();
       continue;
     }
@@ -379,12 +379,13 @@ try {
       await page.getByRole('option').filter({ hasText: '/synthetic-stop' }).click();
       await composer.locator('.composer-context-chip').getByText('Synthetic Stop', { exact: true }).waitFor();
     };
-    const singleActionGeometry = async composer => {
+    const activeActionGeometry = async composer => {
       await composer.locator('.composer-send').waitFor();
       assert.equal(await composer.locator('.composer-stop').count(), 0);
       assert.equal(await composer.getByRole('button', { name: /听写/ }).count(), 0);
       const value = await toolbarGeometry(composer);
-      assert.equal(value.controls.filter(control => ['发送任务', '发送补充要求', '加入队列'].includes(control.name)).length, 1,
+      assert.equal(value.controls.filter(control =>
+        ['发送任务', '发送补充要求', '引导当前任务', '加入队列'].includes(control.name)).length, 1,
         `Expected one send action: ${JSON.stringify(value)}`);
       return value;
     };
@@ -394,7 +395,7 @@ try {
     event('turn/started', { turn: { id: 'stop-with-draft', status: 'inProgress', startedAt: Math.floor(Date.now() / 1000) - 2 } });
     event('thread/tokenUsage/updated', { tokenUsage: { last: { totalTokens: 100 }, modelContextWindow: 1000 } });
     await mainComposer.locator('.context-usage').waitFor();
-    const mainSingleAction = await singleActionGeometry(mainComposer);
+    const mainActiveActions = await activeActionGeometry(mainComposer);
     await page.screenshot({ path: `${directory}/${size.name}-main-single-send.png` });
     while (await mainComposer.locator('.composer-image-remove').count()) await mainComposer.locator('.composer-image-remove').first().click();
     if (await mainComposer.locator('.composer-context-chip button').count()) await mainComposer.locator('.composer-context-chip button').click();
@@ -423,7 +424,7 @@ try {
     event('thread/tokenUsage/updated', { threadId: 'side',
       tokenUsage: { last: { totalTokens: 100 }, modelContextWindow: 1000 } });
     await sideComposer.locator('.context-usage').waitFor();
-    const sideSingleAction = await singleActionGeometry(sideComposer);
+    const sideActiveActions = await activeActionGeometry(sideComposer);
     await page.screenshot({ path: `${directory}/${size.name}-side-single-send.png` });
     assert.equal(await sideComposer.locator('textarea').inputValue(), 'Keep side draft');
     assert.equal(await sideComposer.locator('.composer-image').count(), 1);
@@ -432,7 +433,8 @@ try {
     results.push({ viewport: size.name, tailBefore, anchorDrift: anchorAfter - anchorBefore, ...layout, pasteSwitch: true, imagePreview: true,
       fileSelection: true, sendWhileSwitching: true, failedSendRetained: true, removalRetained: true,
       nativeRetry: true, nativeFailure: true, errorStyle, bannerStyle, manualReconnect: true, noActionReplay: true,
-      mainSingleAction, sideSingleAction, singlePrimaryAction: true, stopAvailableWhenEmpty: true, noDictation: true, errors });
+      mainActiveActions, sideActiveActions, singlePrimaryAction: true, stopAvailableWhenEmpty: true,
+      noDictation: true, errors });
     await context.close();
   }
   await fs.writeFile(`${directory}/results.json`, JSON.stringify(results, null, 2), 'utf8');

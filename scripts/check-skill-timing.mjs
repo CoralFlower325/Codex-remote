@@ -78,7 +78,11 @@ sockets.on('connection', socket => {
     if (m.method === 'thread/queue/add') {
       calls.push(m);
       queue.push({ id: 'queued', clientUserMessageId: p.clientUserMessageId, input: p.input });
-      event('thread/queue/changed', {});
+      setTimeout(() => {
+        event('thread/queue/changed', {});
+        send(socket, { type: 'rpc.result', id: m.id, result: {} });
+      }, 450);
+      return;
     }
     if (m.method === 'thread/queue/update') {
       calls.push(m);
@@ -139,7 +143,11 @@ try {
     await selectSkill();
     await page.locator('.composer-send').click();
     await page.locator('.queued-message').waitFor();
+    await page.locator('.queued-message--pending').waitFor();
+    await page.screenshot({ path: `${directory}/${size.name}-queued-guide.png` });
     await page.getByRole('button', { name: '\u5f85\u53d1\u6d88\u606f\u64cd\u4f5c', exact: true }).click();
+    await page.waitForTimeout(220);
+    await page.screenshot({ path: `${directory}/${size.name}-queued-guide-menu.png` });
     await page.getByRole('menuitem', { name: '\u7f16\u8f91\u6d88\u606f', exact: true }).click();
     const queueEdit = page.getByRole('textbox', { name: '\u7f16\u8f91\u5f85\u53d1\u6d88\u606f', exact: true });
     assert.equal(await queueEdit.inputValue(), '');

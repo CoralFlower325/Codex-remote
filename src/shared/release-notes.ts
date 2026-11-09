@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.27', changes: [
+    '恢复原生待发/引导条：运行中的主输入始终只有一个按钮，发送后立即在输入框上方显示可编辑的待发消息，并可通过“引导”、删除或更多菜单处理。',
+    '待发消息先本地即时显示，原生队列按 clientUserMessageId 回执后无闪烁去重；关闭排队后，当前活动轮次的后续消息改为直接引导。',
+    '会话历史按钮移到主发送按钮紧靠左侧，重新收紧输入区工具栏比例。',
+    'Windows 计划任务改用 ProgramData 下受管的 Node 22.19.x 运行时；管理器 0.2.6 会在启动或一键修复时自动迁移旧任务，避免 LocalAppData 运行时导致任务立即退出。'
+  ] },
   { version: '0.2.26', changes: [
     '模型与项目目录改为完整原生游标快照，支持多页、provider 别名、循环防护和重连刷新；推理强度明确区分显式档位与默认继承，设置更新与原生事件按修订顺序合并。',
     '插话发送后立即在 Remote 显示“正在引导当前任务”，原生用户条目到达后自动去重；只读 Desktop 请求超时不再断开实时事件桥，恢复活动会话的引导模式提示。',

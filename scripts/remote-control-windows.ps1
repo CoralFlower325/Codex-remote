@@ -168,10 +168,15 @@ if (-not (Test-Path -LiteralPath (Join-Path $Root "dist-server\server\index.js")
 $serverTask = Get-RemoteTask $ServerTaskName
 $tokenFile = Join-Path $Root "data\cloudflared-token"
 $hasTunnel = Test-Path -LiteralPath $tokenFile
-$hiddenLauncher = Join-Path $PSScriptRoot "run-hidden-windows.vbs"
+$nodeRuntimeRoot = Join-Path $env:ProgramData "CodexRemoteNode"
+$nodeRuntimePrefix = $nodeRuntimeRoot.TrimEnd('\') + '\'
 $tunnelTask = Get-RemoteTask $TunnelTaskName
-$needsMigration = ($serverTask -and -not $serverTask.Actions.Arguments.Contains($hiddenLauncher)) -or
-  ($hasTunnel -and $tunnelTask -and -not $tunnelTask.Actions.Arguments.Contains($hiddenLauncher))
+$serverActionValid = $serverTask -and $serverTask.Actions.Arguments.Contains("background-task-windows.mjs") -and
+  [IO.Path]::GetFullPath($serverTask.Actions.Execute).StartsWith($nodeRuntimePrefix, [StringComparison]::OrdinalIgnoreCase)
+$tunnelActionValid = $tunnelTask -and $tunnelTask.Actions.Arguments.Contains("background-task-windows.mjs") -and
+  [IO.Path]::GetFullPath($tunnelTask.Actions.Execute).StartsWith($nodeRuntimePrefix, [StringComparison]::OrdinalIgnoreCase)
+$needsMigration = ($serverTask -and -not $serverActionValid) -or
+  ($hasTunnel -and $tunnelTask -and -not $tunnelActionValid)
 if ($needsMigration) {
   & $PSCommandPath -Action Stop -NoBrowser
 }

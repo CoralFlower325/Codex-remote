@@ -10,6 +10,20 @@ export interface QueuedSubmission {
   input: ChatInput;
 }
 
+export function mergeQueuedMessages(native: QueuedSubmission[], optimistic: QueuedSubmission[]) {
+  const nativeClientIds = new Set(native.map(message => message.clientUserMessageId));
+  const settledClientUserMessageIds = optimistic
+    .filter(message => nativeClientIds.has(message.clientUserMessageId))
+    .map(message => message.clientUserMessageId);
+  return {
+    messages: [
+      ...native,
+      ...optimistic.filter(message => !nativeClientIds.has(message.clientUserMessageId))
+    ],
+    settledClientUserMessageIds
+  };
+}
+
 export function queuedDraft(input: ChatInput) {
   const skills = input.flatMap((part): SkillInfo[] => part.type === 'skill' && 'name' in part && 'path' in part
     ? [{ name: part.name, path: part.path, description: '', enabled: true }] : []);

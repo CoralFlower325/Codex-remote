@@ -40,7 +40,7 @@ PDF and Office updates retain page and zoom. Hidden previews stop watching.
   <img src="docs/images/review.png" alt="Changed files with line numbers and a unified diff" width="300">
 </p>
 
-Mobile attachment and conversation-index controls use 24px sizing; model controls remain 36px. The composer keeps one primary action: stop while a running turn has an empty input, then steer once text, files or skills are present. Active-turn sends steer immediately by default. Desktop attachment/index controls also use compact sizes. See the [layout guide](docs/guide.md#responsive-layout) for viewport rules and device acceptance limits.
+Mobile attachment and conversation-index controls use 24px sizing; model controls remain 36px. The composer keeps one primary action: stop while a running turn has an empty input, then send once text, files or skills are present. Active-turn sends appear immediately in the native queued/Guide strip above the composer, where they can be edited, steered or disabled. The conversation-history trigger sits immediately left of the primary action. Desktop attachment/index controls also use compact sizes. See the [layout guide](docs/guide.md#responsive-layout) for viewport rules and device acceptance limits.
 
 </details>
 
@@ -118,7 +118,7 @@ Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
 remains pending.
 
-Remote **0.2.26** pairs with manager **0.2.5**.
+Remote **0.2.27** pairs with manager **0.2.6**.
 Actual installed versions remain separately recorded in each deployment's acceptance. Install the manager
 manually over 0.2.0, select the same host directory and retry; updating Remote
 cannot replace the old manager's bundled updater. [Manager downloads](docs/update-downloads.md)
