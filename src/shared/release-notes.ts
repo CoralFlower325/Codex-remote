@@ -2,7 +2,7 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
-  { version: '0.2.25-rc', changes: [
+  { version: '0.2.25', changes: [
     '手机输入区改为单行工具栏并移除浏览器听写；附件、权限、模型、上下文和主操作不再换成第二行。',
     '运行中的会话改用单一主操作：输入为空时显示停止，输入文字、附件或技能后切换为发送或引导，不再同时显示停止与发送。',
     '运行中的发送默认立即引导，不再先排入队列；排队模式保留在待发消息操作中。管理器保持 0.2.4，无变更。'

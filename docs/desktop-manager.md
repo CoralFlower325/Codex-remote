@@ -69,7 +69,7 @@ shows only the target version and a short downtime/data-preservation notice.
   healthy. Readings older than twenty seconds become stale.
 - Desktop diagnostics distinguish a missing debug endpoint, a missing Desktop
   page and a pending native bridge. Ordinary Codex launches do not necessarily
-  enable a debug endpoint; Windows/macOS Remote 0.2.25-rc discovers the loopback
+  enable a debug endpoint; Windows/macOS Remote 0.2.25 discovers the loopback
   port from the current trusted installed process, while explicit arguments and 9229 remain
   fallbacks. Another launcher such as Codex++ may therefore choose a different
   port. Remote uses Desktop's endpoint, not the launcher's own local server.

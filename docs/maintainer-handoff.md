@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-11-08.
+Last reconciled: 2026-11-09.
 
 ## Authority
 
@@ -37,16 +37,14 @@ The unchanged manager 0.2.4 retained its root/settings and reports the new host
 healthy. Its prior installation receipt and all rollback backups are retained in
 the private deployment record. Never start another App Server.
 
-Remote **0.2.25-rc** is the current functional candidate; manager **0.2.4** is
-unchanged. It keeps the mobile composer toolbar on one row without shrinking its
-36px or 44px controls, removes browser dictation, and makes the active-turn
-composer expose one primary action: Stop for an empty input, then Send/Steer when
-content is present. Queue mode remains in queued-message actions. The preceding
-0.2.24-rc work adds macOS discovery through the fixed `/bin/ps` command for
-trusted Applications bundles, alongside Windows process discovery. Publish the
-signed runtime, update the distribution Worker, install Remote locally and
-replace this candidate note with the exact Release/deployment receipt before
-claiming completion.
+Remote **0.2.25** promotes the accepted 0.2.25-rc work to the formal channel;
+manager **0.2.4** is unchanged. It keeps the mobile composer toolbar on one row
+without shrinking its 36px or 44px controls, removes browser dictation, and makes
+the active-turn composer expose one primary action: Stop for an empty input, then
+Steer when content is present. Queue mode remains in queued-message actions. The
+preceding 0.2.24-rc work adds macOS discovery through the fixed `/bin/ps` command
+for trusted Applications bundles, alongside Windows process discovery. The
+formal Release record will identify the exact promotion commit and signed assets.
 
 Runtime updates now require Ed25519 publisher signatures against bundled public
 keys, including signed commit identity for source fallback. The private key stays
