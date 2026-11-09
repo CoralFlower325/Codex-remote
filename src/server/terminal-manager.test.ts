@@ -92,18 +92,18 @@ describe('workspace terminals with a real PTY', () => {
     const id = manager.create(workspace);
     const messages: TerminalServerMessage[] = [];
     manager.attach(workspace, id, message => messages.push(message));
+    const helper = path.join(directory, 'descendant.cjs');
+    const pidFile = path.join(directory, 'descendant.pid');
+    fs.writeFileSync(helper,
+      "require('node:fs').writeFileSync(process.argv[2], String(process.pid)); setInterval(() => {}, 1000);\n");
+    const powershell = value => `'${value.replace(/'/g, "''")}'`;
+    const posix = value => `'${value.replace(/'/g, "'\\''")}'`;
     manager.input(workspace, id, command(
-      "$child = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoLogo','-NoProfile','-Command','Start-Sleep -Seconds 60') -PassThru; Write-Output ('CHILD_PID=' + $child.Id)",
-      "sleep 60 >/dev/null 2>&1 & printf 'CHILD_PID=%s\\n' \"$!\""
+      `Start-Process -FilePath ${powershell(process.execPath)} -ArgumentList @(${powershell(helper)},${powershell(pidFile)}) -WindowStyle Hidden | Out-Null`,
+      `${posix(process.execPath)} ${posix(helper)} ${posix(pidFile)} >/dev/null 2>&1 &`
     ));
-    await expect.poll(() => {
-      const output = stripVTControlCharacters(messages.filter(message => message.type === 'terminal.output')
-        .map(message => message.data).join(''));
-      return /CHILD_PID=(\d+)/.exec(output)?.[1];
-    }, { timeout: 20_000, interval: 50 }).toMatch(/\d+/);
-    const output = stripVTControlCharacters(messages.filter(message => message.type === 'terminal.output')
-      .map(message => message.data).join(''));
-    const pid = Number(/CHILD_PID=(\d+)/.exec(output)?.[1]);
+    await expect.poll(() => fs.existsSync(pidFile), { timeout: 20_000, interval: 50 }).toBe(true);
+    const pid = Number(fs.readFileSync(pidFile, 'utf8'));
     expect(pid).toBeGreaterThan(0);
     expect(processAlive(pid)).toBe(true);
     manager.close(workspace, id);
