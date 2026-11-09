@@ -10,7 +10,7 @@ import type { Thread, ThreadItem } from '../types';
 import type { RemoteState } from '../useRemote';
 import type { ChatInput } from '../queued-messages';
 import { useSideChats } from '../useSideChats';
-import { resolveReasoningEffort } from '../workspace-model';
+import { findModelInfo } from '../workspace-model';
 import { SideChatView } from './SideChatView';
 import type { PreviewTarget } from '../../shared/file-preview';
 import { previewLabel } from '../preview-links';
@@ -73,7 +73,8 @@ export function Inspector({ open, thread, items, onClose, layout, view, remote, 
   function addSideChat(input?: ChatInput) {
     const model = thread?.model || remote.models.find(entry => entry.isDefault)?.model || remote.models[0]?.model || '';
     const id = sideChats.add({
-      model, effort: resolveReasoningEffort(remote.models.find(entry => entry.model === model), thread?.reasoningEffort ?? ''),
+      model, effort: thread?.reasoningEffort ?? '',
+      ...(thread?.modelProvider ? { modelProvider: thread.modelProvider } : {}),
       permissions: thread?.permissionProfile || '', ...((thread?.cwd || cwd) ? { cwd: (thread?.cwd || cwd)! } : {}),
       ...(thread && items.length ? { sourceThreadId: thread.id } : {}),
       ...(thread?.projectId ? { projectId: thread.projectId } : {}),

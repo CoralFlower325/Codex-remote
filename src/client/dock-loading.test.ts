@@ -625,6 +625,33 @@ describe('cached history verification', () => {
     await settle();
     expect(f.remote.activeThread?.model).toBe('new-model');
   });
+  it('lets a newer native reasoning event win over an older settings acknowledgement and preserves null as inherit', async () => {
+    const f = fixture(path => String(path).includes('/thread/open?') ? json(page)
+      : String(path).includes('/thread/timings?') ? json(page) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    let finish!: () => void;
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type === 'rpc' && message.method === 'thread/settings/update') {
+        finish = () => connection.options.onMessage({
+          type: 'rpc.result', id: message.id, result: { threadSettings: { effort: 'low' } }
+        });
+      }
+    } });
+    const pending = f.remote.setThreadSettings(thread.id, { effort: 'low' });
+    await settle();
+    connection.options.onMessage({ type: 'event', method: 'thread/settings/updated',
+      params: { threadId: thread.id, threadSettings: { effort: 'high' } } });
+    scope.render();
+    expect(f.remote.activeThread?.reasoningEffort).toBe('high');
+    finish(); await pending; await settle();
+    expect(f.remote.activeThread?.reasoningEffort).toBe('high');
+
+    connection.options.onMessage({ type: 'event', method: 'thread/settings/updated',
+      params: { threadId: thread.id, threadSettings: { effort: null } } });
+    scope.render();
+    expect(f.remote.activeThread?.reasoningEffort).toBeNull();
+  });
   it.each(['text', 'timings'])('does not authorize actions after a second stale %s response', async stale => {
     const f = fixture(path => String(path).includes('/thread/open?') ? json({
       ...page, ...(stale === 'text' ? { snapshot: { stale: true, savedAt: 1 } } : {})

@@ -5,7 +5,7 @@ import { queuedDraft, type ChatInput } from '../queued-messages';
 import { turnInput } from '../slash-commands';
 import type { RemoteState } from '../useRemote';
 import type { SideChat } from '../useSideChats';
-import { resolveReasoningEffort } from '../workspace-model';
+import { findModelInfo, reasoningOptionsForModel } from '../workspace-model';
 import { permissionLabel, type PermissionProfile } from '../../shared/permissions';
 import { QuestionDock } from './QuestionDock';
 import { ApprovalDock } from './ApprovalDock';
@@ -36,8 +36,13 @@ export function SideChatView({ chat, remote, layout, onPatch, onSend, onNew }: {
       }).catch(error => { if (!disposed) onError(error); });
     return () => { disposed = true; };
   }, [chat.cwd, remote.connected]);
-  const modelInfo = remote.models.find(model => model.model === chat.model);
-  const effort = resolveReasoningEffort(modelInfo, chat.effort);
+  const modelInfo = findModelInfo(remote.models, chat.model, chat.modelProvider);
+  const effort = chat.effort;
+  const selectModel = (model: string) => {
+    const next = findModelInfo(remote.models, model, chat.modelProvider);
+    const nextEffort = reasoningOptionsForModel(next).some(option => option.value === chat.effort) ? chat.effort : '';
+    onPatch({ model, effort: nextEffort });
+  };
 
   return <PreviewLinks cwd={chat.cwd ?? ''}><div className="side-chat-view">
     {chat.error && <div className="error-banner" role="alert"><CircleAlert size={15} /><span>{chat.error}</span>
@@ -59,7 +64,7 @@ export function SideChatView({ chat, remote, layout, onPatch, onSend, onNew }: {
         disabled={!remote.connected || Boolean(chat.closing || chat.unavailable)}
         placeholder="和 Codex 一起工作" skillScope={chat.cwd ?? ''} hasSavedThread={false} mode={chat.mode}
         loadSkills={() => remote.listSkills(chat.cwd)}
-        onModelChange={model => onPatch({ model, effort: resolveReasoningEffort(remote.models.find(entry => entry.model === model), effort) })}
+        onModelChange={selectModel}
         onEffortChange={value => onPatch({ effort: value })}
         onPermissionsChange={async permissions => onPatch({ permissions })}
         onSubmit={(text, attachments, skills) => onSend(turnInput(text, attachments, skills))}

@@ -291,7 +291,8 @@ export function useSideChats(transport: ChatTransport, connected: boolean) {
     return () => { disposed = true; };
   }, [adoptThread, connected, readSnapshot, transport, patch, update, watch]);
 
-  function add(options: Pick<SideChat, 'model' | 'effort' | 'permissions'> & Partial<Pick<SideChat, 'cwd' | 'projectId' | 'sourceThreadId' | 'initialInput'>>) {
+  function add(options: Pick<SideChat, 'model' | 'effort' | 'permissions'> &
+    Partial<Pick<SideChat, 'modelProvider' | 'cwd' | 'projectId' | 'sourceThreadId' | 'initialInput'>>) {
     const index = ++sequenceRef.current;
     const id = randomUUID();
     update(current => [...current, { ...options, id, title: index === 1 ? '侧边聊天' : `侧边聊天 ${index}`,

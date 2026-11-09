@@ -63,7 +63,7 @@ interface UseRemoteOptions {
 export interface ThreadSettingsPatch {
   cwd?: string;
   model?: string;
-  effort?: string;
+  effort?: string | null;
   permissions?: string;
   collaborationMode?: CollaborationMode;
 }
@@ -72,7 +72,7 @@ export interface CreateThreadOptions {
   cwd?: string;
   projectId?: string;
   model?: string;
-  effort?: string;
+  effort?: string | null;
   permissions?: string;
   collaborationMode?: CollaborationMode;
 }
@@ -155,6 +155,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const resumedThreadRef = useRef<{ threadId: string; version: number; socket: RemoteChannel | null } | null>(null);
   const threadMetadataRevisionRef = useRef(0);
   const threadMetadataFieldsRef = useRef(new Map<string, { revision: number; value: unknown }>());
+  const threadSettingsRevisionRef = useRef(new Map<string, number>());
   const historySnapshotRef = useRef(historySnapshot);
   const timingErrorRef = useRef<string | null>(null);
   const lastRecoveryRef = useRef(0);
@@ -246,7 +247,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     if (!authenticated) return;
     setLastError(null);
     restartTaskRead();
-    retryMetadataRef.current();
+    retryMetadataRef.current(true);
     historyRequestsRef.current.cancel();
     connectionRef.current?.reconnect();
   }, [authenticated, restartTaskRead]);
@@ -1148,41 +1149,33 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       if (settings.cwd && activeThreadRef.current === threadId && activeTurnIdRef.current) {
         throw new Error('请等待当前轮次结束后再切换根目录。');
       }
+      const revision = (threadSettingsRevisionRef.current.get(threadId) ?? 0) + 1;
+      threadSettingsRevisionRef.current.set(threadId, revision);
       await rpc('thread/settings/update', {
         threadId, ...settings,
         ...(settings.permissions ? permissionProfileUpdate(settings.permissions) : {})
       });
-      recordThreadMetadata(threadId, {
-        ...(settings.cwd ? { cwd: settings.cwd } : {}),
-        ...(settings.model ? { model: settings.model } : {}),
-        ...(settings.effort ? { reasoningEffort: settings.effort } : {}),
-        ...(settings.permissions ? { permissionProfile: settings.permissions } : {}),
-        ...(settings.collaborationMode ? { collaborationMode: settings.collaborationMode } : {})
-      });
+      // A native settings event emitted while this RPC was in flight is newer
+      // than the acknowledgement and must win.
+      if (threadSettingsRevisionRef.current.get(threadId) !== revision) return;
+      const patch: Partial<Thread> = {
+        ...(settings.cwd !== undefined ? { cwd: settings.cwd } : {}),
+        ...(settings.model !== undefined ? { model: settings.model } : {}),
+        ...(settings.effort !== undefined ? { reasoningEffort: settings.effort } : {}),
+        ...(settings.permissions !== undefined ? { permissionProfile: settings.permissions } : {}),
+        ...(settings.collaborationMode !== undefined ? { collaborationMode: settings.collaborationMode } : {})
+      };
+      recordThreadMetadata(threadId, patch);
       setThreads((current) =>
         current.map((thread) =>
           thread.id === threadId
-            ? {
-                ...thread,
-                ...(settings.cwd ? { cwd: settings.cwd } : {}),
-                ...(settings.model ? { model: settings.model } : {}),
-                ...(settings.effort ? { reasoningEffort: settings.effort } : {}),
-                ...(settings.permissions ? { permissionProfile: settings.permissions } : {}),
-                ...(settings.collaborationMode ? { collaborationMode: settings.collaborationMode } : {})
-              }
+            ? { ...thread, ...patch }
             : thread
         )
       );
       setActiveThread((current) =>
         current?.id === threadId
-          ? {
-              ...current,
-              ...(settings.cwd ? { cwd: settings.cwd } : {}),
-              ...(settings.model ? { model: settings.model } : {}),
-              ...(settings.effort ? { reasoningEffort: settings.effort } : {}),
-              ...(settings.permissions ? { permissionProfile: settings.permissions } : {}),
-              ...(settings.collaborationMode ? { collaborationMode: settings.collaborationMode } : {})
-            }
+          ? { ...current, ...patch }
           : current
       );
     },
@@ -1490,11 +1483,11 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         else if (!stopped && !isAbortedRequest(error)) setLastError(error instanceof Error ? error.message : String(error));
       }
     };
-    const recoverMetadata = () => {
+    const recoverMetadata = (force = false) => {
       if (stopped || document.visibilityState !== 'visible' || !navigator.onLine) return;
       for (const kind of ['models', 'projects'] as const) {
         const seen = kind === 'models' ? nativeModelsSeenRef.current : nativeProjectsSeenRef.current;
-        if (!seen || metadataFailuresRef.current.has(kind)) {
+        if (force || !seen || metadataFailuresRef.current.has(kind)) {
           void refreshMetadata(kind).catch(reportInitialFailure);
         }
       }
@@ -1529,9 +1522,8 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         watchThread(activeThreadRef.current);
         const initial = !initializedRef.current;
         if (!initial && !message.resumed) {
-          void refreshMetadata('models').catch(reportInitialFailure);
-          void refreshMetadata('projects').catch(reportInitialFailure);
-        } else recoverMetadata();
+          recoverMetadata(true);
+        } else recoverMetadata(!initial);
         if (listFailuresRef.current > 0) retryThreadsRef.current();
         const threadId = activeThreadRef.current;
         if (threadId && openingThreadRef.current?.threadId !== threadId && (!message.resumed ||
@@ -1690,6 +1682,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       setBridgeStatus({ status: message.status, ...(message.message ? { message: message.message } : {}) });
       if (message.status === 'ready' && replayCursorRef.current) {
         lastRecoveryRef.current = 0;
+        retryMetadataRef.current(true);
       }
       return;
     }
@@ -1782,6 +1775,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     if (method === 'remote/connected') {
       scheduleThreadRefresh();
       refreshActiveHistory();
+      retryMetadataRef.current(true);
     }
     if (method === 'thread/compacted' && params.threadId === activeThreadRef.current) refreshActiveHistory();
     if (method === 'thread/reverted') {
@@ -1841,37 +1835,29 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         | ({ cwd?: string; model?: string; effort?: string | null; collaborationMode?: CollaborationMode } & PermissionSettings)
         | undefined;
       if (threadId && settings) {
-        recordThreadMetadata(threadId, {
-          ...(settings.cwd ? { cwd: settings.cwd } : {}),
-          ...(settings.model ? { model: settings.model } : {}),
-          ...(settings.effort ? { reasoningEffort: settings.effort } : {}),
-          ...(settings.collaborationMode ? { collaborationMode: settings.collaborationMode } : {}),
-          permissionProfile: permissionProfileId(settings)
-        });
+        threadSettingsRevisionRef.current.set(threadId,
+          (threadSettingsRevisionRef.current.get(threadId) ?? 0) + 1);
+        const hasPermissionSettings = 'activePermissionProfile' in settings ||
+          'sandboxPolicy' in settings || 'sandbox' in settings ||
+          'default_permissions' in settings || 'sandbox_mode' in settings;
+        const patch: Partial<Thread> = {
+          ...(settings.cwd !== undefined ? { cwd: settings.cwd } : {}),
+          ...(settings.model !== undefined ? { model: settings.model } : {}),
+          ...(settings.effort !== undefined ? { reasoningEffort: settings.effort } : {}),
+          ...(settings.collaborationMode !== undefined ? { collaborationMode: settings.collaborationMode } : {}),
+          ...(hasPermissionSettings ? { permissionProfile: permissionProfileId(settings) } : {})
+        };
+        recordThreadMetadata(threadId, patch);
         setThreads((current) =>
           current.map((thread) =>
             thread.id === threadId
-              ? {
-                  ...thread,
-                  ...(settings.cwd ? { cwd: settings.cwd } : {}),
-                  ...(settings.model ? { model: settings.model } : {}),
-                  ...(settings.effort ? { reasoningEffort: settings.effort } : {}),
-                  ...(settings.collaborationMode ? { collaborationMode: settings.collaborationMode } : {}),
-                  permissionProfile: permissionProfileId(settings)
-                }
+              ? { ...thread, ...patch }
               : thread
           )
         );
         setActiveThread((current) =>
           current?.id === threadId
-            ? {
-                ...current,
-                ...(settings.cwd ? { cwd: settings.cwd } : {}),
-                ...(settings.model ? { model: settings.model } : {}),
-                ...(settings.effort ? { reasoningEffort: settings.effort } : {}),
-                ...(settings.collaborationMode ? { collaborationMode: settings.collaborationMode } : {}),
-                permissionProfile: permissionProfileId(settings)
-              }
+            ? { ...current, ...patch }
             : current
         );
       }

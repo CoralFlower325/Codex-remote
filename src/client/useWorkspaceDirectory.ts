@@ -7,6 +7,7 @@ import { dedupeThreads } from './workspace-model';
 import { isTaskThread } from '../shared/thread-source';
 import { markStartup } from './startup';
 import type { ModelInfo, ProjectInfo, Thread, WorkspaceBootstrap } from './types';
+import type { CatalogSnapshot } from '../shared/catalog';
 
 interface DirectoryOptions {
   bootstrap: WorkspaceBootstrap | null;
@@ -36,7 +37,7 @@ export function useWorkspaceDirectory({ bootstrap, disposedRef, authExpiredRef, 
   const metadataVersionsRef = useRef({ models: 0, projects: 0 });
   const metadataFailuresRef = useRef(new Set<'models' | 'projects'>());
   const metadataErrorsRef = useRef<Partial<Record<'models' | 'projects', string>>>({});
-  const retryMetadataRef = useRef<() => void>(() => {});
+  const retryMetadataRef = useRef<(force?: boolean) => void>(() => {});
   const provisionalListRef = useRef(new Map<string, Thread>());
   const listRequestsRef = useRef(new ReadRequests());
   const metadataRequestsRef = useRef(new ReadRequests());
@@ -150,9 +151,12 @@ export function useWorkspaceDirectory({ bootstrap, disposedRef, authExpiredRef, 
   const refreshMetadata = useCallback(async (kind: 'models' | 'projects') => {
     const version = ++metadataVersionsRef.current[kind];
     try {
-      const result = await metadataRequestsRef.current.get<{ data: ModelInfo[] | ProjectInfo[] }>(
-        `/api/metadata?kind=${kind}`, 10000, 3);
+      const result = await metadataRequestsRef.current.get<CatalogSnapshot<ModelInfo | ProjectInfo>>(
+        `/api/metadata?kind=${kind}&fresh=1`, 10000, 3);
       if (disposedRef.current || metadataVersionsRef.current[kind] !== version) return;
+      if (!result.complete || result.nextCursor !== null) {
+        throw new Error('Native catalog is incomplete. Please retry.');
+      }
       metadataFailuresRef.current.delete(kind);
       const previousError = metadataErrorsRef.current[kind];
       delete metadataErrorsRef.current[kind];
@@ -160,10 +164,10 @@ export function useWorkspaceDirectory({ bootstrap, disposedRef, authExpiredRef, 
         ? metadataErrorsRef.current.models ?? metadataErrorsRef.current.projects ?? null : current);
       if (kind === 'models') {
         nativeModelsSeenRef.current = true;
-        setModels((result.data ?? []) as ModelInfo[]);
+        setModels(result.data as ModelInfo[]);
       } else {
         nativeProjectsSeenRef.current = true;
-        setProjects((result.data ?? []) as ProjectInfo[]);
+        setProjects(result.data as ProjectInfo[]);
       }
     } catch (error) {
       if (disposedRef.current || metadataVersionsRef.current[kind] !== version || isAbortedRequest(error)) return;

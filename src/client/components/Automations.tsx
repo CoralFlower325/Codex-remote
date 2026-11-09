@@ -9,6 +9,7 @@ import {
 import { formatTurnClockTime } from '../../shared/turn-timing';
 import { api } from '../api';
 import type { RemoteState } from '../useRemote';
+import { findModelInfo } from '../workspace-model';
 import './automations.css';
 
 type ScheduleKind = AutomationSchedule['kind'];
@@ -160,7 +161,7 @@ export function Automations({ remote, onClose, onOpenThread }: {
     finally { busy.current = false; if (mounted.current) setSaving(false); }
   };
 
-  const selectedModel = remote.models.find(entry => entry.model === draft.model);
+  const selectedModel = findModelInfo(remote.models, draft.model);
   const efforts = selectedModel?.supportedReasoningEfforts?.map(entry => entry.reasoningEffort)
     ?? ['low', 'medium', 'high', 'xhigh'];
   const projectName = (automation: Automation) => automation.kind === 'heartbeat' ? '继续现有聊天'
@@ -207,7 +208,7 @@ export function Automations({ remote, onClose, onOpenThread }: {
                 </div>
                 <div className="automation-meta">
                   <span title={automation.rrule}>{automationScheduleSummary(automation.rrule)}</span> · {projectName(automation)}
-                  {automation.model ? ` · ${remote.models.find(entry => entry.model === automation.model)?.displayName ?? automation.model}` : ''}
+                  {automation.model ? ` · ${findModelInfo(remote.models, automation.model)?.displayName ?? automation.model}` : ''}
                 </div>
                 <div className="automation-meta">
                   {automation.status === 'ACTIVE' && automation.nextRunAt

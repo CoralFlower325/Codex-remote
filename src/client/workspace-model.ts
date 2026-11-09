@@ -132,6 +132,13 @@ export function reasoningOptionsForModel(model: ModelInfo | undefined): Reasonin
   });
 }
 
+export function reasoningOptionsWithInherit(model: ModelInfo | undefined): ReasoningOption[] {
+  return [
+    { value: '', label: '默认', description: '使用 Desktop/全局配置中的模型默认推理强度。' },
+    ...reasoningOptionsForModel(model)
+  ];
+}
+
 export function resolveReasoningEffort(model: ModelInfo | undefined, candidate?: string | null): string {
   const options = reasoningOptionsForModel(model);
   if (candidate && options.some((option) => option.value === candidate)) return candidate;
@@ -142,13 +149,27 @@ export function resolveReasoningEffort(model: ModelInfo | undefined, candidate?:
 }
 
 export function reasoningLabel(model: ModelInfo | undefined, value: string | null | undefined): string {
-  if (!value) return '默认强度';
+  if (!value) return '默认';
   return reasoningOptionsForModel(model).find((option) => option.value === value)?.label ?? value;
+}
+
+export function findModelInfo(
+  models: ModelInfo[],
+  value: string | null | undefined,
+  provider?: string | null
+): ModelInfo | undefined {
+  if (!value) return undefined;
+  const matches = models.filter((model) => model.id === value || model.model === value);
+  if (!provider) return matches.find((model) => model.isDefault) ?? matches[0];
+  return matches.find((model) => {
+    const modelProvider = model.modelProvider ?? model.provider;
+    return !modelProvider || modelProvider === provider;
+  }) ?? matches.find((model) => !(model.modelProvider ?? model.provider)) ?? matches[0];
 }
 
 export function modelDisplayName(models: ModelInfo[], value: string | null | undefined): string {
   if (!value) return '默认模型';
-  const displayName = models.find((model) => model.model === value)?.displayName ?? value;
+  const displayName = findModelInfo(models, value)?.displayName ?? value;
   if (value === 'gpt-6.1-sol') return '6.1 Sol';
   if (value === 'gpt-6-astra') return '6 Astra';
   return displayName;

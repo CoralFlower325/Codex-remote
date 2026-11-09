@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import { v4 as randomUUID } from 'uuid';
 import { permissionDescription, permissionLabel, type PermissionProfile } from '../../shared/permissions';
 import type { ComposerAttachment, ComposerDocumentAttachment, ContextUsage, ModelInfo, ProjectInfo, SkillInfo, SkillsResult } from '../types';
-import { modelDisplayName, reasoningLabel, reasoningOptionsForModel } from '../workspace-model';
+import { findModelInfo, modelDisplayName, reasoningLabel, reasoningOptionsWithInherit } from '../workspace-model';
 import { findSlashCommand, parseSlashQuery, slashOptions, type SlashCommandId, type SlashOption } from '../slash-commands';
 import { composerKeyboardAction, insertComposerNewline } from '../composer-keyboard';
 import { SlashMenu } from './SlashMenu';
@@ -68,6 +68,7 @@ export function Composer({
   const setSelectedSkills = (change: SkillInfo[] | ((current: SkillInfo[]) => SkillInfo[])) =>
     owner.update(current => ({ ...current, skills: typeof change === 'function' ? change(current.skills) : change }));
   const [changing, setChanging] = useState(false);
+  const changingRef = useRef(false);
   const [stopping, setStopping] = useState(false);
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
@@ -96,8 +97,8 @@ export function Composer({
   const usedTokens = contextUsage?.last.totalTokens;
   const contextPercent = contextWindow && usedTokens != null
     ? Math.min(100, Math.max(0, usedTokens / contextWindow * 100)) : null;
-  const modelInfo = models.find((entry) => entry.model === model);
-  const effortOptions = useMemo(() => reasoningOptionsForModel(modelInfo), [modelInfo]);
+  const modelInfo = findModelInfo(models, model);
+  const effortOptions = useMemo(() => reasoningOptionsWithInherit(modelInfo), [modelInfo]);
   const activeMenu = renderedMenu ?? menu;
   const menuLabel = activeMenu === 'permissions' ? '访问权限' : activeMenu === 'models' ? '模型' : activeMenu === 'projects' ? '项目' : '推理强度';
   draftRef.current = draft;
@@ -307,7 +308,8 @@ export function Composer({
   }, [activeMenu, layout]);
 
   const changeSetting = async (action: () => void | Promise<void>) => {
-    if (changing) return;
+    if (changingRef.current) return;
+    changingRef.current = true;
     setChanging(true);
     try {
       await action();
@@ -315,6 +317,7 @@ export function Composer({
     } catch (error) {
       onError(error);
     } finally {
+      changingRef.current = false;
       setChanging(false);
     }
   };
@@ -344,7 +347,8 @@ export function Composer({
         if (query.argument.trim()) {
           const value = query.argument.trim();
           if (command === 'model') {
-            const entry = models.find((entry) => entry.model === value || entry.displayName.toLocaleLowerCase() === value.toLocaleLowerCase());
+            const entry = findModelInfo(models, value) ??
+              models.find((entry) => entry.displayName.toLocaleLowerCase() === value.toLocaleLowerCase());
             if (!entry) throw new Error('没有匹配的模型，请使用 /model 选择。');
             await onModelChange(entry.model);
           } else if (command === 'reasoning') {
@@ -374,7 +378,10 @@ export function Composer({
   const submit = async () => {
     const submitted = owner.get();
     const text = submitted.text.trim();
-    if (submitted.sending || disabled) return;
+    if (submitted.sending || disabled || changingRef.current) {
+      if (changingRef.current) onError(new Error('模型设置仍在保存，请稍候再发送。'));
+      return;
+    }
     const query = parseSlashQuery(submitted.text);
     if (query) {
       const exact = findSlashCommand(query.name);
@@ -481,11 +488,12 @@ export function Composer({
                 </button>
               )) : activeMenu === 'models' ? models.map((entry) => (
                 <button type="button" role="menuitemradio" className="model-option" key={entry.id}
-                  aria-checked={entry.model === model} title={entry.description || entry.displayName} disabled={changing}
+                  aria-checked={entry.id === model || entry.model === model}
+                  title={entry.description || entry.displayName} disabled={changing}
                   onClick={() => void changeSetting(() => onModelChange(entry.model))}>
                   <span className="model-option-copy"><span>{modelDisplayName(models, entry.model)}</span>
                     {entry.description && <small>{entry.description}</small>}</span>
-                  {entry.model === model && <Check size={15} aria-hidden="true" />}
+                  {(entry.id === model || entry.model === model) && <Check size={15} aria-hidden="true" />}
                 </button>
               )) : effortOptions.map((option) => (
                 <button type="button" role="menuitemradio" className="model-option" key={option.value}
@@ -499,6 +507,8 @@ export function Composer({
               ))}
             </div>
             {activeMenu === 'settings' && <p className="settings-note model-menu-note">推理强度影响思考深度、响应时间和用量；可用档位由当前模型决定。</p>}
+            {activeMenu === 'settings' && effortOptions.length === 1 &&
+              <p className="settings-note model-menu-note">当前模型目录未返回可用推理档位，请稍后重试同步。</p>}
             {activeMenu === 'settings' && (
               <button type="button" role="menuitem" className="model-submenu-button" onClick={() => setMenu('models')}>
                 <span>模型</span><span className="model-submenu-value">{modelDisplayName(models, model)}</span><ChevronRight size={15} />
@@ -631,7 +641,8 @@ export function Composer({
               <ChevronDown size={12} aria-hidden="true" />
             </button>
             <button type="button" className="composer-setting" ref={settingsButtonRef}
-              aria-haspopup="menu" aria-expanded={menu === 'settings' || menu === 'models'} disabled={models.length === 0}
+              aria-haspopup="menu" aria-expanded={menu === 'settings' || menu === 'models'}
+              disabled={models.length === 0 || changing}
               onClick={() => setMenu((current) => current === 'settings' || current === 'models' ? null : 'settings')}
               aria-label={`${modelDisplayName(models, model)}，${reasoningLabel(modelInfo, effort)}`}
               title={`${modelInfo?.description || modelDisplayName(models, model)}\n推理强度：${reasoningLabel(modelInfo, effort)}；影响思考深度、响应时间和用量。`}>
@@ -659,7 +670,8 @@ export function Composer({
             )}
             {(!activeTurnId || hasComposerContent || sending) && (
               <button type="button" className="composer-send" disabled={(!draft.trim() && attachments.length === 0 && selectedSkills.length === 0) ||
-                attachments.some(attachment => attachment.kind === 'document' && Boolean(attachment.status)) || sending || disabled}
+                attachments.some(attachment => attachment.kind === 'document' && Boolean(attachment.status)) ||
+                sending || disabled || changing}
                  onClick={() => void submit()} aria-label={activeTurnId ? queueMessages ? '加入队列' : '发送补充要求' : '发送任务'}
                  title={activeTurnId ? queueMessages ? '加入队列' : '发送补充要求' : '发送任务'}>
                 {sending ? <LoaderCircle size={17} className="spin" /> : activeTurnId && queueMessages

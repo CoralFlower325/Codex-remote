@@ -29,7 +29,7 @@ import { CommandDialog, type CommandDialogState } from './components/CommandDial
 import { displayThreadTitle } from './remote-state';
 import { useRemote } from './useRemote';
 import type { ComposerAttachment, SkillInfo, Thread, WorkspaceBootstrap } from './types';
-import { layoutForViewport, modelDisplayName, reasoningLabel, resolveReasoningEffort } from './workspace-model';
+import { findModelInfo, layoutForViewport, modelDisplayName, reasoningLabel, reasoningOptionsForModel } from './workspace-model';
 import { collaborationMode, slashCommands, type SlashCommandId } from './slash-commands';
 import { permissionLabel } from '../shared/permissions';
 import type { ChatInput } from './queued-messages';
@@ -160,13 +160,9 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
 
   const activeThread = remote.activeThread;
   const defaultModel = remote.models.find((model) => model.isDefault) ?? remote.models[0];
-  const activeModelInfo =
-    remote.models.find((model) => model.model === (activeThread?.model || newTaskModel)) ?? defaultModel;
-  const activeEffort = resolveReasoningEffort(
-    activeModelInfo,
-    activeThread?.reasoningEffort || newTaskEffort
-  );
   const effectiveModel = activeThread?.model || newTaskModel || defaultModel?.model || '';
+  const activeModelInfo = findModelInfo(remote.models, effectiveModel, activeThread?.modelProvider) ?? undefined;
+  const activeEffort = activeThread ? activeThread.reasoningEffort ?? '' : newTaskEffort;
   const effectivePermissions = activeThread?.permissionProfile || newTaskPermissions || remote.defaultPermissionProfile || '';
   const currentProject = activeThread ? threadProject(activeThread, remote.projects)
     : remote.projects.find(project => project.id === selectedProjectId);
@@ -222,12 +218,6 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   }, [defaultModel, newTaskModel]);
 
   useEffect(() => {
-    if (!newTaskEffort && defaultModel) {
-      setNewTaskEffort(resolveReasoningEffort(defaultModel, defaultModel.defaultReasoningEffort));
-    }
-  }, [defaultModel, newTaskEffort]);
-
-  useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.target instanceof Element && event.target.closest('dialog[open]')) return;
       const editing = event.target instanceof Element &&
@@ -277,13 +267,17 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   }
 
   async function changeModel(model: string) {
-    const info = remote.models.find((entry) => entry.model === model);
+    const info = findModelInfo(remote.models, model);
     if (!activeThread) {
       setNewTaskModel(model);
-      setNewTaskEffort(resolveReasoningEffort(info, newTaskEffort));
+      if (newTaskEffort && !reasoningOptionsForModel(info).some(option => option.value === newTaskEffort)) {
+        setNewTaskEffort('');
+      }
       return;
     }
-    const effort = resolveReasoningEffort(info, activeThread.reasoningEffort);
+    const effort = activeThread.reasoningEffort &&
+      reasoningOptionsForModel(info).some(option => option.value === activeThread.reasoningEffort)
+      ? activeThread.reasoningEffort : null;
     await remote.setThreadSettings(activeThread.id, {
       model, effort,
       ...(activeThread.collaborationMode ? { collaborationMode: collaborationMode(effectiveMode, model, effort) } : {})
@@ -296,8 +290,9 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       return;
     }
     await remote.setThreadSettings(activeThread.id, {
-      effort,
-      ...(activeThread.collaborationMode ? { collaborationMode: collaborationMode(effectiveMode, effectiveModel, effort) } : {})
+      effort: effort || null,
+      ...(activeThread.collaborationMode
+        ? { collaborationMode: collaborationMode(effectiveMode, effectiveModel, effort || null) } : {})
     });
   }
 
@@ -361,7 +356,8 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       ...(project?.id ? { projectId: project.id } : {}),
       ...(newTaskModel ? { model: newTaskModel } : {}),
       ...(newTaskEffort ? { effort: newTaskEffort } : {}),
-      ...(newTaskMode === 'plan' ? { collaborationMode: collaborationMode('plan', effectiveModel, activeEffort) } : {}),
+      ...(newTaskMode === 'plan'
+        ? { collaborationMode: collaborationMode('plan', effectiveModel, activeEffort || null) } : {}),
       ...(effectivePermissions ? { permissions: effectivePermissions } : {})
     });
     await sendTransferredComposerDraft(composerDrafts, 'home', thread.id, submitted ?? { text, attachments, skills },
@@ -369,7 +365,8 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         await remote.sendTurn(thread.id, text, {
           ...(newTaskModel ? { model: newTaskModel } : {}),
           ...(newTaskEffort ? { effort: newTaskEffort } : {}),
-          ...(newTaskMode === 'plan' ? { collaborationMode: collaborationMode('plan', effectiveModel, activeEffort) } : {})
+          ...(newTaskMode === 'plan'
+            ? { collaborationMode: collaborationMode('plan', effectiveModel, activeEffort || null) } : {})
         }, attachments, skills);
       });
   }
