@@ -1,9 +1,12 @@
 import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import { TerminalProcess } from './terminal-process.js';
 
 class Worker extends EventEmitter {
   connected = true;
+  pid: number | undefined;
+  stderr = new PassThrough();
   sent: Array<Record<string, unknown>> = [];
   callbacks: Array<(error?: Error | null) => void> = [];
   kill = vi.fn(() => true);
@@ -13,11 +16,32 @@ class Worker extends EventEmitter {
     return true;
   }
 }
-function setup() {
+
+class Job extends EventEmitter {
+  private resolveReady!: () => void;
+  private rejectReady!: (error: Error) => void;
+  private resolveExit!: (value: { code: number | null; signal: NodeJS.Signals | null; diagnostic: string }) => void;
+  ready = new Promise<void>((resolve, reject) => {
+    this.resolveReady = resolve;
+    this.rejectReady = reject;
+  });
+  exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null; diagnostic: string }>((resolve) => {
+    this.resolveExit = resolve;
+  });
+  stop = vi.fn();
+  open() { this.resolveReady(); }
+  fail(error: Error) { this.rejectReady(error); }
+  close(code = 0) { this.resolveExit({ code, signal: null, diagnostic: 'synthetic job exit' }); }
+}
+
+function setup(platform: NodeJS.Platform = 'linux') {
   const worker = new Worker();
   const launch = vi.fn(() => worker);
-  const pty = new TerminalProcess('fixture-shell', [], { cwd: process.cwd(), cols: 80, rows: 24 }, launch as never);
-  return { worker, launch, pty };
+  const job = new Job();
+  const jobFactory = vi.fn(() => job);
+  const pty = new TerminalProcess('fixture-shell', [], { cwd: process.cwd(), cols: 80, rows: 24 },
+    launch as never, jobFactory as never, platform);
+  return { worker, launch, job, jobFactory, pty };
 }
 
 describe('isolated terminal process', () => {
@@ -37,7 +61,7 @@ describe('isolated terminal process', () => {
     expect(output).toHaveBeenCalledWith('output');
     expect(worker.sent.at(-1)).toEqual({ type: 'ack', size: 6 });
     expect(launch).toHaveBeenCalledWith(expect.any(URL), [], expect.objectContaining({
-      windowsHide: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc']
+      windowsHide: true, stdio: ['ignore', 'ignore', 'pipe', 'ipc'], detached: true
     }));
     worker.emit('message', { type: 'exit', exitCode: 7 });
     worker.emit('exit', 0);
@@ -50,11 +74,14 @@ describe('isolated terminal process', () => {
     pty.onData(output);
     pty.onExit(exit);
     pty.write('pending command\r');
+    worker.stderr.write('synthetic native failure\n');
     await Promise.resolve();
     worker.emit('exit', 42);
     worker.emit('disconnect');
     expect(exit).toHaveBeenCalledExactlyOnceWith({ exitCode: 42 });
     expect(output).toHaveBeenCalledWith(expect.stringContaining('new terminal explicitly'));
+    expect(output).toHaveBeenCalledWith(expect.stringContaining('exit=42'));
+    expect(output).toHaveBeenCalledWith(expect.stringContaining('diagnostic=synthetic native failure'));
     expect(launch).toHaveBeenCalledOnce();
     expect(worker.sent.map(message => message.type)).toEqual(['start']);
     expect(() => pty.write('do not replay')).toThrow('exited');
@@ -91,5 +118,38 @@ describe('isolated terminal process', () => {
     await Promise.resolve();
     expect(exit).toHaveBeenCalledExactlyOnceWith({ exitCode: 1 });
     expect(worker.kill).toHaveBeenCalledOnce();
+  });
+
+  it('waits for Windows job attachment before starting the worker', async () => {
+    const worker = new Worker();
+    worker.pid = 7001;
+    const job = new Job();
+    const launch = vi.fn(() => worker);
+    const jobFactory = vi.fn(() => job);
+    const pty = new TerminalProcess('fixture-shell', [], {},
+      launch as never, jobFactory as never, 'win32');
+    await Promise.resolve();
+    expect(jobFactory).toHaveBeenCalledWith(7001);
+    expect(worker.sent).toEqual([]);
+    job.open();
+    await Promise.resolve();
+    expect(worker.sent[0]).toMatchObject({ type: 'start', file: 'fixture-shell' });
+    worker.emit('message', { type: 'ready' });
+    worker.emit('message', { type: 'exit', exitCode: 0 });
+    job.close();
+  });
+
+  it('does not immediately hard-kill a worker before its cleanup deadline', async () => {
+    vi.useFakeTimers();
+    const { worker, pty } = setup();
+    await Promise.resolve();
+    worker.emit('message', { type: 'ready' });
+    pty.kill();
+    expect(worker.sent.at(-1)).toEqual({ type: 'kill' });
+    await vi.advanceTimersByTimeAsync(3_999);
+    expect(worker.kill).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(worker.kill).toHaveBeenCalledOnce();
+    vi.useRealTimers();
   });
 });

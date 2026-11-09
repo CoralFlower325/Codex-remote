@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { createReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { x as extract } from 'tar';
-import { runtimeNames, validateManifest, unpackRuntime, sha256 } from '../desktop/runtime-package.mjs';
+import { assertManifestRuntimeNode, runtimeNames, validateManifest, unpackRuntime, sha256 } from '../desktop/runtime-package.mjs';
 import { prepareUpdate, installUpdate, compareVersions } from '../desktop/updater.mjs';
 import { run } from '../desktop/process.mjs';
 import { pendingUpdate } from '../desktop/update-transaction.mjs';
@@ -16,6 +16,7 @@ const names = runtimeNames(pkg.version);
 // versioned as the RC while acceptance exercises the next numeric release.
 const acceptanceTag = `v${pkg.version.split('-', 1)[0]}`;
 const manifest = validateManifest(verifyRelease(JSON.parse(await fs.readFile(path.join('output/runtime', names.manifest), 'utf8'))), pkg);
+assertManifestRuntimeNode(manifest);
 const archive = path.resolve('output/runtime', names.archive);
 if (sha256(await fs.readFile(archive)) !== manifest.archive.sha256) throw new Error('Archive checksum mismatch.');
 const temporary = await fs.mkdtemp(path.resolve('output/runtime-check-'));

@@ -3,7 +3,8 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { c as archive } from 'tar';
-import { runtimeNames, runtimePath, sha256, runtimeRepository, sourceHash } from '../desktop/runtime-package.mjs';
+import { assertTestedRuntimeNode, runtimeNames, runtimeNodeAbi, runtimePath, sha256,
+  runtimeRepository, sourceHash } from '../desktop/runtime-package.mjs';
 import { runtimeFile } from './runtime-files.mjs';
 import { signRelease, verifyRelease } from '../desktop/release-signature.mjs';
 
@@ -24,6 +25,7 @@ export async function packageRuntime(root, output) {
   if (!['win32-x64', 'darwin-arm64'].includes(`${process.platform}-${process.arch}`)) {
     throw new Error('Runtime packages support Windows x64 and Apple Silicon.');
   }
+  const node = assertTestedRuntimeNode(runtimeNodeAbi());
   const pkg = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
   const sources = treeSources('HEAD');
   if (!sources['package.json']) throw new Error('Runtime source tree is incomplete.');
@@ -69,7 +71,7 @@ export async function packageRuntime(root, output) {
     const bytes = await fs.readFile(archivePath);
     const manifest = { format: 1, repository: runtimeRepository, version: pkg.version,
       commit: git('rev-parse', 'HEAD'), platform: process.platform, arch: process.arch,
-      node: process.versions.node, sources, baselines, files,
+      node, sources, baselines, files,
       archive: { size: bytes.length, sha256: sha256(bytes) } };
     if (!process.env.RELEASE_SIGNING_KEY) throw new Error('缺少 RELEASE_SIGNING_KEY，禁止生成未签名运行包。');
     const signed = signRelease(manifest, process.env.RELEASE_SIGNING_KEY);

@@ -4,14 +4,16 @@ import os from 'node:os';
 import { run } from './process.mjs';
 import { installation, commandEnvironment } from './controller.mjs';
 import { createUpdateProgress, updateError } from './update-progress.mjs';
-import { runtimeNames, validateManifest, downloadAsset, unpackRuntime, sourceHash } from './runtime-package.mjs';
+import { assertManifestRuntimeNode, runtimeNames, runtimeNodeAbi, validateManifest,
+  downloadAsset, unpackRuntime, sourceHash } from './runtime-package.mjs';
 import { pendingUpdate } from './update-transaction.mjs';
 import { compareVersions, versionPattern } from './release.mjs';
 import { verifyRelease } from './release-signature.mjs';
 import { regularFile, planFiles, hash, buildFileNames, runtimeNode, nodeToolchain,
   withNetworkRetry, removePreparation, mergeBuildInputs, installDependencies, npmCommand } from './update-inputs.mjs';
 
-const repository = 'https://github.com/CoralFlower325/Codex-remote.git';
+import { releaseRepository } from './release-identity.mjs';
+const repository = `https://github.com/${releaseRepository}.git`;
 
 // Preparation is side-effect free for the live installation: fetch, compare and
 // build in an isolated directory before any service is stopped.
@@ -39,7 +41,7 @@ export async function prepareUpdate(directory, release, progress, execute = run,
     const identityFile = path.join(stage, 'release-identity.json');
     await downloadAsset(identityAsset, identityFile, options);
     const identity = verifyRelease(JSON.parse(await fs.readFile(identityFile, 'utf8')), options.trustedKeys);
-    if (identity.repository !== 'CoralFlower325/Codex-remote' || identity.version !== release.version ||
+    if (identity.repository !== releaseRepository || identity.version !== release.version ||
         !/^[a-f0-9]{40}$/.test(identity.commit)) throw new Error('签名版本与所选发布不匹配。');
     if (manifestAsset || archiveAsset) {
       if (!manifestAsset || !archiveAsset) throw new Error('当前平台的运行包尚未发布完整，请稍后重新检查更新。');
@@ -85,6 +87,7 @@ export async function prepareUpdate(directory, release, progress, execute = run,
         for (const relative of runtimeFiles) if (!names.has(relative)) custom.add(relative);
         if (!custom.size) {
           const tools = await runtimeNode(execute);
+          assertManifestRuntimeNode(manifest, runtimeNodeAbi(tools.version, tools.modules));
           report.finish('compare');
           report.start('runtime');
           const archive = path.join(stage, 'runtime.tar.gz');

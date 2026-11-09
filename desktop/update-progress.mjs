@@ -30,7 +30,7 @@ function releaseHttpStatus(message) {
 
 export function updateError(error) {
   const detail = cleanOutput(error?.message || error);
-  if (/^(?:发布者签名缺失或不可信|正式签名清单尚未发布完整|签名版本与所选发布不匹配|源码提交与发布者签名不一致)/.test(detail)) return detail;
+  if (/^(?:发布者签名缺失或不可信|正式签名清单尚未发布完整|签名版本与所选发布不匹配|源码提交与发布者签名不一致|运行包必须在受测 Node|运行包需要 Node)/.test(detail)) return detail;
   if (error?.name === 'TimeoutError' || error?.cause?.name === 'TimeoutError' ||
     /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ESOCKETTIMEDOUT|EAI_AGAIN|ENOTFOUND|net::ERR_|socket hang up|fetch failed|network.*(?:failed|error)|could not resolve|unable to access/i.test(detail)) {
     return '下载连接中断或超时，有限次数的重试未能完成。请确认当前网络、依赖源或代理可用后重试。';
