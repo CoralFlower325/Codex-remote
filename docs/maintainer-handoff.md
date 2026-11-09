@@ -16,7 +16,7 @@ historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
 The current published release is Remote **0.2.26** / manager **0.2.4**, tag
-`v0.2.26`, functional commit `pending-release-commit`.
+`v0.2.26`, functional commit `a7f27ec`.
 The [mobile composer acceptance](mobile-composer-single-action-0.2.25.md) records
 the single-row toolbar, removed browser dictation and single Stop/Steer action.
 The preceding [Windows / macOS discovery acceptance](desktop-debug-discovery.md)
