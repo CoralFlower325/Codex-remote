@@ -15,11 +15,12 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.27** / manager **0.2.6**, tag
-`v0.2.27`.
+The current published release is Remote **0.2.28** / manager **0.2.6**, tag
+`v0.2.28`.
 The [native queued-guide acceptance](native-queued-guide-0.2.27.md) records the
 single primary action, immediate queued-submission strip and history-trigger
-placement. The [mobile composer acceptance](mobile-composer-single-action-0.2.25.md)
+placement, plus the 0.2.28 follow-up record for optimistic send/Guide display,
+terminal-state monotonicity and pending-dock priority. The [mobile composer acceptance](mobile-composer-single-action-0.2.25.md)
 remains historical evidence for the single-row toolbar and removed browser dictation.
 The preceding [Windows / macOS discovery acceptance](desktop-debug-discovery.md)
 retains the trusted automatic port discovery work. The
@@ -31,7 +32,7 @@ and fixes Windows task ownership of its Node runtime. Manager 0.2.6 stages
 Node 22.19.x under `ProgramData`, migrates old task actions and lets the existing
 manager Start/Stop and repair controls perform the change without a console window.
 Runtime packaging remains gated on the tested Node 22.19.x toolchain and signed assets.
-The 0.2.26 release remains the previous signed baseline until 0.2.27 assets and
+The 0.2.26 release remains the previous signed baseline until 0.2.28 assets and
 the separate deployment are verified. A source release does not by itself change
 the installed or public frontend. Never start another App Server.
 

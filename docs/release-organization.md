@@ -12,7 +12,7 @@
 仍描述该次发布，不改写为当前功能或当前验收。
 
 Remote 与管理器独立计版。当前稳定管理器 0.2.6 安装包位于
-[v0.2.27](https://github.com/CoralFlower325/Codex-remote/releases/tag/v0.2.27)。
+[v0.2.28](https://github.com/CoralFlower325/Codex-remote/releases/tag/v0.2.28)。
 Remote 0.2.12 当时沿用 v0.2.10 的管理器 0.2.1，没有重打包；历史附件继续保留。
 
 历史 v0.2.1 的同号管理器属于旧同步计版阶段。v0.2.2 将管理器设为 0.2.0
