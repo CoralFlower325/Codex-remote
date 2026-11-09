@@ -129,9 +129,10 @@ Release and privacy policy remains in AGENTS.md.
   forms or external assets. Preserve inline scripts and safe local assets.
   Never expose the Remote session to generated HTML. Resolve HTML grant resources
   against their real directory and reject symlink/junction escapes.
-  Office previews use optional host LibreOffice conversion to temporary PDF,
-  with isolated profiles, macros/active content/link updates disabled, bounded
-  input/output, queue and owned-process timeouts. This is not an OS sandbox.
+  Office previews use optional host LibreOffice conversion to temporary PDF in
+  a bounded low-privilege worker, with isolated profiles, macros/active
+  content/link updates disabled, stale-directory recovery, bounded input/output,
+  queue and owned-process timeouts. This is not an OS sandbox.
   Keep original downloads and actionable missing-converter errors. Do not upload
   documents to external viewers or persist converted content in public caches.
   HTML preview does not build source projects.

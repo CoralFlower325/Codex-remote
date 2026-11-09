@@ -120,11 +120,15 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Keep their overviews concise; detailed setup and operating contracts belong in
   docs/guide.md and docs/guide.zh-CN.md, with both languages updated together.
   docs/README.md indexes current guides separately from historical evidence.
-- Model/project metadata currently reads its first requested page; model defaults
-  can differ from global configuration overrides. Do not imply otherwise.
+- Model/project catalogs are read to completion with cursor-cycle and page
+  limits; the client only commits a complete snapshot. Model defaults can still
+  differ from global configuration overrides; do not imply otherwise.
 - Remote terminals are separate from Desktop shells and bypass model permission
   profiles; document this in both READMEs. Some approval forms and native
   question submission still need dedicated live acceptance.
+- Windows terminal workers attach to a kill-on-close Job Object before starting
+  the shell; POSIX workers use an owned process group. Prebuilt runtime manifests
+  pin Node 22.19.x and must fail closed on a different major/minor ABI.
 - Windows has live desktop acceptance. macOS has CI coverage for builds, unit
   tests, shell syntax, and generated LaunchAgents; signed-in desktop integration,
   login persistence, and the legacy tunnel still need live macOS acceptance.

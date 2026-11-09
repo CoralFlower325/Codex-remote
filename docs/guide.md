@@ -277,7 +277,11 @@ npm run tunnel:windows -- -PublicHost codex.example.com
 
 The helper creates or reuses a remotely managed tunnel, sets its ingress, creates a matching DNS record when absent, saves the tunnel token locally, updates `.env`, and installs login tasks. An existing DNS record pointing elsewhere is not overwritten.
 
-The tunnel targets `http://127.0.0.1:4545`. Its readiness endpoint is `http://127.0.0.1:20241/ready`; ordinary connection logs are written to `data/cloudflared.log`. These are local diagnostics.
+The tunnel targets `http://127.0.0.1:4545`. A managed supervisor writes its
+owned metrics port to `data/tunnel-metrics.json` and exposes readiness below
+that loopback port; older installations may use the legacy port `20241`.
+Ordinary connection logs are written to `data/cloudflared.log`. These are local
+diagnostics.
 
 ### macOS
 
@@ -623,10 +627,13 @@ Remote. Runtime packages do not bundle LibreOffice. Missing converters,
 encrypted/damaged documents and conversion failures show a retryable error;
 the original file remains downloadable.
 
-Conversion copies the input into a private temporary directory with a fresh
-profile and disables macros, active OLE/DDE content and automatic document-link
-updates. It does not upload the document to an online viewer. It is not an OS
-sandbox: only preview files you trust. Original files are never rewritten.
+Conversion runs in an isolated low-privilege worker and copies the input into a
+private temporary directory with a fresh profile. It disables macros, active
+OLE/DDE content and automatic document-link updates, and does not upload the
+document to an online viewer. The worker has bounded queue and process
+timeouts, and subsequent conversions recover stale owned temporary
+directories. It is still not an OS sandbox: only preview files you trust.
+Original files are never rewritten.
 Input and rendered PDF are each limited to 32 MiB; one conversion runs at a time,
 with at most three distinct pending files and a 45-second process budget per
 file. The client allows 150 seconds including queueing. Hiding a preview releases
