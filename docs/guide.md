@@ -11,7 +11,7 @@ See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
-Remote 0.2.27 pairs with stable manager 0.2.6, using manual installer upgrades.
+Remote 0.2.28 pairs with stable manager 0.2.6, using manual installer upgrades.
 Install 0.2.6 over the old app, select the same host root and retry the update.
 Updating Remote cannot change the old manager's bundled updater.
 Manager self-update is preserved on the paused 0.2.0AU development line;

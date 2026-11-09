@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.28', changes: [
+    '发送与引导即时上屏：普通发送和待发条“引导”先显示本地消息并标注发送状态，原生回声按 clientUserMessageId 到达后自动去重；发送被拒时撤下本地消息、输入草稿保留。',
+    '轮次状态单向推进：中断或完成后，滞后的历史快照不再把已结束的轮次重新显示为运行中，输入区及时恢复空闲。',
+    '待处理区优先级：审批条排在提问条之前；有待审批时待发消息收起为一行摘要，待发超过 4 条自动折叠。',
+    '错误提示中文化：请求失败显示为「请求失败（HTTP 状态码）」，自动任务页加载失败只显示中文空状态。管理器保持 0.2.6，无变更。'
+  ] },
   { version: '0.2.27', changes: [
     '恢复原生待发/引导条：运行中的主输入始终只有一个按钮，发送后立即在输入框上方显示可编辑的待发消息，并可通过“引导”、删除或更多菜单处理。',
     '待发消息先本地即时显示，原生队列按 clientUserMessageId 回执后无闪烁去重；关闭排队后，当前活动轮次的后续消息改为直接引导。',

@@ -9,8 +9,8 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 
 | 系统 | 项目分发 | 官方备用 |
 | --- | --- | --- |
-| macOS Apple Silicon | [DMG](https://downloads.73916482.xyz/releases/download/v0.2.27/Codex-Remote-Manager-0.2.6-mac-arm64.dmg) · [ZIP](https://downloads.73916482.xyz/releases/download/v0.2.27/Codex-Remote-Manager-0.2.6-mac-arm64.zip) | [DMG](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.27/Codex-Remote-Manager-0.2.6-mac-arm64.dmg) · [ZIP](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.27/Codex-Remote-Manager-0.2.6-mac-arm64.zip) |
-| Windows x64 | [安装程序](https://downloads.73916482.xyz/releases/download/v0.2.27/Codex-Remote-Manager-0.2.6-win-x64.exe) | [安装程序](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.27/Codex-Remote-Manager-0.2.6-win-x64.exe) |
+| macOS Apple Silicon | [DMG](https://downloads.73916482.xyz/releases/download/v0.2.28/Codex-Remote-Manager-0.2.6-mac-arm64.dmg) · [ZIP](https://downloads.73916482.xyz/releases/download/v0.2.28/Codex-Remote-Manager-0.2.6-mac-arm64.zip) | [DMG](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.28/Codex-Remote-Manager-0.2.6-mac-arm64.dmg) · [ZIP](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.28/Codex-Remote-Manager-0.2.6-mac-arm64.zip) |
+| Windows x64 | [安装程序](https://downloads.73916482.xyz/releases/download/v0.2.28/Codex-Remote-Manager-0.2.6-win-x64.exe) | [安装程序](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.28/Codex-Remote-Manager-0.2.6-win-x64.exe) |
 
 1. 从菜单栏／托盘菜单退出旧管理器。退出管理器不停止 Remote。
 2. 下载并安装 0.2.6，覆盖旧应用。macOS 将新应用替换到原应用位置。
@@ -24,8 +24,9 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 本次不恢复 AU 功能；签名、公证和真实 Mac 登录环境验收仍是独立断点。
 未签名安装包可能需要按系统下载信誉或 Gatekeeper 流程确认。
 
-Remote 0.2.27 将管理器提升到 0.2.6，修正 Windows 计划任务的 Node
-运行时归属和一键修复迁移；四个 Remote 运行包和管理器安装包位于 `v0.2.27`。
+Remote 0.2.28 修复发送与引导的即时呈现、轮次状态被滞后快照改回运行中，
+并调整待处理区优先级与待发折叠；管理器保持 0.2.6，无变更；四个 Remote
+运行包和管理器安装包位于 `v0.2.28`。
 运行包 Ed25519 清单签名已启用，与仍暂停的 AU 和 macOS 应用签名分别管理。
 
 English: install manager 0.2.6 manually over the old app, reopen it and select the same

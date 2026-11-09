@@ -5,7 +5,7 @@
 
 ## 安装与打开
 
-Remote 0.2.27 配套管理器 0.2.6。从[项目分发或官方备用地址](update-downloads.md)
+Remote 0.2.28 配套管理器 0.2.6。从[项目分发或官方备用地址](update-downloads.md)
 下载 Windows 安装程序或 macOS DMG/ZIP。
 Windows 提供 x64，macOS 仅提供 Apple Silicon（arm64）。首批安装包未签名，
 可能需要按 Windows 下载信誉或 Gatekeeper 流程确认。
@@ -53,7 +53,7 @@ macOS 的 `com.codex.remote` LaunchAgent、程序附近和用户常见目录。
 - 每五秒检测一次，不重叠请求；区分后端归属、Desktop 同步、访问密码及受管理的 Windows 隧道。
   进程存在不等于健康，超过二十秒的读数显示过期。
 - Desktop 诊断区分调试端点未就绪、缺少 Desktop 页面和原生桥接待连接。
-  普通启动 Codex 不保证开启调试端点；Windows/macOS Remote 0.2.27 会从当前
+  普通启动 Codex 不保证开启调试端点；Windows/macOS Remote 0.2.28 会从当前
   可信安装进程自动发现回环端口，显式调试参数和 9229 继续作为回退。因此 Codex++ 等启动器
   可以选择不同端口。Remote 使用 Desktop 的端点，不连接启动器自己的本地服务。
   连接恢复后自动清除诊断。
