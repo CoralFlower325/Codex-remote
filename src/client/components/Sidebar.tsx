@@ -4,7 +4,13 @@ import {
 } from 'lucide-react';
 import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { displayThreadTitle } from '../remote-state';
-import type { RemoteState } from '../useRemote';
+import type {
+  AttentionActions,
+  AttentionView,
+  ConnectionView,
+  DirectoryActions,
+  DirectoryView
+} from '../remote-contracts';
 import type { Thread } from '../types';
 import { buildSidebarGroups, connectionLabel } from '../workspace-model';
 import { WorkspaceFolderDialog } from './WorkspaceFolderDialog';
@@ -17,8 +23,15 @@ import { PanelBoundary } from './PanelBoundary';
 
 const Automations = lazy(() => import('./Automations').then(module => ({ default: module.Automations })));
 
+export type SidebarView = Pick<ConnectionView, 'status' | 'connected' | 'chatTransport'> &
+  Pick<DirectoryView, 'threads' | 'threadsLoading' | 'models' | 'projects' | 'showArchived'> &
+  Pick<AttentionView, 'questionCounts' | 'serverRequests'> &
+  Pick<DirectoryActions, 'refreshThreads' | 'toggleArchived' | 'refreshProjects'> &
+  Pick<AttentionActions, 'setLastError'>;
+
 interface SidebarProps {
-  remote: RemoteState;
+  remote: SidebarView;
+  activeThreadCwd?: string | undefined;
   activeThreadId: string | null;
   layout: 'desktop' | 'mobile';
   open: boolean;
@@ -34,7 +47,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({
-  remote, activeThreadId, layout, open, collapsed, search, onSearchChange,
+  remote, activeThreadCwd, activeThreadId, layout, open, collapsed, search, onSearchChange,
   onClose, onNewTask, onSelectThread, onArchiveThread, onLogout
 }: SidebarProps) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -238,9 +251,12 @@ export function Sidebar({
           }}><FolderPlus size={18} /><span>添加工作区</span></button>
         </dialog>
       )}
-      {folderDialogOpen && <WorkspaceFolderDialog remote={remote} onSelect={onNewTask} onClose={() => setFolderDialogOpen(false)} />}
+      {folderDialogOpen && <WorkspaceFolderDialog projects={remote.projects} connected={remote.connected}
+        transport={remote.chatTransport} initialCwd={activeThreadCwd} refreshProjects={remote.refreshProjects}
+        onSelect={onNewTask} onClose={() => setFolderDialogOpen(false)} />}
       {notificationsOpen && <NotificationSettings onClose={() => setNotificationsOpen(false)} />}
-      {automationsOpen && <PanelBoundary><Suspense fallback={null}><Automations remote={remote} onClose={() => setAutomationsOpen(false)}
+      {automationsOpen && <PanelBoundary><Suspense fallback={null}><Automations models={remote.models} projects={remote.projects}
+        onClose={() => setAutomationsOpen(false)}
         onOpenThread={(threadId) => { onSelectThread(threadId); if (layout === 'mobile') onClose(); }} /></Suspense></PanelBoundary>}
       <BackendUpdateDialog open={backendUpdateOpen} onClose={() => setBackendUpdateOpen(false)} />
       {updateOpen && <AppUpdateDialog completed={completedUpdate} onClose={() => {

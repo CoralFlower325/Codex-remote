@@ -5,6 +5,8 @@ This map describes ownership boundaries. It does not change product behavior.
 | Area | Entry / Owner | Supporting Modules |
 | --- | --- | --- |
 | Main chat | `src/client/useRemote.ts` | `useWorkspaceDirectory.ts` owns task/catalog reads; `remote-connection.ts` owns connection recovery |
+| Client contracts | `src/client/remote-contracts.ts` | `ConnectionView`, `DirectoryView`, `ConversationView`, `AttentionView`, and explicit action capabilities |
+| Workspace composition | `src/client/Workspace.tsx` | `components/HomeView.tsx`, `components/ThreadScreen.tsx`, and `useResponsiveLayout.ts` own extracted screens/layout |
 | Stopped input editing | `src/client/message-edit.ts` | `EditMessageDialog.tsx` owns drafts; `useRemote.ts` owns selection guards and history invalidation |
 | Other chat views | `useSideChats.ts`, `useSubagentChats.ts` | `conversation-state.ts` shares event projection, while each hook retains its own creation/history/closing policy |
 | Conversation rendering | `components/ThreadTimeline.tsx` | `TurnResponse.tsx`, `TimelineActivity.tsx`, `MarkdownText.tsx` |

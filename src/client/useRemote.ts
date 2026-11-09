@@ -26,7 +26,6 @@ import type {
 import type { WorkspaceBootstrap } from './types';
 import type { CollaborationMode, ComposerAttachment, ContextUsage, McpStatus, ReviewTarget, SkillInfo, SkillsResult } from './types';
 import { turnInput } from './slash-commands';
-import { dedupeThreads } from './workspace-model';
 import { loadedOutline, mergeOutlineTurns } from './thread-navigation';
 import type { ChatEventListener, ChatTransport } from './chat-transport';
 import { isTaskThread } from '../shared/thread-source';
@@ -39,6 +38,7 @@ import { useErrorNotices } from './error-notices';
 import { actionIntent, clearActionIntents } from './action-intents';
 import { clearComposerDraftContext } from './composer-drafts';
 import { applyHistoryWindow, historyPageQuery } from './history-window-controller';
+import type { CreateThreadOptions, RemoteController, ThreadSettingsPatch } from './remote-contracts';
 
 interface PendingRpc {
   resolve: (value: unknown) => void;
@@ -60,24 +60,12 @@ interface UseRemoteOptions {
   bootstrapRequest?: Promise<WorkspaceBootstrap | null> | undefined;
 }
 
-export interface ThreadSettingsPatch {
-  cwd?: string;
-  model?: string;
-  effort?: string | null;
-  permissions?: string;
-  collaborationMode?: CollaborationMode;
-}
-
-export interface CreateThreadOptions {
-  cwd?: string;
-  projectId?: string;
-  model?: string;
-  effort?: string | null;
-  permissions?: string;
-  collaborationMode?: CollaborationMode;
-}
-
-export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRequest }: UseRemoteOptions) {
+export function useRemote({
+  authenticated,
+  onAuthExpired,
+  bootstrap,
+  bootstrapRequest
+}: UseRemoteOptions): RemoteController {
   const [connected, setConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
   const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>({ status: 'offline' });
@@ -107,7 +95,6 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const [threadReady, setThreadReady] = useState(false);
   const [verifiedThreadId, setVerifiedThreadId] = useState<string | null>(null);
   const [timedThreadId, setTimedThreadId] = useState<string | null>(null);
-  const [showArchived, setShowArchived] = useState(false);
   const { errors, lastError, setLastError, dismissError, resolveError } = useErrorNotices();
   const [threadResumeError, setThreadResumeError] = useState<string | null>(null);
   const resumeFailureRef = useRef<string | null>(null);
@@ -169,17 +156,37 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const permissionRequestsRef = useRef(new ReadRequests());
   const earlierPageRef = useRef(new HistoryPrefetch());
 
+  const directory = useWorkspaceDirectory({ bootstrap, disposedRef, authExpiredRef, setLastError });
+  const { threads, threadsLoading, models, projects, showArchived } = directory.state;
   const {
-    threads, threadsLoading, models, projects, setThreads,
-    setModels, setProjects, threadsRef, listRefreshRef, listPaginationRef,
-    listRetryTimerRef, listFailuresRef, listStartedAtRef, listFirstPagePendingRef, retryThreadsRef,
-    archivedRef, nativeListSeenRef, nativeProjectsSeenRef, nativeModelsSeenRef, metadataVersionsRef,
-    metadataFailuresRef, metadataErrorsRef, retryMetadataRef, provisionalListRef, listRequestsRef,
-    metadataRequestsRef, refreshThreads, restartTaskRead, refreshMetadata, refreshProjects,
-  } = useWorkspaceDirectory({ bootstrap, disposedRef, authExpiredRef, setLastError });
+    refreshThreads,
+    restartTaskRead,
+    retryThreadsIfNeeded,
+    recoverTaskRead,
+    refreshMetadata,
+    refreshProjects,
+    setMetadataRecovery,
+    requestMetadataRecovery,
+    toggleArchivedMode,
+    isArchived,
+    getThreads,
+    getThread,
+    appendThread,
+    replaceThread,
+    updateThread,
+    removeThread,
+    restoreThreadsIfEmpty,
+    hasSeenNative,
+    markNativeSeen,
+    replaceCatalog,
+    restoreProjectsIfEmpty,
+    metadataVersion,
+    metadataFailed,
+    metadataError,
+    disposeReads
+  } = directory.commands;
 
   activeThreadRef.current = activeThreadId;
-  threadsRef.current = threads;
   itemsRef.current = items;
   turnTimingsRef.current = turnTimings;
   activeTurnIdRef.current = activeTurnId;
@@ -247,10 +254,10 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     if (!authenticated) return;
     setLastError(null);
     restartTaskRead();
-    retryMetadataRef.current(true);
+    requestMetadataRecovery(true);
     historyRequestsRef.current.cancel();
     connectionRef.current?.reconnect();
-  }, [authenticated, restartTaskRead]);
+  }, [authenticated, requestMetadataRecovery, restartTaskRead]);
 
   const fetchHistoryPage = useCallback(async (threadId: string, before: string | null = null, direction: 'before' | 'after' = 'before') => {
     const query = historyPageQuery(threadId, before, direction);
@@ -359,7 +366,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
               resumedThreadRef.current.socket === socketRef.current &&
               socketRef.current?.readyState === WebSocket.OPEN)) return;
       const isNew = newThreadsRef.current.has(threadId);
-      const archived = threadsRef.current.find((thread) => thread.id === threadId)?.archived;
+      const archived = getThread(threadId)?.archived;
       const query = new URLSearchParams({
         threadId, mode: isNew ? 'new' : archived ? 'read' : 'resume', fresh: '1'
       });
@@ -386,7 +393,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         activeThreadRef.current = threadId;
         watchThread(threadId);
         setActiveThreadId(threadId);
-        const listed = threadsRef.current.find((thread) => thread.id === threadId);
+        const listed = getThread(threadId);
         if (!sameThread) setActiveThread(listed ? provisionalThread(listed) : null);
         if (!sameThread) {
           setThreadReady(false);
@@ -444,7 +451,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       };
       const fallback = () => {
         if (!currentSelection() || nativeArrived || sameThread) return;
-        const listed = threadsRef.current.find(thread => thread.id === threadId);
+        const listed = getThread(threadId);
         if (stalePreview) preview(stalePreview.thread, stalePreview.page);
         else if (cached && listed) preview(listed, cached);
         else if (savedPreview) preview(savedPreview.thread, savedPreview.page);
@@ -612,7 +619,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         }
       }
     },
-    [clearStreamingDeltas, flushStreamingDeltas, watchThread]
+    [clearStreamingDeltas, flushStreamingDeltas, getThread, metadataError, watchThread]
   );
 
   useEffect(() => {
@@ -657,7 +664,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           else void openThread(threadId, { silent: true, preserveHistory: true }).catch(() => undefined);
         }
         if (resumeError) setLastError(current => current === resumeError
-          ? metadataErrorsRef.current.models ?? metadataErrorsRef.current.projects ?? null : current);
+          ? metadataError('models') ?? metadataError('projects') ?? null : current);
         markStartup('chat-interactive');
       }).catch(error => {
         if (!currentSelection()) return;
@@ -909,22 +916,18 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     let stopped = false;
     void readDeviceWorkspace().then(saved => {
       if (stopped || !saved) return;
-      if (!nativeListSeenRef.current) {
-        setThreads(current => {
-          if (current.length) return current;
-          saved.threads.forEach(thread => provisionalListRef.current.set(thread.id, thread));
-          return saved.threads;
-        });
+      if (!hasSeenNative('threads')) {
+        restoreThreadsIfEmpty(saved.threads);
         markStartup('tasks-device');
       }
-      if (!nativeProjectsSeenRef.current) setProjects(current => current.length ? current : saved.projects);
+      if (!hasSeenNative('projects')) restoreProjectsIfEmpty(saved.projects);
     });
     return () => { stopped = true; };
   }, [authenticated]);
 
   useEffect(() => {
-    if (!authenticated || showArchived || !nativeListSeenRef.current) return;
-    const timer = window.setTimeout(() => { void saveDeviceWorkspace(threadsRef.current, projects); }, 700);
+    if (!authenticated || showArchived || !hasSeenNative('threads')) return;
+    const timer = window.setTimeout(() => { void saveDeviceWorkspace(getThreads(), projects); }, 700);
     return () => window.clearTimeout(timer);
   }, [authenticated, showArchived, threads, projects]);
 
@@ -1083,7 +1086,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           setLastError('聊天已经创建，附加设置未确认。已保留此聊天；首轮发送仍会携带所选模型档位，不会另建聊天。');
         }
       }
-      setThreads((current) => dedupeThreads([...current, thread]));
+      appendThread(thread);
       editSelectionRef.current += 1;
       selectionVersionRef.current += 1;
       earlierPageRef.current.clear();
@@ -1166,13 +1169,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         ...(settings.collaborationMode !== undefined ? { collaborationMode: settings.collaborationMode } : {})
       };
       recordThreadMetadata(threadId, patch);
-      setThreads((current) =>
-        current.map((thread) =>
-          thread.id === threadId
-            ? { ...thread, ...patch }
-            : thread
-        )
-      );
+      updateThread(threadId, thread => ({ ...thread, ...patch }));
       setActiveThread((current) =>
         current?.id === threadId
           ? { ...current, ...patch }
@@ -1185,7 +1182,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const renameThread = useCallback(async (threadId: string, name: string) => {
     await rpc('thread/name/set', { threadId, name });
     recordThreadMetadata(threadId, { name });
-    setThreads((current) => current.map((thread) => thread.id === threadId ? { ...thread, name } : thread));
+    updateThread(threadId, thread => ({ ...thread, name }));
     setActiveThread((current) => current?.id === threadId ? { ...current, name } : current);
   }, [rpc, recordThreadMetadata]);
 
@@ -1197,15 +1194,8 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
 
   const toggleArchived = useCallback(async () => {
     closeThread();
-    archivedRef.current = !archivedRef.current;
-    setShowArchived(archivedRef.current);
-    setThreads([]);
-    provisionalListRef.current.clear();
-    listPaginationRef.current?.abort();
-    listRequestsRef.current.cancel();
-    await listRefreshRef.current?.catch(() => undefined);
-    await refreshThreads();
-  }, [closeThread, refreshThreads]);
+    await toggleArchivedMode();
+  }, [closeThread, toggleArchivedMode]);
 
   const listSkills = useCallback(async (cwd?: string): Promise<SkillsResult> => {
     const result = await rpc<{ data: Array<{ skills: SkillInfo[]; errors: SkillsResult['errors'] }> }>(
@@ -1249,7 +1239,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     const result = await rpc<{ thread: Thread }>('thread/fork', {
       threadId, excludeTurns: true, deferGoalContinuation: true, ...(lastTurnId ? { lastTurnId } : {})
     });
-    setThreads((current) => dedupeThreads([...current, result.thread]));
+    appendThread(result.thread);
     await openThread(result.thread.id);
     await refreshThreads();
   }, [rpc, openThread, refreshThreads]);
@@ -1292,7 +1282,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     const channel = socketRef.current;
     const current = () => activeThreadRef.current === threadId && !activeTurnIdRef.current &&
       editSelectionRef.current === selection && socketRef.current === channel &&
-      !archivedRef.current && channel?.readyState === WebSocket.OPEN;
+      !isArchived() && channel?.readyState === WebSocket.OPEN;
     if (!current() || viewingHistoryRef.current) throw new Error('请等待任务停止并返回最新消息后再编辑。');
     messageEditRef.current = true; setMessageEditPending(true);
     try {
@@ -1313,7 +1303,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       messageEditRef.current = false; setMessageEditPending(false);
       if (activeThreadRef.current === threadId) void openThread(threadId, { silent: true }).catch(() => undefined);
     }
-  }, [rpc, resetRevertedHistory, refreshThreads, openThread]);
+  }, [rpc, resetRevertedHistory, refreshThreads, openThread, isArchived]);
 
   const refreshActiveHistory = useCallback(() => {
     const threadId = activeThreadRef.current;
@@ -1380,15 +1370,15 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         if (ids.includes('*')) { await refreshThreads(); return; }
         for (const threadId of ids) {
           const { thread } = await rpc<{ thread: Thread }>('thread/read', { threadId, includeTurns: false });
-          if (isTaskThread(thread) && Boolean(thread.archived) === archivedRef.current) {
-            setThreads(current => dedupeThreads([...current.filter(entry => entry.id !== thread.id), thread]));
+          if (isTaskThread(thread) && Boolean(thread.archived) === isArchived()) {
+            replaceThread(thread);
           } else {
-            setThreads(current => current.filter(entry => entry.id !== thread.id));
+            removeThread(thread.id);
           }
         }
       })().catch(() => undefined);
     }, 800);
-  }, [refreshThreads, rpc]);
+  }, [isArchived, refreshThreads, removeThread, replaceThread, rpc]);
 
   const rejectPendingServerResponses = useCallback((error: Error) => {
     for (const pending of pendingServerResponsesRef.current.values()) {
@@ -1442,8 +1432,8 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     let stopped = false;
     let initialThreadsLoaded = false;
     const loadInitialThreads = (page?: NonNullable<WorkspaceBootstrap['threads']>) => {
-      if (initialThreadsLoaded) return Promise.resolve(threadsRef.current);
-      return refreshThreads(archivedRef.current ? undefined : page).then(result => {
+      if (initialThreadsLoaded) return Promise.resolve(getThreads());
+      return refreshThreads(isArchived() ? undefined : page).then(result => {
         initialThreadsLoaded = true;
         return result;
       });
@@ -1456,13 +1446,13 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     }, 1500);
     const snapshotRequest = Promise.resolve(bootstrap ?? bootstrapRequest ?? null).then(snapshot => {
       if (stopped) return null;
-      if (!nativeModelsSeenRef.current && metadataVersionsRef.current.models === 0 && snapshot?.models) {
-        nativeModelsSeenRef.current = true;
-        setModels(snapshot.models.data ?? []);
+      if (!hasSeenNative('models') && metadataVersion('models') === 0 && snapshot?.models) {
+        markNativeSeen('models');
+        replaceCatalog('models', snapshot.models.data ?? []);
       }
-      if (!nativeProjectsSeenRef.current && metadataVersionsRef.current.projects === 0 && snapshot?.projects) {
-        nativeProjectsSeenRef.current = true;
-        setProjects(snapshot.projects.data ?? []);
+      if (!hasSeenNative('projects') && metadataVersion('projects') === 0 && snapshot?.projects) {
+        markNativeSeen('projects');
+        replaceCatalog('projects', snapshot.projects.data ?? []);
       }
       if (snapshot?.cursor && !replayCursorRef.current) replayCursorRef.current = snapshot.cursor;
       return snapshot;
@@ -1476,7 +1466,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     const loadMetadata = async (kind: 'models' | 'projects') => {
       try {
         const snapshot = await metadataSnapshot;
-        if (stopped || snapshot?.[kind] || metadataVersionsRef.current[kind] > 0) return;
+        if (stopped || snapshot?.[kind] || metadataVersion(kind) > 0) return;
         await refreshMetadata(kind);
       } catch (error) {
         if (error instanceof HttpError && error.status === 401) authExpiredRef.current?.();
@@ -1486,13 +1476,12 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     const recoverMetadata = (force = false) => {
       if (stopped || document.visibilityState !== 'visible' || !navigator.onLine) return;
       for (const kind of ['models', 'projects'] as const) {
-        const seen = kind === 'models' ? nativeModelsSeenRef.current : nativeProjectsSeenRef.current;
-        if (force || !seen || metadataFailuresRef.current.has(kind)) {
+        if (force || !hasSeenNative(kind) || metadataFailed(kind)) {
           void refreshMetadata(kind).catch(reportInitialFailure);
         }
       }
     };
-    retryMetadataRef.current = recoverMetadata;
+    setMetadataRecovery(recoverMetadata);
     void loadMetadata('models');
     void loadMetadata('projects');
     // HTTP can populate and page tasks while the socket is still connecting.
@@ -1524,7 +1513,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         if (!initial && !message.resumed) {
           recoverMetadata(true);
         } else recoverMetadata(!initial);
-        if (listFailuresRef.current > 0) retryThreadsRef.current();
+        retryThreadsIfNeeded();
         const threadId = activeThreadRef.current;
         if (threadId && openingThreadRef.current?.threadId !== threadId && (!message.resumed ||
             verifiedThreadRef.current !== threadId || timedThreadRef.current !== threadId)) {
@@ -1577,8 +1566,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       }
       if (stopped || document.visibilityState !== 'visible' || !navigator.onLine) return;
       recoverMetadata();
-      if (resumed && listFirstPagePendingRef.current && Date.now() - listStartedAtRef.current >= 2000) restartTaskRead();
-      else if (listFailuresRef.current > 0) retryThreadsRef.current();
+      recoverTaskRead(resumed);
     };
     window.addEventListener('online', recoverTasks);
     window.addEventListener('offline', recoverTasks);
@@ -1589,9 +1577,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       stopped = true;
       window.clearTimeout(bootstrapTimer);
       window.clearTimeout(metadataTimer);
-      metadataRequestsRef.current.cancel();
-      retryMetadataRef.current = () => {};
-      window.clearTimeout(listRetryTimerRef.current);
+      disposeReads();
       window.removeEventListener('online', recoverTasks);
       window.removeEventListener('offline', recoverTasks);
       window.removeEventListener('focus', recoverTasks);
@@ -1603,13 +1589,10 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       permissionRequestVersionRef.current += 1;
       historyRequestsRef.current.cancel();
       permissionRequestsRef.current.cancel();
-      listPaginationRef.current?.abort();
-      listRequestsRef.current.cancel();
       if (refreshThreadsTimerRef.current) window.clearTimeout(refreshThreadsTimerRef.current);
       clearStreamingDeltas();
       connection.dispose();
       if (connectionRef.current === connection) connectionRef.current = null;
-      listRefreshRef.current = null;
       for (const pending of pendingRef.current.values()) {
         window.clearTimeout(pending.timer);
         pending.reject(new Error('Remote connection closed.'));
@@ -1617,7 +1600,9 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       pendingRef.current.clear();
       rejectPendingServerResponses(new Error('Remote connection closed.'));
     };
-  }, [authenticated, bootstrap, bootstrapRequest, clearStreamingDeltas, flushStreamingDeltas, openThread, refreshMetadata, refreshThreads, rejectPendingServerResponses, restartTaskRead, rpc, watchThread]);
+  }, [authenticated, bootstrap, bootstrapRequest, clearStreamingDeltas, disposeReads, flushStreamingDeltas,
+    openThread, recoverTaskRead, refreshMetadata, refreshThreads, rejectPendingServerResponses, retryThreadsIfNeeded,
+    rpc, setMetadataRecovery, watchThread]);
 
   useEffect(() => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
@@ -1682,7 +1667,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       setBridgeStatus({ status: message.status, ...(message.message ? { message: message.message } : {}) });
       if (message.status === 'ready' && replayCursorRef.current) {
         lastRecoveryRef.current = 0;
-        retryMetadataRef.current(true);
+        requestMetadataRecovery(true);
       }
       return;
     }
@@ -1775,7 +1760,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     if (method === 'remote/connected') {
       scheduleThreadRefresh();
       refreshActiveHistory();
-      retryMetadataRef.current(true);
+      requestMetadataRecovery(true);
     }
     if (method === 'thread/compacted' && params.threadId === activeThreadRef.current) refreshActiveHistory();
     if (method === 'thread/reverted') {
@@ -1795,7 +1780,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     }
     if (method === 'thread/started') {
       const thread = params.thread as Thread | undefined;
-      if (thread && isTaskThread(thread) && !archivedRef.current) setThreads((current) => dedupeThreads([...current, thread]));
+      if (thread && isTaskThread(thread) && !isArchived()) appendThread(thread);
     }
 
     if (method.startsWith('project/')) {
@@ -1808,8 +1793,8 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       const status = params.status as Thread['status'] | undefined;
       if (threadId && status) {
         recordThreadMetadata(threadId, { status });
-        if (!threadsRef.current.some(thread => thread.id === threadId)) scheduleThreadRefresh(threadId);
-        setThreads((current) => current.map((thread) => (thread.id === threadId ? { ...thread, status } : thread)));
+        if (!getThread(threadId)) scheduleThreadRefresh(threadId);
+        updateThread(threadId, thread => ({ ...thread, status }));
         setActiveThread((current) => (current?.id === threadId ? { ...current, status } : current));
         if (threadId === activeThreadRef.current && status.type !== 'active') {
           turnRevisionRef.current += 1;
@@ -1824,7 +1809,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       const name = typeof params.threadName === 'string' ? params.threadName : typeof params.name === 'string' ? params.name : null;
       if (threadId) {
         recordThreadMetadata(threadId, { name });
-        setThreads((current) => current.map((thread) => (thread.id === threadId ? { ...thread, name } : thread)));
+        updateThread(threadId, thread => ({ ...thread, name }));
         setActiveThread((current) => (current?.id === threadId ? { ...current, name } : current));
       }
     }
@@ -1848,13 +1833,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           ...(hasPermissionSettings ? { permissionProfile: permissionProfileId(settings) } : {})
         };
         recordThreadMetadata(threadId, patch);
-        setThreads((current) =>
-          current.map((thread) =>
-            thread.id === threadId
-              ? { ...thread, ...patch }
-              : thread
-          )
-        );
+        updateThread(threadId, thread => ({ ...thread, ...patch }));
         setActiveThread((current) =>
           current?.id === threadId
             ? { ...current, ...patch }
@@ -1869,7 +1848,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
         typeof params.projectId === 'string' ? params.projectId : null;
       if (threadId) {
         recordThreadMetadata(threadId, { projectId });
-        setThreads((current) => current.map((thread) => (thread.id === threadId ? { ...thread, projectId } : thread)));
+        updateThread(threadId, thread => ({ ...thread, projectId }));
         setActiveThread((current) => (current?.id === threadId ? { ...current, projectId } : current));
       }
     }
@@ -1879,8 +1858,7 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       if (threadId) {
         historyCacheRef.current.delete(threadId);
         void removeDeviceChat(threadId);
-        threadsRef.current = threadsRef.current.filter(thread => thread.id !== threadId);
-        setThreads((current) => current.filter((thread) => thread.id !== threadId));
+        removeThread(threadId);
         if (threadId === activeThreadRef.current) closeThread();
       }
     }
@@ -2047,8 +2025,6 @@ export function useRemote({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     setLastError
   };
 }
-
-export type RemoteState = ReturnType<typeof useRemote>;
 
 function requestKey(requestId: string | number): string {
   return String(requestId);

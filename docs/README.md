@@ -19,6 +19,7 @@ the authority for what is actually installed.
 | --- | --- | --- |
 | Full guide / 完整指南 | [User guide](guide.md) | [使用指南](guide.zh-CN.md) |
 | Setup / 安装 | [Quick start](guide.md#quick-start) | [快速开始](guide.zh-CN.md#快速开始) |
+| Physical devices / 真机验收 | [iPhone and macOS checklist](physical-device-acceptance.md) | [iPhone 与 macOS 验收](physical-device-acceptance.md) |
 | Configuration / 配置 | [Environment](guide.md#configuration) | [环境配置](guide.zh-CN.md#配置) |
 | Hosting / 公网访问 | [HTTPS access](guide.md#public-access) | [HTTPS 访问](guide.zh-CN.md#公网访问) |
 | Models and permissions / 模型与权限 | [Native state](guide.md#models-permissions-and-state) | [原生状态](guide.zh-CN.md#模型权限与状态) |

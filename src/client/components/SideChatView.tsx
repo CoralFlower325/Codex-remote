@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { queuedDraft, type ChatInput } from '../queued-messages';
 import { turnInput } from '../slash-commands';
-import type { RemoteState } from '../useRemote';
+import type { AttentionActions, AttentionView, ConversationActions, ConnectionView } from '../remote-contracts';
 import type { SideChat } from '../useSideChats';
 import { findModelInfo, reasoningOptionsForModel } from '../workspace-model';
+import type { ModelInfo } from '../types';
 import { permissionLabel, type PermissionProfile } from '../../shared/permissions';
 import { QuestionDock } from './QuestionDock';
 import { ApprovalDock } from './ApprovalDock';
@@ -14,14 +15,30 @@ import { Composer } from './Composer';
 import { ThreadTimeline } from './ThreadTimeline';
 import { PreviewLinks } from './PreviewLinks';
 
-export function SideChatView({ chat, remote, layout, onPatch, onSend, onNew }: {
+export interface SideChatViewProps {
   chat: SideChat;
-  remote: RemoteState;
+  connection: Pick<ConnectionView, 'connected'>;
+  models: ModelInfo[];
+  serverRequests: AttentionView['serverRequests'];
+  actions: Pick<ConversationActions, 'listSkills' | 'interruptTurn' | 'listModes' | 'listMcp'> &
+    Pick<AttentionActions, 'respondToRequest'>;
   layout: 'desktop' | 'mobile';
   onPatch: (changes: Partial<SideChat>) => void;
   onSend: (input: ChatInput) => Promise<void>;
   onNew: () => void;
-}) {
+}
+
+export function SideChatView({
+  chat,
+  connection,
+  models,
+  serverRequests,
+  actions,
+  layout,
+  onPatch,
+  onSend,
+  onNew
+}: SideChatViewProps) {
   const [profiles, setProfiles] = useState<PermissionProfile[]>([]);
   const [dialog, setDialog] = useState<CommandDialogState | null>(null);
   const onError = (error: unknown) => onPatch({ error: error instanceof Error ? error.message : String(error) });
@@ -35,11 +52,11 @@ export function SideChatView({ chat, remote, layout, onPatch, onSend, onNew }: {
         if (!chat.permissions && result.defaultProfile) onPatch({ permissions: result.defaultProfile });
       }).catch(error => { if (!disposed) onError(error); });
     return () => { disposed = true; };
-  }, [chat.cwd, remote.connected]);
-  const modelInfo = findModelInfo(remote.models, chat.model, chat.modelProvider);
+  }, [chat.cwd, connection.connected]);
+  const modelInfo = findModelInfo(models, chat.model, chat.modelProvider);
   const effort = chat.effort;
   const selectModel = (model: string) => {
-    const next = findModelInfo(remote.models, model, chat.modelProvider);
+    const next = findModelInfo(models, model, chat.modelProvider);
     const nextEffort = reasoningOptionsForModel(next).some(option => option.value === chat.effort) ? chat.effort : '';
     onPatch({ model, effort: nextEffort });
   };
@@ -53,29 +70,29 @@ export function SideChatView({ chat, remote, layout, onPatch, onSend, onNew }: {
       : <div className="side-chat-empty"><MessageCirclePlus size={28} strokeWidth={1.5} /><h2>侧边聊天</h2>
         <p>临时聊天，关闭标签页后消失。</p></div>}
     <div className="thread-bottom">
-      <QuestionDock items={chat.items} disabled={!remote.connected || Boolean(chat.closing || chat.unavailable)}
+      <QuestionDock items={chat.items} disabled={!connection.connected || Boolean(chat.closing || chat.unavailable)}
         onSubmit={text => onSend(turnInput(text, [], []))} onError={onError} />
-      <ApprovalDock requests={remote.serverRequests.filter(request => request.params.threadId === chat.threadId)}
-        onRespond={remote.respondToRequest} onError={onError} />
+      <ApprovalDock requests={serverRequests.filter(request => request.params.threadId === chat.threadId)}
+        onRespond={actions.respondToRequest} onError={onError} />
       <Composer temporary {...(chat.initialInput ? { initialInput: queuedDraft(chat.initialInput) } : {})}
         variant="thread" draftKey={chat.id} layout={layout} model={chat.model} effort={effort}
-        permissions={chat.permissions} permissionProfiles={profiles} models={remote.models}
+        permissions={chat.permissions} permissionProfiles={profiles} models={models}
         activeTurnId={chat.activeTurnId} {...(chat.contextUsage ? { contextUsage: chat.contextUsage } : {})}
-        disabled={!remote.connected || Boolean(chat.closing || chat.unavailable)}
+        disabled={!connection.connected || Boolean(chat.closing || chat.unavailable)}
         placeholder="和 Codex 一起工作" skillScope={chat.cwd ?? ''} hasSavedThread={false} mode={chat.mode}
-        loadSkills={() => remote.listSkills(chat.cwd)}
+        loadSkills={() => actions.listSkills(chat.cwd)}
         onModelChange={selectModel}
         onEffortChange={value => onPatch({ effort: value })}
         onPermissionsChange={async permissions => onPatch({ permissions })}
         onSubmit={(text, attachments, skills) => onSend(turnInput(text, attachments, skills))}
         onStop={async () => {
-          if (chat.threadId && chat.activeTurnId) await remote.interruptTurn(chat.threadId, chat.activeTurnId);
+          if (chat.threadId && chat.activeTurnId) await actions.interruptTurn(chat.threadId, chat.activeTurnId);
         }}
         onError={onError}
         onCommand={async (command, argument) => {
           if (command === 'new') onNew();
           else if (command === 'plan') {
-            const available = await remote.listModes();
+            const available = await actions.listModes();
             const mode = argument === 'off' ? 'default' : argument || chat.mode === 'default' ? 'plan' : 'default';
             if (!available.data.some(entry => entry.mode === mode)) throw new Error('当前 Codex 未提供该模式。');
             onPatch({ mode });
@@ -87,7 +104,7 @@ export function SideChatView({ chat, remote, layout, onPatch, onSend, onNew }: {
       { label: '聊天', value: chat.title }, { label: '模型', value: modelInfo?.displayName ?? chat.model },
       { label: '推理强度', value: effort }, { label: '权限', value: permissionLabel(chat.permissions) },
       { label: '工作目录', value: chat.cwd ?? '' }
-    ]} loadMcp={() => remote.listMcp(chat.threadId)} onReview={async () => {}}
+    ]} loadMcp={() => actions.listMcp(chat.threadId)} onReview={async () => {}}
       onClose={() => setDialog(null)} />}
   </div></PreviewLinks>;
 }

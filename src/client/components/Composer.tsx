@@ -18,7 +18,7 @@ import { submittedComposerDraft, type ComposerInput } from '../composer-drafts';
 import { retainDocuments, uploadDocument } from '../document-attachments';
 import { PreviewLink } from './PreviewLinks';
 
-interface ComposerProps {
+export interface ComposerProps {
   variant: 'home' | 'thread';
   layout: 'desktop' | 'mobile';
   model: string;
@@ -51,6 +51,8 @@ interface ComposerProps {
   onStop?: () => Promise<void>;
   onError: (error: unknown) => void;
 }
+
+export type ComposerCommandProps = Pick<ComposerProps, 'onCommand' | 'loadSkills' | 'skillScope' | 'hasSavedThread' | 'mode'>;
 
 export function Composer({
   variant, layout, model, effort, models, permissions, permissionProfiles, onPermissionsChange,

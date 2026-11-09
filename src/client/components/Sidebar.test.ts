@@ -2,14 +2,45 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { Sidebar } from './Sidebar';
-import type { RemoteState } from '../useRemote';
+import type { SidebarView } from './Sidebar';
+import type { Thread } from '../types';
 
 const noop = () => {};
 const archive = async () => {};
-const remote = {
-  threads: [], projects: [], serverRequests: [], threadsLoading: false,
-  showArchived: false, status: 'connected'
-} as unknown as RemoteState;
+const remote: SidebarView = {
+  status: 'ready',
+  connected: true,
+  chatTransport: {
+    rpc: async <T>() => undefined as T,
+    subscribe: () => () => {},
+    watch: () => {}
+  },
+  threads: [],
+  threadsLoading: false,
+  models: [],
+  projects: [],
+  showArchived: false,
+  questionCounts: {},
+  serverRequests: [],
+  refreshThreads: async () => [],
+  refreshProjects: async () => {},
+  toggleArchived: async () => {},
+  setLastError: () => {}
+};
+
+const thread = (id: string, type: Thread['status']['type']): Thread => ({
+  id,
+  name: id,
+  preview: '',
+  cwd: '/project',
+  projectId: null,
+  model: null,
+  modelProvider: 'openai',
+  reasoningEffort: null,
+  createdAt: 1,
+  updatedAt: 1,
+  status: { type }
+});
 
 describe('conversation sidebar navigation', () => {
   it.each(['desktop', 'mobile'] as const)('keeps useful navigation with a plain title on %s', layout => {
@@ -32,10 +63,10 @@ describe('conversation sidebar navigation', () => {
 
 describe('running conversation indicator', () => {
   it.each(['desktop', 'mobile'] as const)('keeps running, idle and approval states distinct on %s', layout => {
-    const thread = { id: 'synthetic', name: 'Synthetic task', cwd: '/project', status: { type: 'active' } };
+    const task = thread('synthetic', 'active');
     const render = (status: string, attention = false) => renderToStaticMarkup(createElement(Sidebar, {
-      remote: { ...remote, threads: [{ ...thread, status: { type: status } }],
-        serverRequests: attention ? [{ params: { threadId: thread.id } }] : [] } as unknown as RemoteState,
+      remote: { ...remote, threads: [{ ...task, status: { type: status as Thread['status']['type'] } }],
+        serverRequests: attention ? [{ requestId: 'request', method: '', params: { threadId: task.id } }] : [] },
       layout, activeThreadId: null, open: true, collapsed: false, search: '',
       onSearchChange: noop, onClose: noop, onToggleCollapse: noop,
       onNewTask: noop, onSelectThread: noop, onArchiveThread: archive, onLogout: noop
@@ -53,15 +84,15 @@ describe('running conversation indicator', () => {
 
 describe('pending question indicators', () => {
   it.each(['desktop', 'mobile'] as const)('marks an unselected question chat and clears the badge after native answers on %s', layout => {
-    const thread = { id: 'question-chat', name: 'Question task', cwd: '/project', status: { type: 'active' } };
+    const task = thread('question-chat', 'active');
     const render = (counts: Record<string, number>, blocking = false) => renderToStaticMarkup(createElement(Sidebar, {
-      remote: { ...remote, threads: [thread], questionCounts: counts,
-        serverRequests: blocking ? [{ params: { threadId: thread.id }, method: 'item/tool/requestUserInput' }] : [] } as unknown as RemoteState,
+      remote: { ...remote, threads: [task], questionCounts: counts,
+        serverRequests: blocking ? [{ requestId: 'request', params: { threadId: task.id }, method: 'item/tool/requestUserInput' }] : [] },
       layout, activeThreadId: null, open: true, collapsed: false, search: '',
       onSearchChange: noop, onClose: noop, onToggleCollapse: noop,
       onNewTask: noop, onSelectThread: noop, onArchiveThread: archive, onLogout: noop
     }));
-    const pending = render({ [thread.id]: 2 });
+    const pending = render({ [task.id]: 2 });
     expect(pending).toContain('aria-label="等待回答 2 个问题"');
     expect(pending).toContain('>待回答</span>');
     expect(pending).not.toContain('class="thread-running-spinner"');
@@ -72,10 +103,11 @@ describe('pending question indicators', () => {
   it('keeps the approval icon visible alongside an asynchronous question badge', () => {
     const markup = renderToStaticMarkup(createElement(Sidebar, {
       remote: { ...remote,
-        threads: [{ id: 'thread-running', name: 'Synthetic task', cwd: '/project', status: { type: 'active' } }],
+        threads: [thread('thread-running', 'active')],
         questionCounts: { 'thread-running': 1 },
-        serverRequests: [{ params: { threadId: 'thread-running' }, method: 'item/commandExecution/requestApproval' }]
-      } as unknown as RemoteState,
+        serverRequests: [{ requestId: 'request', params: { threadId: 'thread-running' },
+          method: 'item/commandExecution/requestApproval' }]
+      },
       layout: 'desktop', activeThreadId: null, open: true, collapsed: false, search: '',
       onSearchChange: noop, onClose: noop, onToggleCollapse: noop,
       onNewTask: noop, onSelectThread: noop, onArchiveThread: archive, onLogout: noop

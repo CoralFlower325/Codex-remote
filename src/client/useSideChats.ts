@@ -14,6 +14,15 @@ import { sideChatAction } from './side-chat-actions';
 
 export type SideChat = ChatViewState & { desktop?: boolean; settingsRevision?: number };
 export interface SideChatAdoptionRequest { id: number; chatId: string }
+export interface SideChatsController {
+  chats: SideChat[];
+  adoptionRequest: SideChatAdoptionRequest | null;
+  add(options: Pick<SideChat, 'model' | 'effort' | 'permissions'> &
+    Partial<Pick<SideChat, 'cwd' | 'projectId' | 'sourceThreadId' | 'initialInput' | 'modelProvider'>>): string;
+  patch(id: string, changes: Partial<SideChat>): void;
+  send(id: string, input: ChatInput): Promise<void>;
+  close(id: string): Promise<boolean>;
+}
 
 function hasSideConversationBoundary(thread: Thread): boolean {
   return (thread.turns ?? []).some(turn => turn.items.some(item => {
@@ -119,7 +128,7 @@ export function sideChatEvent(chat: SideChat, method: string, params: Record<str
   return next;
 }
 
-export function useSideChats(transport: ChatTransport, connected: boolean) {
+export function useSideChats(transport: ChatTransport, connected: boolean): SideChatsController {
   const [chats, setChats] = useState<SideChat[]>([]);
   const [adoptionRequest, setAdoptionRequest] = useState<SideChatAdoptionRequest | null>(null);
   const chatsRef = useRef(chats);

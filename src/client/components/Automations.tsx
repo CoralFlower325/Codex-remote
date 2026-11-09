@@ -8,7 +8,7 @@ import {
 } from '../../shared/automation-schedule';
 import { formatTurnClockTime } from '../../shared/turn-timing';
 import { api } from '../api';
-import type { RemoteState } from '../useRemote';
+import type { ModelInfo, ProjectInfo } from '../types';
 import { findModelInfo } from '../workspace-model';
 import './automations.css';
 
@@ -76,8 +76,9 @@ function runStatusText(automation: Automation, last?: AutomationRun, timeZone?: 
   return `上次运行 ${at}${status ? ` · ${status}` : ''}`;
 }
 
-export function Automations({ remote, onClose, onOpenThread }: {
-  remote: RemoteState;
+export function Automations({ models, projects, onClose, onOpenThread }: {
+  models: ModelInfo[];
+  projects: ProjectInfo[];
   onClose: () => void;
   onOpenThread: (threadId: string) => void;
 }) {
@@ -161,12 +162,12 @@ export function Automations({ remote, onClose, onOpenThread }: {
     finally { busy.current = false; if (mounted.current) setSaving(false); }
   };
 
-  const selectedModel = findModelInfo(remote.models, draft.model);
+  const selectedModel = findModelInfo(models, draft.model);
   const efforts = selectedModel?.supportedReasoningEfforts?.map(entry => entry.reasoningEffort)
     ?? ['low', 'medium', 'high', 'xhigh'];
   const projectName = (automation: Automation) => automation.kind === 'heartbeat' ? '继续现有聊天'
     : automation.target?.type === 'project'
-      ? remote.projects.find(entry => entry.id === (automation.target as { projectId: string }).projectId)?.name ?? '原生项目'
+      ? projects.find(entry => entry.id === (automation.target as { projectId: string }).projectId)?.name ?? '原生项目'
       : automation.cwds?.length && automation.target == null ? automation.cwds.join(' · ') : '无项目';
   const mutation = (automation: Automation) => JSON.stringify({ updatedAt: automation.updatedAt });
 
@@ -208,7 +209,7 @@ export function Automations({ remote, onClose, onOpenThread }: {
                 </div>
                 <div className="automation-meta">
                   <span title={automation.rrule}>{automationScheduleSummary(automation.rrule)}</span> · {projectName(automation)}
-                  {automation.model ? ` · ${findModelInfo(remote.models, automation.model)?.displayName ?? automation.model}` : ''}
+                  {automation.model ? ` · ${findModelInfo(models, automation.model)?.displayName ?? automation.model}` : ''}
                 </div>
                 <div className="automation-meta">
                   {automation.status === 'ACTIVE' && automation.nextRunAt
@@ -280,9 +281,9 @@ export function Automations({ remote, onClose, onOpenThread }: {
             <select value={draft.projectId}
               onChange={event => setDraft({ ...draft, projectId: event.target.value, projectChanged: true })}>
               <option value="">任务（无项目）</option>
-              {draft.projectId && !remote.projects.some(p => p.id === draft.projectId) &&
+              {draft.projectId && !projects.some(p => p.id === draft.projectId) &&
                 <option value={draft.projectId}>当前原生项目</option>}
-              {remote.projects.map(project => (
+              {projects.map(project => (
                 <option key={project.id} value={project.id}>{project.name}</option>
               ))}
             </select>
@@ -298,9 +299,9 @@ export function Automations({ remote, onClose, onOpenThread }: {
             <label className="automations-field"><span>模型</span>
               <select value={draft.model} onChange={event => setDraft({ ...draft, model: event.target.value, effort: '' })}>
                 <option value="">默认模型</option>
-                {draft.model && !remote.models.some(model => model.model === draft.model && !model.hidden) &&
+                {draft.model && !models.some(model => model.model === draft.model && !model.hidden) &&
                   <option value={draft.model}>{draft.model}</option>}
-                {remote.models.filter(model => !model.hidden).map(model => (
+                {models.filter(model => !model.hidden).map(model => (
                   <option key={model.id} value={model.model}>{model.displayName}</option>
                 ))}
               </select>

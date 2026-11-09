@@ -74,7 +74,8 @@ vi.mock('./background-work', () => ({
 }));
 import { useRemote } from './useRemote';
 import { readDeviceChat } from './device-snapshots';
-import { useSubagentChats } from './useSubagentChats';
+import { useSubagentChats, type SubagentChatsController } from './useSubagentChats';
+import type { RemoteController } from './remote-contracts';
 import type { ChatTransport } from './chat-transport';
 import { pendingQuestionGroups } from './async-questions';
 import { useHistoryDetails } from './history-details';
@@ -114,7 +115,7 @@ function fixture(fetcher: typeof fetch, authenticated = true) {
   vi.stubGlobal('navigator', { onLine: true });
   vi.stubGlobal('WebSocket', { OPEN: 1 });
   vi.stubGlobal('fetch', fetcher);
-  let remote!: ReturnType<typeof useRemote>;
+  let remote!: RemoteController;
   let queue: ReturnType<typeof QueuedMessages> = null;
   let questions: ReturnType<typeof QuestionDock> = null;
   const bootstrap = { threads: { data: [thread], nextCursor: null }, models: { data: [] },
@@ -827,7 +828,7 @@ describe('subagent native history verification', () => {
         listeners.add(listener); return () => { listeners.delete(listener); };
       }, watch: vi.fn()
     } as unknown as ChatTransport;
-    let chats!: ReturnType<typeof useSubagentChats>;
+    let chats!: SubagentChatsController;
     scope = new hooks.Scope(); scope.root = () => { chats = useSubagentChats(transport, true, thread.id); };
     scope.render();
     return { get chats() { return chats; },

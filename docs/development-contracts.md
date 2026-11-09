@@ -9,6 +9,8 @@ Release and privacy policy remains in AGENTS.md.
 
 - `src/client/`: responsive workspace, native metadata menus, history, approvals.
 - `src/client/remote-connection.ts`: socket lifecycle and recovery.
+  - `src/client/remote-contracts.ts`: explicit state views and action capabilities;
+    components must not derive their props from a hook implementation.
 - `src/client/useWorkspaceDirectory.ts`: task/catalog reads and reconciliation;
   `useRemote.ts` retains native chat lifecycle and transport orchestration.
 - `src/client/conversation-state.ts`: shared side/subagent event projection;

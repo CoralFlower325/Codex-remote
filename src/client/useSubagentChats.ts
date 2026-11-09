@@ -19,12 +19,23 @@ export interface SubagentChat extends ChatViewState {
   timingsLoaded: boolean;
 }
 
+export interface SubagentChatsController {
+  chats: SubagentChat[];
+  directory: Thread[];
+  directoryLoading: boolean;
+  directoryError: string | null;
+  open(agent: Subagent): void;
+  close(id: string): void;
+  load(id: string, earlier?: boolean, beforeCommit?: BeforeHistoryCommit): Promise<void>;
+  prefetch(id: string): Promise<void>;
+}
+
 function historyItems(page: ThreadHistoryPage) {
   return page.items.map(entry => ({ ...entry.item, turnId: entry.turnId,
     startedAtMs: entry.startedAtMs, completedAtMs: entry.completedAtMs }));
 }
 
-export function useSubagentChats(transport: ChatTransport, connected: boolean, parentId?: string) {
+export function useSubagentChats(transport: ChatTransport, connected: boolean, parentId?: string): SubagentChatsController {
   const [chats, setChats] = useState<SubagentChat[]>([]);
   const [directory, setDirectory] = useState<Thread[]>([]);
   const [directoryLoading, setDirectoryLoading] = useState(false);

@@ -1,14 +1,20 @@
 import { ArrowUp, Folder, FolderPlus, LoaderCircle, X, Check } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { v4 as randomUUID } from 'uuid';
-import type { RemoteState } from '../useRemote';
+import type { ChatTransport } from '../chat-transport';
 import type { ProjectInfo } from '../types';
 
-export function WorkspaceFolderDialog({ remote, onSelect, onClose }: {
-  remote: RemoteState; onSelect: (projectId: string) => void; onClose: () => void;
+export function WorkspaceFolderDialog({ projects, connected, transport, initialCwd, refreshProjects, onSelect, onClose }: {
+  projects: ProjectInfo[];
+  connected: boolean;
+  transport: ChatTransport;
+  initialCwd?: string | undefined;
+  refreshProjects: () => Promise<void>;
+  onSelect: (projectId: string) => void;
+  onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [path, setPath] = useState(remote.activeThread?.cwd || remote.projects[0]?.roots[0]?.path || '');
+  const [path, setPath] = useState(initialCwd || projects[0]?.roots[0]?.path || '');
   const [current, setCurrent] = useState(path);
   const [folders, setFolders] = useState<string[]>([]);
   const [newName, setNewName] = useState<string | null>(null);
@@ -18,16 +24,16 @@ export function WorkspaceFolderDialog({ remote, onSelect, onClose }: {
   const creationKey = useRef(randomUUID());
   useEffect(() => { dialogRef.current?.showModal(); }, []);
   useEffect(() => {
-    if (!current || !remote.connected) return;
+    if (!current || !connected) return;
     let disposed = false;
     setLoading(true); setError(null);
-    void remote.chatTransport.rpc<{ entries: Array<{ fileName: string; isDirectory: boolean }> }>(
+    void transport.rpc<{ entries: Array<{ fileName: string; isDirectory: boolean }> }>(
       'fs/readDirectory', { path: current }).then(result => {
         if (!disposed) { setPath(current); setFolders(result.entries.filter(entry => entry.isDirectory).map(entry => entry.fileName).sort()); }
       }).catch(error => { if (!disposed) setError(error.message); })
       .finally(() => { if (!disposed) setLoading(false); });
     return () => { disposed = true; };
-  }, [current, remote.connected]);
+  }, [current, connected, transport]);
   const join = (parent: string, name: string) => `${parent.replace(/[\\/]$/, '')}${parent.includes('\\') || /^[a-z]:/i.test(parent) ? '\\' : '/'}${name}`;
   return <dialog ref={dialogRef} className="workspace-folder-dialog" aria-label="添加工作区" onClose={onClose}>
     <header><strong>添加工作区</strong><button type="button" className="icon-button" aria-label="关闭工作区选择" onClick={() => dialogRef.current?.close()}><X size={18} /></button></header>
@@ -52,7 +58,7 @@ export function WorkspaceFolderDialog({ remote, onSelect, onClose }: {
       setSaving(true); setError(null);
       try {
         const destination = join(current, newName.trim());
-        await remote.chatTransport.rpc('fs/createDirectory', { path: destination, recursive: false });
+        await transport.rpc('fs/createDirectory', { path: destination, recursive: false });
         setCurrent(destination); setPath(destination); setNewName(null);
       } catch (error) { setError(error instanceof Error ? error.message : String(error)); }
       finally { setSaving(false); }
@@ -68,12 +74,12 @@ export function WorkspaceFolderDialog({ remote, onSelect, onClose }: {
       <button type="button" className="folder-add-button" disabled={!current || loading || saving || Boolean(error)} onClick={async () => {
         setSaving(true); setError(null);
         try {
-          const existing = remote.projects.find(project => project.roots.some(root => root.path === current));
-          const project = existing ?? (await remote.chatTransport.rpc<{ project: ProjectInfo }>('project/create', {
+          const existing = projects.find(project => project.roots.some(root => root.path === current));
+          const project = existing ?? (await transport.rpc<{ project: ProjectInfo }>('project/create', {
             idempotencyKey: creationKey.current,
             name: current.replace(/[\\/]$/, '').split(/[\\/]/).pop() || current, roots: [{ path: current }]
           })).project;
-          await remote.refreshProjects();
+          await refreshProjects();
           onSelect(project.id); dialogRef.current?.close();
         } catch (error) { setError(error instanceof Error ? error.message : String(error)); }
         finally { setSaving(false); }

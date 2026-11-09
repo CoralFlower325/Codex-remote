@@ -24,6 +24,6 @@ export function useComposerDraft(key: string, temporary: boolean, initial?: Comp
   const [local] = useState(() => createComposerDrafts());
   const owner = useMemo(() => (temporary ? local : shared ?? local).open(key, initial),
     [shared, local, temporary, key]);
-  const draft = useSyncExternalStore(owner.subscribe, owner.get);
+  const draft = useSyncExternalStore(owner.subscribe, owner.get, owner.get);
   return { ...draft, owner };
 }
