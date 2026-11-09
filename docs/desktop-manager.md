@@ -6,7 +6,7 @@ turns and exposes no network control API.
 
 ## Install And Open
 
-Remote 0.2.25 pairs with manager 0.2.4. Download the Windows installer or macOS
+Remote 0.2.26 pairs with manager 0.2.4. Download the Windows installer or macOS
 DMG/ZIP from the [project distribution or official fallback](update-downloads.md).
 Windows packages target x64; macOS packages target Apple Silicon (arm64).
 Initial packages are unsigned; normal Windows reputation/Gatekeeper approval may
@@ -69,7 +69,7 @@ shows only the target version and a short downtime/data-preservation notice.
   healthy. Readings older than twenty seconds become stale.
 - Desktop diagnostics distinguish a missing debug endpoint, a missing Desktop
   page and a pending native bridge. Ordinary Codex launches do not necessarily
-  enable a debug endpoint; Windows/macOS Remote 0.2.25 discovers the loopback
+  enable a debug endpoint; Windows/macOS Remote 0.2.26 discovers the loopback
   port from the current trusted installed process, while explicit arguments and 9229 remain
   fallbacks. Another launcher such as Codex++ may therefore choose a different
   port. Remote uses Desktop's endpoint, not the launcher's own local server.

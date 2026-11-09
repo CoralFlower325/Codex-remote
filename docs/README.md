@@ -67,6 +67,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
+| [Remote 0.2.26 发布验收](remote-0.2.26-release-acceptance.md) | 0.2.26：完整目录、插话同步、终端隔离、预览/网络与发布治理；真机边界保留 |
 | [手机输入栏单行与单主操作](mobile-composer-single-action-0.2.25.md) | 0.2.25：移除听写、手机工具栏单行、运行中停止/引导单主按钮及八视口合成验收；真机边界保留 |
 | [0.2.22 对抗审查修复对账](adversarial-review-0.2.22-fixes.md) | 已发布 0.2.23 / manager 0.2.4：31 项对账、正式签名、三平台 CI、下载分发及 Windows 安装；真机边界保留 |
 | [Windows / macOS 调试端口自动发现](desktop-debug-discovery.md) | 0.2.24-rc：动态启动器端口、双平台可信路径、回环 CDP 校验与回退 |

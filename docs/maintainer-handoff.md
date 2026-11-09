@@ -15,38 +15,35 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.25** / manager **0.2.4**, tag
-`v0.2.25`, functional commit `e2300bc4e2ee7787dcc0eae803ce46cac819a925`.
+The current published release is Remote **0.2.26** / manager **0.2.4**, tag
+`v0.2.26`, functional commit `pending-release-commit`.
 The [mobile composer acceptance](mobile-composer-single-action-0.2.25.md) records
 the single-row toolbar, removed browser dictation and single Stop/Steer action.
 The preceding [Windows / macOS discovery acceptance](desktop-debug-discovery.md)
 retains the trusted automatic port discovery work. The
 [adversarial-review reconciliation](adversarial-review-0.2.22-fixes.md) retains
 the 31-item 0.2.23 batch.
-At the published 0.2.25 tag, local validation passed 128 test files (1026 tests,
-two platform skips), typecheck, both builds and browser acceptance. Main CI
-`42548162945`, runtime CI
-`42548178124` and manager plan `42548178177` passed; the manager plan correctly
-skipped unchanged packaging.
+The 0.2.26 source batch adds the steer/bridge fixes and the previously reviewed
+terminal, preview, transport, catalog and structure changes. Local validation
+currently covers 136 test files (1054 passed, two platform skips), typecheck,
+the application and manager builds, synthetic browser acceptance and the
+Windows worker acceptance. Runtime packaging remains gated on the tested
+Node 22.19.x toolchain and signed assets.
 All four official runtime attachments and the refreshed distribution download
 metadata passed size and digest checks. The signed Windows/macOS archives passed
 pinned-key verification, exact source-tree comparison and individual checks of
 3079/3072 files.
-Local and public frontends report Remote 0.2.25 with build
-`assets/index-0UZFYoj4.js`; the distribution latest endpoint reports `v0.2.25`.
-Desktop transport is ready and anonymous private reads return 401. Only Remote
-and the Cloudflare static frontend changed; Desktop, Tunnel and the domestic
-relay were preserved. The unchanged manager 0.2.4 retains its configuration and
-prior rollback backups. Never start another App Server.
+The published 0.2.25 deployment surface remains Remote 0.2.25 with build
+`assets/index-0UZFYoj4.js` until a separate deployment is confirmed. The
+0.2.26 source release does not by itself change the installed or public
+frontend. Never start another App Server.
 
-Remote **0.2.25** promotes the accepted 0.2.25-rc work to the formal channel;
-manager **0.2.4** is unchanged. It keeps the mobile composer toolbar on one row
-without shrinking its 36px or 44px controls, removes browser dictation, and makes
-the active-turn composer expose one primary action: Stop for an empty input, then
-Steer when content is present. Queue mode remains in queued-message actions. The
-preceding 0.2.24-rc work adds macOS discovery through the fixed `/bin/ps` command
-for trusted Applications bundles, alongside Windows process discovery. The
-formal Release record will identify the exact promotion commit and signed assets.
+Remote **0.2.26** keeps the mobile composer toolbar on one row without shrinking
+its 36px or 44px controls. Active turns show a visible guidance/queue mode hint;
+an interjection is rendered immediately as a local user item until the native
+item arrives. Read-only Desktop RPC timeouts no longer tear down the live event
+bridge. Manager **0.2.4** is unchanged, and the formal Release record will
+identify the exact promotion commit and signed assets.
 
 Runtime updates now require Ed25519 publisher signatures against bundled public
 keys, including signed commit identity for source fallback. The private key stays

@@ -2,6 +2,13 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.26', changes: [
+    '模型与项目目录改为完整原生游标快照，支持多页、provider 别名、循环防护和重连刷新；推理强度明确区分显式档位与默认继承，设置更新与原生事件按修订顺序合并。',
+    '插话发送后立即在 Remote 显示“正在引导当前任务”，原生用户条目到达后自动去重；只读 Desktop 请求超时不再断开实时事件桥，恢复活动会话的引导模式提示。',
+    'Windows PTY worker 启动前接入 kill-on-close Job Object，POSIX 使用独立进程组，补充有界 stderr、信号诊断、强制回收和 Node 22.19.x ABI 校验。',
+    'Office 转换迁入隔离低权限 worker，增加超时和陈旧临时目录恢复；SSE/WS 增加有界背压，受管隧道使用监督器拥有的动态指标端口。',
+    '客户端增加显式视图/动作契约并拆分 Home/Thread 界面与 RPC 请求生命周期；发布检查与 CI 验证集中到共享契约。管理器保持 0.2.4，无变更；iPhone 与已登录 macOS 真机仍按验收单单独执行。'
+  ] },
   { version: '0.2.25', changes: [
     '手机输入区改为单行工具栏并移除浏览器听写；附件、权限、模型、上下文和主操作不再换成第二行。',
     '运行中的会话改用单一主操作：输入为空时显示停止，输入文字、附件或技能后切换为发送或引导，不再同时显示停止与发送。',
