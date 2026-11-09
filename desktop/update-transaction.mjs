@@ -10,35 +10,53 @@ const mirrorFile = (root) => path.join(root, 'output', 'manager-update', 'active
 const execute = promisify(execFile);
 export async function processStartIdentity(pid) {
   if (!Number.isSafeInteger(pid) || pid < 1) throw new Error('Invalid updater process id.');
-  try {
-    if (process.platform === 'linux') {
+  if (process.platform === 'linux') {
+    try {
       const [stat, boot] = await Promise.all([
         fs.readFile(`/proc/${pid}/stat`, 'utf8'), fs.readFile('/proc/sys/kernel/random/boot_id', 'utf8')
       ]);
       const start = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19];
       if (!/^\d+$/.test(start ?? '') || !/^[a-f0-9-]+$/.test(boot.trim())) throw new Error('Invalid process identity.');
       return `linux:${boot.trim()}:${start}`;
+    } catch (error) {
+      try { process.kill(pid, 0); }
+      catch (probe) { if (probe.code === 'ESRCH') return null; }
+      throw new Error('Cannot verify updater process identity; preserving the lock.', { cause: error });
     }
-    const binary = process.platform === 'win32'
-      ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-      : '/bin/ps';
-    const args = process.platform === 'win32'
-      ? ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
-        `$ErrorActionPreference='Stop'; (Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks.ToString()`]
-      : process.platform === 'darwin' ? ['-p', String(pid), '-o', 'lstart='] : null;
-    if (!args) throw new Error('Unsupported updater process identity platform.');
-    const { stdout } = await execute(binary, args, { windowsHide: true, timeout: 5000, maxBuffer: 64 * 1024,
-      env: { ...process.env, LC_ALL: 'C' } });
-    const value = stdout.trim();
-    if (process.platform === 'win32' ? !/^\d{16,20}$/.test(value) : !/^[A-Za-z]{3} [A-Za-z]{3}\s+\d{1,2} \d{2}:\d{2}:\d{2} \d{4}$/.test(value)) {
-      throw new Error('Updater process start time is unavailable.');
-    }
-    return `${process.platform}:${value}`;
-  } catch (error) {
-    try { process.kill(pid, 0); }
-    catch (probe) { if (probe.code === 'ESRCH') return null; }
-    throw new Error('Cannot verify updater process identity; preserving the lock.', { cause: error });
   }
+  const binary = process.platform === 'win32'
+    ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+    : '/bin/ps';
+  const args = process.platform === 'win32'
+    ? ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
+      `$ErrorActionPreference='Stop'; (Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks.ToString()`]
+    : process.platform === 'darwin' ? ['-p', String(pid), '-o', 'lstart='] : null;
+  // The identity query spawns an external process (PowerShell or ps). On a
+  // loaded Windows host a single spawn sporadically times out or fails
+  // transiently even though the target process is alive and its start time
+  // is immutable, so retry a bounded number of times before preserving the
+  // lock. A process that no longer exists still resolves to null at once.
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (!args) throw new Error('Unsupported updater process identity platform.');
+      const { stdout } = await execute(binary, args, { windowsHide: true, timeout: 5000, maxBuffer: 64 * 1024,
+        env: { ...process.env, LC_ALL: 'C' } });
+      const value = stdout.trim();
+      if (process.platform === 'win32' ? !/^\d{16,20}$/.test(value) : !/^[A-Za-z]{3} [A-Za-z]{3}\s+\d{1,2} \d{2}:\d{2}:\d{2} \d{4}$/.test(value)) {
+        throw new Error('Updater process start time is unavailable.');
+      }
+      return `${process.platform}:${value}`;
+    } catch (error) {
+      lastError = error;
+      let gone = false;
+      try { process.kill(pid, 0); }
+      catch (probe) { if (probe.code === 'ESRCH') gone = true; }
+      if (gone) return null;
+      if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+  throw new Error('Cannot verify updater process identity; preserving the lock.', { cause: lastError });
 }
 export async function safeDirectory(directory) {
   const stat = await fs.lstat(directory).catch((error) => {
