@@ -108,6 +108,15 @@ Release and privacy policy remains in AGENTS.md.
 - Task list requests include all providers with `modelProviders: []` and
   `useStateDbOnly: true`. Follow native cursors; never assume one page is complete.
 - Keep history bounded and preserve reading position when prepending older pages.
+  The retained window is capped at 5,000 records by the single
+  `HISTORY_WINDOW_LIMIT` constant in `src/client/history-window.ts`; the
+  window function, its controller and the trim effect all take the cap from
+  there, never from a local literal. The timeline renders through a
+  section-level virtualizer, so retained records do not imply mounted DOM:
+  mounting stays bounded by the viewport plus overscan however much history
+  the window retains, and the cap is a memory/state bound rather than a
+  render bound. Below the cap nothing already loaded is discarded, so
+  travelling back to the latest end re-fetches nothing.
   User attachments render in a compact row above the text bubble. Retain native
   local image inputs under private data/image-attachments when seen or read;
   never publish these files or silently display a missing original as blank.

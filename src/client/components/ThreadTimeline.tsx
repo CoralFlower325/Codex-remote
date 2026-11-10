@@ -7,8 +7,10 @@ import { applyRememberedAnchors, buildTimelineEntries, buildTimelineSections, ti
 import type { TurnTiming } from '../../shared/turn-timing';
 import type { OutlineTurn } from '../../shared/thread-outline';
 import { ThreadNavigation, type NavigationTarget } from './ThreadNavigation';
-import { captureReadingAnchor, releaseReadingTail, restoreReadingAnchor, type ReadingAnchor } from '../reading-anchor';
+import { captureBlockAnchor, captureReadingAnchor, releaseReadingTail, restoreReadingAnchor, settleBlockAnchor, type BlockAnchor, type ReadingAnchor } from '../reading-anchor';
 import { HistoryScroll, historyScrollDelta, laterHistoryLoadReady, type BeforeHistoryCommit } from '../history-scroll';
+import { captureKeyAnchor, captureKeyAnchorBelow, estimateSectionHeight, expandRangeByPixels, resolveKeyAnchor, virtualizeTimelineEnabled, type KeyAnchor } from '../timeline-virtual';
+import { defaultRangeExtractor, useVirtualizer, type Virtualizer } from '@tanstack/react-virtual';
 import { isReadableHistoryItem } from '../history-prefetch';
 import { NativeTurnError } from './NativeTurnError';
 import { ResponseSection, MessageItem, TurnDuration } from './TurnResponse';
@@ -88,6 +90,19 @@ export function ThreadTimeline({
   const navigatingRef = useRef(false);
   const navigationAnchorRef = useRef<string | null>(null);
   const readingAnchorRef = useRef<ReadingAnchor | null>(null);
+  const blockAnchorRef = useRef<BlockAnchor | null>(null);
+  const blockSettlePendingRef = useRef(false);
+  const blockSettleVersionRef = useRef(0);
+  // Scroll compensation other layers wrote since the block anchor was
+  // captured, credited in the scroll handler from registered restore
+  // echoes. The in-row settle pays growth minus this credit, so a shift
+  // the row-level restores already covered is never paid a second time.
+  const blockCompensatedRef = useRef(0);
+  // The settle's own writes register here instead of the shared restore
+  // marker: their echo must read as compensation (not a gesture) without
+  // being credited against the settle itself, or the next settle would
+  // compute a negative debt and undo this one.
+  const blockSettleEchoRef = useRef<number | null>(null);
   const restoredScrollTopRef = useRef<number | null>(null);
   const readingFrameRef = useRef(0);
   const mountedRef = useRef(false);
@@ -127,6 +142,8 @@ export function ThreadTimeline({
     item.type === 'userMessage' && item.turnId && parseHeartbeatPrompt(
       item.content.filter(part => part.type === 'text').map(part => part.text ?? '').join('\n'))
       ? [item.turnId] : [])), [items]);
+  const emptyError = items.length === 0 ? turnTimings[activeTurnId ?? ''] ??
+    Object.values(turnTimings).find(turn => turn.error) : undefined;
   const [expandedTurns, setExpandedTurns] = useState<Set<string>>(() => new Set());
   const toggleTurn = useCallback((turnId: string) => {
     setExpandedTurns(previous => {
@@ -136,6 +153,137 @@ export function ThreadTimeline({
     });
   }, []);
   useLayoutEffect(() => { previousSectionsRef.current = sections; }, [sections]);
+
+  // --- Section virtualization (timeline-virtual.ts holds the pure logic) ---
+  // Rows are the existing sections, plus the standalone turn-error notice
+  // and the in-progress turn placeholder as tail rows, so the virtual list
+  // owns every block the legacy flow render placed inside the stream.
+  interface TimelineRow { key: string; section: TimelineSection | null; tail?: boolean; notice?: boolean }
+  const virtualWanted = useMemo(() => virtualizeTimelineEnabled(), []);
+  const [virtualActive, setVirtualActive] = useState(false);
+  const virtualActiveRef = useRef(false);
+  virtualActiveRef.current = virtualActive;
+  const keyAnchorRef = useRef<KeyAnchor | null>(null);
+  const rows = useMemo<TimelineRow[]>(() => {
+    const list: TimelineRow[] = sections.map(section => ({ key: section.key, section }));
+    if (emptyError?.error) list.push({ key: '__turn-error', section: null, notice: true });
+    if (!viewingHistory && activeTurnId &&
+        !sections.some(section => !section.user && section.turnId === activeTurnId)) {
+      list.push({ key: '__active-turn', section: null, tail: true });
+    }
+    return list;
+  }, [sections, emptyError, viewingHistory, activeTurnId]);
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const hasMoreHistoryRef = useRef(hasMoreHistory);
+  hasMoreHistoryRef.current = hasMoreHistory;
+  const virtualizerRef = useRef<Virtualizer<HTMLDivElement, HTMLDivElement> | null>(null);
+  const estimateRowSize = (index: number): number => {
+    const row = rowsRef.current[index];
+    if (!row) return 240;
+    if (row.tail || row.notice) return 48;
+    const section = row.section!;
+    return estimateSectionHeight(section, section.turnId ? expandedTurns.has(section.turnId) : false);
+  };
+  // Full row geometry rebuilt from the virtualizer's measured-size
+  // snapshot plus our own estimates for unmeasured rows — the same inputs
+  // the virtualizer itself uses, so starts agree with its layout.
+  const currentMeasurements = (): Array<{ key: string; start: number; size: number }> => {
+    const instance = virtualizerRef.current;
+    if (!instance) return [];
+    const measured = new Map(instance.takeSnapshot().map(item => [String(item.key), item.size]));
+    let start = hasMoreHistoryRef.current ? 52 : 0;
+    return rowsRef.current.map((row, index) => {
+      const size = measured.get(row.key) ?? estimateRowSize(index);
+      const measurement = { key: row.key, start, size };
+      start += size;
+      return measurement;
+    });
+  };
+  const currentMeasurementsRef = useRef(currentMeasurements);
+  currentMeasurementsRef.current = currentMeasurements;
+  const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
+    count: rows.length,
+    getScrollElement: () => streamRef.current,
+    estimateSize: estimateRowSize,
+    getItemKey: index => rows[index]?.key ?? index,
+    overscan: 0,
+    rangeExtractor: range => {
+      const instance = virtualizerRef.current;
+      if (!instance) return defaultRangeExtractor(range);
+      // Pixel overscan: about 1.5 viewports of measured content per side,
+      // so a fast fling meets mounted rows instead of blank space.
+      return expandRangeByPixels(currentMeasurementsRef.current(), range.startIndex, range.endIndex,
+        (instance.scrollRect?.height ?? 0) * 1.5);
+    },
+    // Reserve the history sentinels' flow space (32px + 20px margin) so
+    // total geometry matches the legacy layout; the spinners themselves
+    // are rendered as overlays at both ends of the virtual list.
+    paddingStart: hasMoreHistory ? 52 : 0,
+    paddingEnd: hasNewerHistory ? 52 : 0,
+    // Programmatic writes (size-change adjustments, scrollToIndex) are
+    // layout compensation, not reader gestures: register each target as
+    // a restored offset so the scroll handler ignores its echo, exactly
+    // like DOM-anchor restores. Without this, an adjustment's downward
+    // echo reads as a downward gesture and reopens the later-page gate.
+    scrollToFn: (offset, { adjustments, behavior }) => {
+      const stream = streamRef.current;
+      if (!stream) return;
+      const target = offset + (adjustments ?? 0);
+      const before = stream.scrollTop;
+      stream.scrollTo({ top: target, behavior: behavior ?? 'auto' });
+      // Register the offset the browser actually landed on, not the
+      // requested target: a target past the scrollable maximum is clamped
+      // by the browser, and an echo measured against the unclamped target
+      // would not be recognized as compensation. A write that moved
+      // nothing emits no scroll event, so it must not leave a stale
+      // marker behind for the next genuine gesture to trip over.
+      if (behavior !== 'smooth' && stream.scrollTop !== before) {
+        restoredScrollTopRef.current = stream.scrollTop;
+      }
+      // Credit the block anchor synchronously: scroll events are
+      // dispatched after both this write and any same-task settle have
+      // already run, so an event-based credit can arrive too late and
+      // the settle would pay the same shift a second time.
+      if (stream.scrollTop !== before) blockCompensatedRef.current += stream.scrollTop - before;
+    },
+    enabled: virtualWanted
+  });
+  virtualizerRef.current = virtualizer;
+  const virtualItems = virtualActive ? virtualizer.getVirtualItems() : [];
+  // The scroll container only exists after the first content commit, and
+  // the virtualizer needs one passive pass to observe its rect. Engage
+  // virtualization once a real viewport exists; until then (and in static
+  // markup) the legacy full render below is used unchanged.
+  useEffect(() => {
+    if (virtualWanted && !virtualActive && streamRef.current && streamRef.current.clientHeight > 0) {
+      setVirtualActive(true);
+    }
+  });
+  useLayoutEffect(() => {
+    if (!virtualActive) return;
+    if (stickToBottomRef.current && !viewingHistory) followLatest();
+    else restoreReadingPosition();
+  }, [virtualActive]);
+  const measuredThreadRef = useRef(threadId);
+  useEffect(() => {
+    keyAnchorRef.current = null;
+    blockAnchorRef.current = null;
+    blockSettleVersionRef.current += 1;
+    if (measuredThreadRef.current === threadId) return;
+    measuredThreadRef.current = threadId;
+    virtualizerRef.current?.measure();
+  }, [threadId]);
+  // Range-driven replacement for the later sentinel's IntersectionObserver:
+  // once the mounted range reaches the last retained row, run the same
+  // gated later-page load the observer used to trigger.
+  const lastVirtualIndex = virtualItems.length ? virtualItems[virtualItems.length - 1]!.index : -1;
+  useEffect(() => {
+    if (virtualActive && hasNewerHistory && lastVirtualIndex >= 0 && lastVirtualIndex >= rows.length - 1) {
+      loadLaterRef.current();
+    }
+  }, [virtualActive, hasNewerHistory, lastVirtualIndex, rows.length]);
+
   const alignNavigationTarget = useCallback(() => {
     const stream = streamRef.current;
     const key = navigationAnchorRef.current;
@@ -154,16 +302,40 @@ export function ThreadTimeline({
     navigatingRef.current = true;
     stickToBottomRef.current = false;
     readingAnchorRef.current = null;
+    blockAnchorRef.current = null;
+    blockSettleVersionRef.current += 1;
     const key = itemKey({ turnId: target.turnId, id: target.itemId });
     navigationAnchorRef.current = key;
     const find = () => [...(innerRef.current?.querySelectorAll<HTMLElement>('[data-user-key]') ?? [])]
       .find(node => node.dataset.userKey === key);
-    if (!find() && onRevealHistory) await onRevealHistory(target.turnId, target.itemId);
+    const inRows = virtualActiveRef.current && rowsRef.current.some(row => row.section?.user &&
+      row.section.entries[0]?.type === 'message' &&
+      itemKey((row.section.entries[0] as Extract<TimelineEntry, { type: 'message' }>).item) === key);
+    if (!inRows && !find() && onRevealHistory) await onRevealHistory(target.turnId, target.itemId);
     if (version !== navigationVersionRef.current) return;
     requestAnimationFrame(() => {
       if (version !== navigationVersionRef.current) return;
-      const node = find();
       const stream = streamRef.current;
+      if (virtualActiveRef.current && stream) {
+        // The target row may be unmounted: bring it into the mounted range
+        // by index, then let the DOM align converge on the measured row
+        // (the inner ResizeObserver keeps re-aligning while measurements
+        // settle, all under navigatingRef so scroll handling stays out).
+        const index = rowsRef.current.findIndex(row => row.section?.user &&
+          row.section.entries[0]?.type === 'message' &&
+          itemKey((row.section.entries[0] as Extract<TimelineEntry, { type: 'message' }>).item) === key);
+        if (index >= 0) {
+          virtualizerRef.current?.scrollToIndex(index, { align: 'start' });
+          setAwayFromBottom(true);
+          requestAnimationFrame(() => {
+            if (version !== navigationVersionRef.current) return;
+            alignNavigationTarget();
+            requestAnimationFrame(() => { if (version === navigationVersionRef.current) navigatingRef.current = false; });
+          });
+          return;
+        }
+      }
+      const node = find();
       if (node && stream) {
         alignNavigationTarget();
         setAwayFromBottom(true);
@@ -175,7 +347,7 @@ export function ThreadTimeline({
   useEffect(() => {
     const stream = streamRef.current;
     const sentinel = laterSentinelRef.current;
-    if (!stream || !sentinel || !hasNewerHistory || !onLoadLater) {
+    if (!stream || !hasNewerHistory || !onLoadLater || (!virtualActive && !sentinel)) {
       loadLaterRef.current = () => {};
       return;
     }
@@ -215,27 +387,69 @@ export function ThreadTimeline({
       laterAttemptRef.current = null;
       load();
     };
-    const observer = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) load(); },
-      { root: stream, rootMargin: `0px 0px ${Math.round(stream.clientHeight * 0.5)}px 0px` });
-    observer.observe(sentinel);
+    // Virtual mode renders no in-flow sentinel to observe; the range
+    // effect above calls load() when the mounted range reaches the last
+    // row instead. Every other trigger and the load gate are unchanged.
+    const observer = !virtualActive && sentinel ? new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) load();
+    }, { root: stream, rootMargin: `0px 0px ${Math.round(stream.clientHeight * 0.5)}px 0px` }) : null;
+    if (observer && sentinel) observer.observe(sentinel);
     stream.addEventListener('scroll', load, { passive: true });
     window.addEventListener('online', recover);
     document.addEventListener('visibilitychange', recover);
     load();
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
       stream.removeEventListener('scroll', load);
       window.removeEventListener('online', recover);
       document.removeEventListener('visibilitychange', recover);
       cancelAnimationFrame(frame);
       loadLaterRef.current = () => {};
     };
-  }, [hasNewerHistory, newerHistoryCursor, onLoadLater, items, loadingLaterHistory, loadingHistory, revealingHistory, onActionError]);
+  }, [hasNewerHistory, newerHistoryCursor, onLoadLater, items, loadingLaterHistory, loadingHistory, revealingHistory, onActionError, virtualActive]);
   const rememberReadingPosition = useCallback(() => {
     const stream = streamRef.current;
     const inner = innerRef.current;
     readingAnchorRef.current = stream && inner && !stickToBottomRef.current
       ? captureReadingAnchor(stream, inner) : null;
+    // The block anchor locks the concrete block at the reader's eye line
+    // so layout growth inside its own section — invisible to both the
+    // container anchor above and the keyed row anchor below — can still
+    // be compensated once scrolling settles. While a settle is pending
+    // the anchor belongs to that settle: recapturing here would baseline
+    // it onto already-shifted geometry and erase the drift it must fix.
+    if (!blockSettlePendingRef.current) {
+      blockAnchorRef.current = stream && inner && !stickToBottomRef.current
+        ? captureBlockAnchor(stream, inner) : null;
+      blockCompensatedRef.current = 0;
+    }
+    // The keyed anchor mirrors the DOM anchor but survives the anchored
+    // row being unmounted by the virtual window or shifted by a prepend.
+    keyAnchorRef.current = virtualActiveRef.current && stream && !stickToBottomRef.current
+      ? captureKeyAnchor(currentMeasurementsRef.current(), stream.scrollTop) : null;
+  }, []);
+  // In-row compensation is submitted only at the HistoryScroll idle
+  // point: during a drag or its momentum the block's displacement is left
+  // alone, and at settle time only the residual the row-level restores
+  // did not already cover is written, so the two layers never stack.
+  const settleBlockPosition = useCallback(() => {
+    if (blockSettlePendingRef.current) return;
+    blockSettlePendingRef.current = true;
+    const version = blockSettleVersionRef.current;
+    void scrollActivityRef.current!.waitForIdle().then(ready => {
+      blockSettlePendingRef.current = false;
+      if (!ready || version !== blockSettleVersionRef.current || !mountedRef.current) return;
+      const stream = streamRef.current;
+      const inner = innerRef.current;
+      const anchor = blockAnchorRef.current;
+      if (!stream || !inner || !anchor || stickToBottomRef.current ||
+          navigatingRef.current || navigationAnchorRef.current) return;
+      const { applied, blocked } = settleBlockAnchor(stream, inner, anchor, blockCompensatedRef.current);
+      // A blocked debt keeps both its baseline and its credits: the next
+      // resize (the virtual total catching up) retries the same amount.
+      if (!blocked) blockCompensatedRef.current = 0;
+      if (applied !== 0) blockSettleEchoRef.current = stream.scrollTop;
+    });
   }, []);
   const followLatest = useCallback(() => {
     const stream = streamRef.current;
@@ -243,6 +457,8 @@ export function ThreadTimeline({
     if (!stream || !inner) return;
     releaseReadingTail(inner);
     readingAnchorRef.current = null;
+    blockAnchorRef.current = null;
+    blockSettleVersionRef.current += 1;
     stream.scrollTop = stream.scrollHeight;
     previousScrollTopRef.current = stream.scrollTop;
     onHistoryReading?.(threadId, false);
@@ -259,9 +475,41 @@ export function ThreadTimeline({
   const restoreReadingPosition = useCallback(() => {
     const stream = streamRef.current;
     const inner = innerRef.current;
+    if (virtualActiveRef.current && stream) {
+      // The virtual list always lays out the full retained geometry, so
+      // the DOM restore's reading-tail space is never needed — and if one
+      // was left over it inflates scrollHeight beyond the real content,
+      // poisoning every distance the scroll logic derives from it. The
+      // keyed anchor replaces the DOM restore entirely in this mode: it
+      // resolves even while the anchored row is unmounted, and lands the
+      // scroll offset on the measured row start plus the in-row offset.
+      if (inner) releaseReadingTail(inner);
+      if (keyAnchorRef.current && !stickToBottomRef.current && !navigationAnchorRef.current) {
+        const target = resolveKeyAnchor(currentMeasurementsRef.current(), keyAnchorRef.current);
+        // An anchor target past the scrollable maximum belongs to a
+        // prepend that pushed the anchored row below the reachable range
+        // (the retained window is barely taller than the viewport). The
+        // browser would clamp the write to the window's end, teleporting
+        // the reader there and masquerading as end-of-window travel to
+        // the later-page gate. The legacy render simply has no anchor to
+        // restore in that situation and stays put — do the same.
+        const maximum = Math.max(0, stream.scrollHeight - stream.clientHeight);
+        if (target !== null && target <= maximum + 1 && Math.abs(target - stream.scrollTop) > .5) {
+          const before = stream.scrollTop;
+          stream.scrollTop = Math.round(target);
+          restoredScrollTopRef.current = stream.scrollTop;
+          blockCompensatedRef.current += stream.scrollTop - before;
+        }
+      }
+      return;
+    }
     const anchor = readingAnchorRef.current;
     if (stream && inner && anchor && !stickToBottomRef.current && !navigationAnchorRef.current) {
-      if (restoreReadingAnchor(stream, inner, anchor)) restoredScrollTopRef.current = stream.scrollTop;
+      const before = stream.scrollTop;
+      if (restoreReadingAnchor(stream, inner, anchor)) {
+        restoredScrollTopRef.current = stream.scrollTop;
+        blockCompensatedRef.current += stream.scrollTop - before;
+      }
     }
   }, []);
   const preserveActivityPosition = useCallback(() => {
@@ -269,7 +517,37 @@ export function ThreadTimeline({
     continuationTopRef.current = null;
     wantsEarlierRef.current = false;
     navigationAnchorRef.current = null;
-    readingAnchorRef.current = null;
+    // onInteract fires before the toggle re-renders, so in virtual mode
+    // capture the pre-interaction anchor here and let the resize-driven
+    // restore hold the reader's place across the height change, instead
+    // of discarding the anchor and recapturing after the shift. The keyed
+    // anchor for interactions points at the first row below the fold:
+    // growth in the rows above shifts that row's start by the full delta,
+    // which the top-of-viewport anchor (possibly inside the growing row
+    // itself) cannot express.
+    if (virtualActiveRef.current) {
+      rememberReadingPosition();
+      const stream = streamRef.current;
+      if (stream && !stickToBottomRef.current) {
+        keyAnchorRef.current = captureKeyAnchorBelow(currentMeasurementsRef.current(), stream.scrollTop)
+          ?? keyAnchorRef.current;
+      }
+    }
+    else readingAnchorRef.current = null;
+    // The block anchor is captured unconditionally (even at the bottom,
+    // where the reading anchors stand down): growth from this very
+    // interaction lands inside the reader's own section, and only the
+    // block at their eye line can prove how far it pushed their content.
+    // It replaces any anchor remembered from scrolling — the interaction,
+    // not the last scroll frame, defines what must be held.
+    {
+      const stream = streamRef.current;
+      const inner = innerRef.current;
+      if (stream && inner) {
+        blockAnchorRef.current = captureBlockAnchor(stream, inner);
+        blockCompensatedRef.current = 0;
+      }
+    }
     stickToBottomRef.current = false;
     onHistoryReading?.(threadId, true);
     window.requestAnimationFrame(() => {
@@ -281,9 +559,13 @@ export function ThreadTimeline({
       stickToBottomRef.current = nearBottom;
       onHistoryReading?.(threadId, !nearBottom);
       setAwayFromBottom(!nearBottom);
-      rememberReadingPosition();
+      // Queue the in-row settle before recapturing: the pending flag it
+      // raises keeps the recapture from baselining the block anchor onto
+      // the post-interaction geometry it exists to correct.
+      settleBlockPosition();
+      if (!virtualActiveRef.current) rememberReadingPosition();
     });
-  }, [rememberReadingPosition, releaseTailAfterReading, viewingHistory, onHistoryReading, threadId]);
+  }, [rememberReadingPosition, releaseTailAfterReading, settleBlockPosition, viewingHistory, onHistoryReading, threadId]);
   const atEarlierBoundary = () => {
     const top = streamRef.current?.scrollTop ?? Infinity;
     return top <= 64 || continuationTopRef.current !== null && top <= continuationTopRef.current + 1;
@@ -355,6 +637,8 @@ export function ThreadTimeline({
   useEffect(() => () => {
     navigationVersionRef.current += 1;
     navigationAnchorRef.current = null;
+    blockSettleVersionRef.current += 1;
+    blockAnchorRef.current = null;
   }, [threadId]);
 
   useEffect(() => {
@@ -365,11 +649,12 @@ export function ThreadTimeline({
       const stream = streamRef.current;
       if (stream && stickToBottomRef.current && !viewingHistory) followLatest();
       else restoreReadingPosition();
+      settleBlockPosition();
     });
     observer.observe(inner);
     if (streamRef.current) observer.observe(streamRef.current);
     return () => observer.disconnect();
-  }, [loading, threadId, viewingHistory, alignNavigationTarget, restoreReadingPosition, followLatest]);
+  }, [loading, threadId, viewingHistory, alignNavigationTarget, restoreReadingPosition, followLatest, settleBlockPosition]);
 
   useLayoutEffect(() => {
     if (loading) return;
@@ -430,8 +715,6 @@ export function ThreadTimeline({
     );
   }
 
-  const emptyError = items.length === 0 ? turnTimings[activeTurnId ?? ''] ??
-    Object.values(turnTimings).find(turn => turn.error) : undefined;
   const snapshotNotice = snapshotState && <div className="history-snapshot-status" role="status">
     {snapshotState === 'loading' && <LoaderCircle size={14} className="spin" aria-hidden="true" />}
     <span>{snapshotState === 'loading' ? '正在同步会话记录，当前内容可能不完整' : '会话记录尚未同步完成'}</span>
@@ -451,6 +734,32 @@ export function ThreadTimeline({
       </div>
     );
   }
+
+  const renderSection = (section: TimelineSection, index: number) => section.user
+    ? <Fragment key={section.key}>
+      <MessageItem item={(section.entries[0] as Extract<TimelineEntry, { type: 'message' }>).item}
+        showFull={navigationContext || viewingHistory}
+        onEdit={(section.entries[0] as Extract<TimelineEntry, { type: 'message' }>).item.id === editableMessageId
+          ? onEditMessage : undefined} />
+      {section.turnId && turnTimings[section.turnId]?.error && !sections.some(other => !other.user && other.turnId === section.turnId) &&
+        !sections.slice(index + 1).some(other => other.turnId === section.turnId) &&
+        <NativeTurnError turn={turnTimings[section.turnId]} />}
+    </Fragment>
+    : <ResponseSection section={section} timing={section.turnId ? turnTimings[section.turnId] : undefined}
+        finalStartedAtMs={responses.get(section.turnId ?? '')?.finalStartedAtMs ?? null}
+        finalAnswer={responses.get(section.turnId ?? '')?.finalAnswer}
+        hasTrace={responses.get(section.turnId ?? '')?.hasTrace ?? false}
+        showError={responses.get(section.turnId ?? '')?.lastResponseKey === section.key}
+        open={expandedTurns.has(section.turnId ?? '')} onToggleTurn={toggleTurn}
+        active={section.turnId === activeTurnId} threadIdle={threadIdle}
+         heartbeatTurn={heartbeatTurns.has(section.turnId ?? '')}
+        onInteract={preserveActivityPosition} key={section.key}
+        onFork={onFork} onError={onActionError} />;
+  const renderTailRow = (turnId: string) => (
+    <div className="turn-response"><div className="worked-divider">
+      <TurnDuration timing={turnTimings[turnId]} active />
+    </div></div>
+  );
 
   return (
     <HistoryThreadContext.Provider value={threadId}>
@@ -512,7 +821,7 @@ export function ThreadTimeline({
         if (navigationAnchorRef.current) { alignNavigationTarget(); return; }
         const stream = streamRef.current;
         if (stream && stickToBottomRef.current && !viewingHistory) followLatest();
-        else restoreReadingPosition();
+        else { restoreReadingPosition(); settleBlockPosition(); }
       }}
       onScroll={(event) => {
         if (!initialScrollReadyRef.current || navigatingRef.current) return;
@@ -520,11 +829,20 @@ export function ThreadTimeline({
         // Layout compensation emits scroll too; it must not replace the reader's anchor.
         const restored = restoredScrollTopRef.current;
         restoredScrollTopRef.current = null;
+        const blockEcho = blockSettleEchoRef.current;
+        blockSettleEchoRef.current = null;
         // Safari's rubber-band return is not a change in the reader's direction.
         const delta = historyScrollDelta(previousScrollTopRef.current, stream.scrollTop,
           stream.scrollHeight - stream.clientHeight);
         previousScrollTopRef.current = stream.scrollTop;
+        // Compensation echoes (either layer's) are not gestures; their
+        // amounts were already credited synchronously at the write sites.
         if (restored !== null && Math.abs(stream.scrollTop - restored) < 1) return;
+        if (blockEcho !== null && Math.abs(stream.scrollTop - blockEcho) < 1) return;
+        // A genuine scroll means the reader took over: a pending block
+        // settle anchored before the gesture must not pay out afterwards
+        // and drag them back to a block they scrolled away from.
+        if (Math.abs(delta) > .5) blockSettleVersionRef.current += 1;
         // Touch intent owns the drag and momentum, including delayed rounding corrections.
         if (Math.abs(delta) > .5 && !scrollActivityRef.current!.hasTouchIntent) {
           wantsEarlierRef.current = delta < 0;
@@ -544,43 +862,48 @@ export function ThreadTimeline({
         if (!navigationAnchorRef.current && stream.scrollTop < stream.clientHeight * 2) prefetchEarlier();
       }}
     >
+      {virtualActive ? (
+      <div className="message-stream-inner message-stream-inner--virtual" ref={innerRef}
+        style={{ height: virtualizer.getTotalSize() }}>
+      {hasMoreHistory && (
+        <div className="history-sentinel history-sentinel--virtual-top" data-history-sentinel aria-busy={loadingHistory}>
+          {loadingHistory && <LoaderCircle size={15} className="spin" role="status" aria-label="正在加载更早记录" />}
+        </div>
+      )}
+      {virtualItems.map(item => {
+        const row = rows[item.index]!;
+        return (
+          <div className="timeline-row" key={item.key} data-index={item.index} ref={virtualizer.measureElement}
+            style={{ transform: `translateY(${item.start}px)` }}>
+            {row.section ? renderSection(row.section, item.index)
+              : row.notice ? <NativeTurnError turn={emptyError!} />
+              : renderTailRow(activeTurnId!)}
+          </div>
+        );
+      })}
+      {hasNewerHistory && (
+        <div className="history-sentinel history-sentinel--virtual-bottom" aria-busy={loadingLaterHistory}
+          style={{ transform: `translateY(${Math.max(0, virtualizer.getTotalSize() - 52)}px)` }}>
+          {loadingLaterHistory && <LoaderCircle size={15} className="spin" role="status" aria-label="正在加载后续记录" />}
+        </div>
+      )}
+      </div>
+      ) : (
       <div className="message-stream-inner" ref={innerRef}>
       {hasMoreHistory && (
         <div className="history-sentinel" data-history-sentinel aria-busy={loadingHistory}>
           {loadingHistory && <LoaderCircle size={15} className="spin" role="status" aria-label="正在加载更早记录" />}
         </div>
       )}
-      {sections.map((section, index) => section.user
-        ? <Fragment key={section.key}>
-          <MessageItem item={(section.entries[0] as Extract<TimelineEntry, { type: 'message' }>).item}
-            showFull={navigationContext || viewingHistory}
-            onEdit={(section.entries[0] as Extract<TimelineEntry, { type: 'message' }>).item.id === editableMessageId
-              ? onEditMessage : undefined} />
-          {section.turnId && turnTimings[section.turnId]?.error && !sections.some(other => !other.user && other.turnId === section.turnId) &&
-            !sections.slice(index + 1).some(other => other.turnId === section.turnId) &&
-            <NativeTurnError turn={turnTimings[section.turnId]} />}
-        </Fragment>
-        : <ResponseSection section={section} timing={section.turnId ? turnTimings[section.turnId] : undefined}
-            finalStartedAtMs={responses.get(section.turnId ?? '')?.finalStartedAtMs ?? null}
-            finalAnswer={responses.get(section.turnId ?? '')?.finalAnswer}
-            hasTrace={responses.get(section.turnId ?? '')?.hasTrace ?? false}
-            showError={responses.get(section.turnId ?? '')?.lastResponseKey === section.key}
-            open={expandedTurns.has(section.turnId ?? '')} onToggleTurn={toggleTurn}
-            active={section.turnId === activeTurnId} threadIdle={threadIdle}
-             heartbeatTurn={heartbeatTurns.has(section.turnId ?? '')}
-            onInteract={preserveActivityPosition} key={section.key}
-            onFork={onFork} onError={onActionError} />
-      )}
+      {sections.map(renderSection)}
       {emptyError?.error && <NativeTurnError turn={emptyError} />}
-      {!viewingHistory && activeTurnId && !sections.some((section) => !section.user && section.turnId === activeTurnId) && (
-        <div className="turn-response"><div className="worked-divider">
-          <TurnDuration timing={turnTimings[activeTurnId]} active />
-        </div></div>
-      )}
+      {!viewingHistory && activeTurnId && !sections.some((section) => !section.user && section.turnId === activeTurnId) &&
+        renderTailRow(activeTurnId)}
       {hasNewerHistory && <div ref={laterSentinelRef} className="history-sentinel" aria-busy={loadingLaterHistory}>
         {loadingLaterHistory && <LoaderCircle size={15} className="spin" role="status" aria-label="正在加载后续记录" />}
       </div>}
       </div>
+      )}
     </div>
     {(awayFromBottom || viewingHistory) && (
       <button

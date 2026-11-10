@@ -51,6 +51,7 @@
     "node": ">=22.19.0"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.26",
     "@xterm/addon-serialize": "^0.14.0",
     "@xterm/headless": "^6.0.0",
     "compression": "^1.8.2",

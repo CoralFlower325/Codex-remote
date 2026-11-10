@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boundHistoryItems } from './history-window';
+import { boundHistoryItems, HISTORY_WINDOW_LIMIT } from './history-window';
 import type { ThreadItem } from './types';
 
 const item = (turnId: string, id: number): ThreadItem =>
@@ -31,11 +31,17 @@ describe('bounded native history windows', () => {
   });
 
   it('bounds a single huge turn with exact item boundaries instead of growing indefinitely', () => {
-    const items = turn('huge', 2000);
-    expect(boundHistoryItems(items, 'older').items).toHaveLength(800);
-    expect(boundHistoryItems(items, 'older').after).toEqual({ turnId: 'huge', itemId: '799' });
-    expect(boundHistoryItems(items, 'newer').items).toHaveLength(800);
-    expect(boundHistoryItems(items, 'newer').before).toEqual({ turnId: 'huge', itemId: '1200' });
+    // Default bound is the shared HISTORY_WINDOW_LIMIT (5,000 since the
+    // timeline was virtualized; it was 800 before). The turn must exceed
+    // the limit for the default-bound assertions below to exercise a cut.
+    const total = HISTORY_WINDOW_LIMIT + 1000;
+    const items = turn('huge', total);
+    expect(boundHistoryItems(items, 'older').items).toHaveLength(HISTORY_WINDOW_LIMIT);
+    expect(boundHistoryItems(items, 'older').after)
+      .toEqual({ turnId: 'huge', itemId: String(HISTORY_WINDOW_LIMIT - 1) });
+    expect(boundHistoryItems(items, 'newer').items).toHaveLength(HISTORY_WINDOW_LIMIT);
+    expect(boundHistoryItems(items, 'newer').before)
+      .toEqual({ turnId: 'huge', itemId: String(total - HISTORY_WINDOW_LIMIT) });
   });
 
   it('does not discard the whole requested window when its first or last turn is oversized', () => {
