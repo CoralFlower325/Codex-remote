@@ -12,9 +12,17 @@ export function historyScrollDelta(previous: number, current: number, maximum: n
  * folds; the old distance-only trigger then stayed true even at the very
  * top, and every later page dragged the window back towards the latest
  * items, discarding the older pages the reader had just loaded.
+ *
+ * Distance alone still cannot tell "standing at the top" from "arrived at
+ * the bottom" when the whole window is barely taller than the viewport:
+ * the reader is permanently within range of its end, and any pause
+ * between upward gestures would let a later page through. So the reader
+ * must also have travelled towards the end (scrolled past half a
+ * viewport) or have just made an explicit downward gesture.
  */
-export function laterHistoryLoadReady(distanceToBottom: number, viewportHeight: number, wantsEarlier: boolean): boolean {
-  if (wantsEarlier) return false;
+export function laterHistoryLoadReady(distanceToBottom: number, viewportHeight: number,
+  wantsEarlier: boolean, travelledToEnd: boolean): boolean {
+  if (wantsEarlier || !travelledToEnd) return false;
   return distanceToBottom <= Math.max(0, viewportHeight) * 0.5;
 }
 

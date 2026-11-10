@@ -15,8 +15,8 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.33** / manager **0.2.9**, tag
-`v0.2.33`.
+The current published release is Remote **0.2.34** / manager **0.2.9**, tag
+`v0.2.34`.
 The [native queued-guide acceptance](native-queued-guide-0.2.27.md) records the
 single primary action, immediate queued-submission strip and history-trigger
 placement, plus the 0.2.28 follow-up record for optimistic send/Guide display,
@@ -41,15 +41,20 @@ mobile command menus; and manager 0.2.8 recognition of versioned Node runtime
 executables. An actual 0.2.29 to 0.2.30 upgrade then showed that the old selected
 control could leave the versioned Node process alive; the transaction rolled back
 safely, and 0.2.31 adds the manager-owned stop fallback before retrying.
-The four `v0.2.32` runtime assets, refreshed download snapshot, `codexwin` static
-edge and local Remote 0.2.32 installation are verified. Manager 0.2.9 is
+The four `v0.2.33` runtime assets, refreshed download snapshot, `codexwin` static
+edge and local Remote 0.2.33 installation are verified. Manager 0.2.9 is
 unchanged and remains on `v0.2.31`. Local and public `/version.json` identify
-`assets/index-Cu1mBGiP.js`; `/health` is `ready / desktop`. Publication, Remote
+`assets/index-DraSBu-b.js`; `/health` is `ready / desktop`. Publication, Remote
 installation and edge deployment remain separate states.
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.
 
-Remote **0.2.32** fixes the history-reading race where a silent latest-page tail
+Remote **0.2.33** fixes repeated later-page loads dragging a long-history window
+back toward the latest items while the reader is moving upward. Later paging now
+requires the reader to be near the retained window end without upward intent,
+and a turn truncated by the newer window boundary falls back to native timing
+until its final answer is loaded. Remote **0.2.32** retains the earlier fix where
+a silent latest-page tail
 read could commit into a different history window, causing mixed windows,
 flicker and reading-position jumps. It keeps the mobile composer toolbar on one
 row without shrinking its 36px or 44px controls. Active turns keep one primary

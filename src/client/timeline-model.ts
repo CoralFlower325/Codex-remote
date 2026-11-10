@@ -180,9 +180,15 @@ export function finalAnswerIndex(entries: TimelineEntry[]): number {
   return -1;
 }
 
+export interface TimelineTurnResponse {
+  finalStartedAtMs: number | null;
+  hasTrace: boolean;
+  lastResponseKey: string;
+  finalAnswer?: ThreadItem;
+}
+
 export function timelineTurnResponses(sections: TimelineSection[], truncatedTailTurnId?: string | null) {
-  const turns = new Map<string, { finalStartedAtMs: number | null; hasTrace: boolean; lastResponseKey: string;
-    finalAnswer?: ThreadItem }>();
+  const turns = new Map<string, TimelineTurnResponse>();
   for (const section of sections) {
     if (section.user || !section.turnId) continue;
     const turn = turns.get(section.turnId) ?? { finalStartedAtMs: null, hasTrace: false, lastResponseKey: section.key };
@@ -201,4 +207,31 @@ export function timelineTurnResponses(sections: TimelineSection[], truncatedTail
     turns.set(section.turnId, turn);
   }
   return turns;
+}
+
+/**
+ * A settled turn's final answer never changes, so once its start has been
+ * observed inside the window the divider must not fall back to the native
+ * duration just because the reader scrolled the answer out of the window
+ * again (the observed 4h18m <-> 4h03m flip on long turns). `remembered` is
+ * the caller's per-thread anchor memory: anchors observed for settled
+ * turns are written into it, and responses whose anchor is currently
+ * unavailable (answer not loaded, or the turn is the truncated tail) are
+ * refilled from it. Anchors of in-progress turns are never remembered:
+ * their final answer can still move.
+ */
+export function applyRememberedAnchors(
+  responses: Map<string, TimelineTurnResponse>,
+  remembered: Map<string, number>,
+  settledTurnIds: ReadonlySet<string>
+): Map<string, TimelineTurnResponse> {
+  for (const [turnId, turn] of responses) {
+    if (turn.finalStartedAtMs != null) {
+      if (settledTurnIds.has(turnId)) remembered.set(turnId, turn.finalStartedAtMs);
+    } else {
+      const anchor = remembered.get(turnId);
+      if (anchor != null) turn.finalStartedAtMs = anchor;
+    }
+  }
+  return responses;
 }

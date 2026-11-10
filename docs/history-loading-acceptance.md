@@ -37,6 +37,36 @@ Updated: 2026-10-28. Earlier verification below retains its dated scope.
 
 ## Verification
 
+### 2026-11-10 Giant-Turn Boundary and Anchor Memory
+
+- Located on the deployed 0.2.33 station: upward paging across the head of
+  a giant turn (one turn holding thousands of records inside a 70+ turn
+  thread) flashed a mostly blank viewport. The 800-item window's whole-turn
+  retreat evicted the giant turn's entire loaded section in one commit
+  when the cut landed inside it. The same thread showed a settled turn's
+  divider flipping between its native duration and its final-answer
+  anchor (4h18m19s vs 4h03m03s) as the answer entered and left the window.
+- Whole-turn retreat is now span-capped: a straddling turn occupying more
+  than 200 retained items is cut by item anchor, keeping the full window;
+  ordinary turns still retreat whole. Unit coverage pins both directions,
+  the modest-turn retreat and the single-huge-turn bound.
+- A settled turn's final-answer anchor, once observed, is remembered for
+  the viewing session and refills the divider when the answer is outside
+  the window; in-progress turns are never remembered.
+- The synthetic giant-turn session (2,431 records, one 2,388-record turn)
+  now keeps the giant turn's head inside the window after crossing it
+  instead of collapsing to only the 42 pre-turn records. Verification
+  there exposed one more hole in the 0.2.33 later-page gate: in a window
+  barely taller than the viewport the end is permanently in range, and a
+  later page slipped through between upward gestures, ping-ponging with
+  earlier pages on anchor boundaries (63 reads, 38 of them the same
+  page). Passive later-page triggers now require travel towards the end
+  or a just-made explicit downward gesture; the same session then reads
+  24 pages up and returns to the final answer on downward gestures with
+  no repeated page. These are host browser checks with a synthetic
+  backend plus one read-only observation pass on the deployed station,
+  not physical iPhone Safari acceptance.
+
 ### 2026-11-10 Later-Page Gate and Truncated-Turn Anchor
 
 - Reproduced the reported failure before the fix with a synthetic 920-record
