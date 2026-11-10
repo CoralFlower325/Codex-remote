@@ -266,6 +266,26 @@ describe('timeline model', () => {
     expect(turns.get('new')?.finalStartedAtMs).toBe(300_000);
   });
 
+  it('does not anchor a truncated tail turn on a partial slice', () => {
+    const items: ThreadItem[] = [
+      { type: 'userMessage', id: 'u', content: [], turnId: 't', startedAtMs: 100_000 },
+      { ...agent('slice'), phase: 'final_answer', turnId: 't', startedAtMs: 280_000 },
+      { type: 'userMessage', id: 'new-user', content: [], turnId: 'new' },
+      { ...agent('new-answer'), phase: 'final_answer', turnId: 'new', startedAtMs: 300_000 }
+    ];
+    const sections = buildTimelineSections(buildTimelineEntries(items));
+    // Without a window boundary, the loaded slice anchors as before.
+    expect(timelineTurnResponses(sections).get('t')?.finalStartedAtMs).toBe(280_000);
+    // Cut by the newer window boundary, the same slice must not pose as the
+    // final answer: the anchor clears and the native timing takes over,
+    // while the answer itself and other turns stay untouched.
+    const truncated = timelineTurnResponses(sections, 't');
+    expect(truncated.get('t')?.finalStartedAtMs).toBeNull();
+    expect(truncated.get('t')?.finalAnswer).toBe(items[1]);
+    expect(truncated.get('new')?.finalStartedAtMs).toBe(300_000);
+    expect(timelineTurnResponses(sections, 'missing').get('t')?.finalStartedAtMs).toBe(280_000);
+  });
+
   it('moves only timing ownership to the earlier native response when a partial turn is paged in', () => {
     const tail: ThreadItem[] = [
       { type: 'userMessage', id: 'steer', content: [], turnId: 't' },

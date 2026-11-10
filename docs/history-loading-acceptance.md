@@ -37,6 +37,31 @@ Updated: 2026-10-28. Earlier verification below retains its dated scope.
 
 ## Verification
 
+### 2026-11-10 Later-Page Gate and Truncated-Turn Anchor
+
+- Reproduced the reported failure before the fix with a synthetic 920-record
+  chat whose folded activity leaves the 800-item window about 1,848px tall
+  (roughly 2.1 viewports at 402x874): the later-page trigger (within two
+  viewport heights of the window end) stayed true at the very top, so later
+  pages repeatedly dragged the window back to the latest items. Thirty
+  upward gestures produced 47 history reads in a repeating cycle, the
+  earliest turn never mounted, and the 22-minute turn's divider cycled
+  through its intermediate slices (3 and 7 minutes) between the native
+  22 minutes and the final-answer anchor.
+- Later pages now require the reader to be within half a viewport of the
+  retained window's end with no upward intent; wheel and keyboard gestures
+  settle direction before later paging is reconsidered, and the later
+  sentinel's root margin matches the same half-viewport distance.
+- A turn truncated by the window's newer boundary no longer anchors its
+  work duration on an intermediate slice; the divider falls back to the
+  native turn timing until the final answer is inside the window.
+- After the fix, the same synthetic session reaches its earliest turn in
+  nine older-page reads, returns to the latest items through forward
+  paging, and shows only the native/final durations for the long turn.
+  Unit coverage pins the later-page gate, the truncated-tail anchor and
+  the rendered fallback. These are host browser checks with a synthetic
+  backend, not physical iPhone Safari acceptance.
+
 ### 2026-10-28 Mobile Gesture Follow-up
 
 - Reproduced two stopped-loading paths before the fix: top rubber-band return

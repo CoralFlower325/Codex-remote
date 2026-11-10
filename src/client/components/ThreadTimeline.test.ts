@@ -27,6 +27,25 @@ describe('conversation presentation', () => {
     expect(html).not.toContain('展开消息');
     expect(html).not.toContain('显示后续记录');
   });
+  it('falls back to native duration for a turn truncated by the newer window boundary', () => {
+    const timing: TurnTiming = { id: 't', status: 'completed', startedAt: 100, completedAt: 1420, durationMs: 1_320_000 };
+    const items: ThreadItem[] = [
+      { type: 'userMessage', id: 'u', turnId: 't', content: [{ type: 'text', text: 'VISIBLE_REQUEST' }] },
+      { type: 'agentMessage', id: 'a', turnId: 't', phase: 'final_answer', text: 'VISIBLE_ANSWER', startedAtMs: 280_000 }
+    ];
+    const renderWith = (hasNewerHistory: boolean) => renderToStaticMarkup(createElement(ThreadTimeline, {
+      threadId: 'thread', items, activeTurnId: null, turnTimings: { t: timing }, loading: false,
+      hasMoreHistory: false, loadingHistory: false, onLoadEarlier: async () => {},
+      hasNewerHistory, onLoadLater: async () => {}
+    }));
+    // Fully loaded: the loaded answer start anchors the duration as before.
+    expect(renderWith(false)).toContain('用时 3分钟');
+    // Cut by the window boundary, the same slice is only a transient state:
+    // the divider must show the native 22-minute duration, not 3 minutes.
+    const truncated = renderWith(true);
+    expect(truncated).toContain('用时 22分钟');
+    expect(truncated).not.toContain('用时 3分钟');
+  });
   it('folds completed process and commentary, keeps the request/final visible, and uses native duration', () => {
     const html = render([
       { type: 'userMessage', id: 'u', turnId: 't', content: [{ type: 'text', text: 'VISIBLE_REQUEST' }] },

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HistoryScroll, historyScrollDelta } from './history-scroll';
+import { HistoryScroll, historyScrollDelta, laterHistoryLoadReady } from './history-scroll';
 
 afterEach(() => vi.useRealTimers());
 
-describe('history insertion during scrolling', () => {
+describe('history insertion during scrolling', async () => {
   it('keeps upward intent through Safari top overscroll and its rebound', () => {
     expect(historyScrollDelta(80, -75, 1000)).toBe(-80);
     expect(historyScrollDelta(-75, -20, 1000)).toBe(0);
@@ -106,5 +106,24 @@ describe('history insertion during scrolling', () => {
     await expect(pending).resolves.toBe(false);
     await vi.advanceTimersByTimeAsync(1000);
     expect(settled).not.toHaveBeenCalled();
+  });
+});
+
+describe('later history paging gate', () => {
+  it('never loads a newer page while the reader is travelling upward', () => {
+    expect(laterHistoryLoadReady(0, 874, true)).toBe(false);
+    expect(laterHistoryLoadReady(120, 874, true)).toBe(false);
+  });
+
+  it('does not fire at the top of a short trimmed window', () => {
+    // An 800-item folded window can be ~1,848px tall in an 874px viewport:
+    // pinned to its top, the reader is still 974px from its end.
+    expect(laterHistoryLoadReady(974, 874, false)).toBe(false);
+    expect(laterHistoryLoadReady(438, 874, false)).toBe(false);
+  });
+
+  it('loads when the reader is genuinely near the window end', () => {
+    expect(laterHistoryLoadReady(437, 874, false)).toBe(true);
+    expect(laterHistoryLoadReady(0, 874, false)).toBe(true);
   });
 });

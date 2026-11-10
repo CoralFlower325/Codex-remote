@@ -180,7 +180,7 @@ export function finalAnswerIndex(entries: TimelineEntry[]): number {
   return -1;
 }
 
-export function timelineTurnResponses(sections: TimelineSection[]) {
+export function timelineTurnResponses(sections: TimelineSection[], truncatedTailTurnId?: string | null) {
   const turns = new Map<string, { finalStartedAtMs: number | null; hasTrace: boolean; lastResponseKey: string;
     finalAnswer?: ThreadItem }>();
   for (const section of sections) {
@@ -189,7 +189,11 @@ export function timelineTurnResponses(sections: TimelineSection[]) {
     const finalIndex = finalAnswerIndex(section.entries);
     const final = section.entries[finalIndex];
     if (final?.type === 'message') {
-      turn.finalStartedAtMs = final.item.startedAtMs ?? null;
+      // A turn cut by the newer window boundary may continue past the
+      // retained items. Its last loaded slice is not the final answer, so
+      // its start must not anchor the work duration; the caller falls back
+      // to the native turn timing instead of showing a transient slice age.
+      turn.finalStartedAtMs = section.turnId === truncatedTailTurnId ? null : final.item.startedAtMs ?? null;
       turn.finalAnswer = final.item;
     }
     turn.hasTrace ||= (finalIndex < 0 ? section.entries.length : finalIndex) > 0;
