@@ -15,8 +15,8 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.28** / manager **0.2.6**, tag
-`v0.2.28`.
+The current published release is Remote **0.2.29** / manager **0.2.6**, tag
+`v0.2.29`.
 The [native queued-guide acceptance](native-queued-guide-0.2.27.md) records the
 single primary action, immediate queued-submission strip and history-trigger
 placement, plus the 0.2.28 follow-up record for optimistic send/Guide display,
@@ -38,10 +38,13 @@ Runtime packaging remains gated on the tested Node 22.19.x toolchain and signed 
 The seven `v0.2.28` assets, the refreshed download snapshot, the `codexwin`
 static edge, the local Windows installation and manager 0.2.6 have been verified.
 See the [0.2.28 release acceptance](remote-0.2.28-release-acceptance.md).
+The 0.2.29 patch keeps the same components but replaces the unstable direct
+Node task action with the hidden `wscript` wrapper and migrates direct tasks
+through manager Start/Stop or repair.
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.
 
-Remote **0.2.28** keeps the mobile composer toolbar on one row without shrinking
+Remote **0.2.29** keeps the mobile composer toolbar on one row without shrinking
 its 36px or 44px controls. Active turns keep one primary action and show an
 optimistic queued row until the native queue returns the same
 `clientUserMessageId`; Guide uses `turn/steer`, and disabling queue switches that

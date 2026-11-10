@@ -54,10 +54,12 @@ function Register-CodexRemoteTask {
     [string]$Description
   )
 
-  $argumentParts = @((Join-Path $PSScriptRoot "background-task-windows.mjs")) + $Arguments
-  $argumentLine = ($argumentParts | ForEach-Object { '"' + $_ + '"' }) -join " "
+  $wrapper = Join-Path $PSScriptRoot "run-hidden-windows.vbs"
+  $argumentParts = @($Executable, (Join-Path $PSScriptRoot "background-task-windows.mjs")) + $Arguments
+  $argumentLine = "//B //Nologo `"$wrapper`" " +
+    (($argumentParts | ForEach-Object { '"' + $_ + '"' }) -join " ")
   $action = New-ScheduledTaskAction `
-    -Execute $Executable `
+    -Execute (Join-Path $env:WINDIR "System32\wscript.exe") `
     -Argument $argumentLine `
     -WorkingDirectory $Root
   Register-ScheduledTask `

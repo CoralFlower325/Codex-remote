@@ -2,6 +2,10 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.29', changes: [
+    'Windows 服务任务改用隐藏的 `wscript` 包装器启动 `ProgramData` 下受管的 Node 22.19.x 运行时，避免直接启动 Node 后在下一次控制台关闭事件中收到 `0xC000013A` 并退出。',
+    '管理器 0.2.6 的启动、停止和一键修复会识别并迁移 0.2.28 的直接 Node 任务；正常操作仍是管理器控制的无窗口计划任务，不弹出命令行。'
+  ] },
   { version: '0.2.28', changes: [
     '发送与引导即时上屏：普通发送和待发条“引导”先显示本地消息并标注发送状态，原生回声按 clientUserMessageId 到达后自动去重；发送被拒时撤下本地消息、输入草稿保留。',
     '轮次状态单向推进：中断或完成后，滞后的历史快照不再把已结束的轮次重新显示为运行中，输入区及时恢复空闲。',

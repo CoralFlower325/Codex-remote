@@ -24,8 +24,10 @@ describe('local manager control boundary', () => {
     expect(install).toContain('$env:ProgramData');
     expect(install).toContain('Resolve-NodeRuntime');
     expect(install).toContain('background-task-windows.mjs');
-    expect(install).not.toContain('wscript.exe');
+    expect(install).toContain('wscript.exe');
+    expect(install).toContain('run-hidden-windows.vbs');
     expect(control).toContain('nodeRuntimeRoot');
+    expect(control).toContain('hiddenLauncher');
   });
   it('requires owned backend, Desktop, password and managed tunnel readiness', () => {
     const service = { running: true, tunnelManaged: true };

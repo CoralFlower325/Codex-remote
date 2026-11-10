@@ -170,11 +170,19 @@ $tokenFile = Join-Path $Root "data\cloudflared-token"
 $hasTunnel = Test-Path -LiteralPath $tokenFile
 $nodeRuntimeRoot = Join-Path $env:ProgramData "CodexRemoteNode"
 $nodeRuntimePrefix = $nodeRuntimeRoot.TrimEnd('\') + '\'
+$hiddenLauncher = Join-Path $PSScriptRoot "run-hidden-windows.vbs"
+$wscript = Join-Path $env:WINDIR "System32\wscript.exe"
 $tunnelTask = Get-RemoteTask $TunnelTaskName
-$serverActionValid = $serverTask -and $serverTask.Actions.Arguments.Contains("background-task-windows.mjs") -and
-  [IO.Path]::GetFullPath($serverTask.Actions.Execute).StartsWith($nodeRuntimePrefix, [StringComparison]::OrdinalIgnoreCase)
-$tunnelActionValid = $tunnelTask -and $tunnelTask.Actions.Arguments.Contains("background-task-windows.mjs") -and
-  [IO.Path]::GetFullPath($tunnelTask.Actions.Execute).StartsWith($nodeRuntimePrefix, [StringComparison]::OrdinalIgnoreCase)
+$serverActionValid = $serverTask -and
+  [string]::Equals($serverTask.Actions.Execute, $wscript, [StringComparison]::OrdinalIgnoreCase) -and
+  $serverTask.Actions.Arguments.Contains($hiddenLauncher) -and
+  $serverTask.Actions.Arguments.Contains($nodeRuntimePrefix) -and
+  $serverTask.Actions.Arguments.Contains("background-task-windows.mjs")
+$tunnelActionValid = $tunnelTask -and
+  [string]::Equals($tunnelTask.Actions.Execute, $wscript, [StringComparison]::OrdinalIgnoreCase) -and
+  $tunnelTask.Actions.Arguments.Contains($hiddenLauncher) -and
+  $tunnelTask.Actions.Arguments.Contains($nodeRuntimePrefix) -and
+  $tunnelTask.Actions.Arguments.Contains("background-task-windows.mjs")
 $needsMigration = ($serverTask -and -not $serverActionValid) -or
   ($hasTunnel -and $tunnelTask -and -not $tunnelActionValid)
 if ($needsMigration) {
