@@ -39,14 +39,17 @@ describe('slash command routing', () => {
     expect(filtered.map((entry) => entry.skill?.path)).toEqual(['/plugins/design/SKILL.md']);
   });
 
-  it('disables persisted-history and idle-only commands in the appropriate state', () => {
+  it('keeps plan and goal available while disabling commands that require a settled turn', () => {
     const home = slashOptions({ name: '', argument: '' }, [], { hasThread: false, running: false });
     expect(home.find((entry) => entry.command === 'compact')?.disabledReason).toBeTruthy();
     expect(home.find((entry) => entry.command === 'model')?.disabledReason).toBeUndefined();
+    expect(home.find((entry) => entry.command === 'goal')?.disabledReason).toBeUndefined();
     const running = slashOptions({ name: '', argument: '' }, [], { hasThread: true, running: true });
-    for (const command of ['compact', 'review', 'fork', 'plan']) {
+    for (const command of ['compact', 'review', 'fork']) {
       expect(running.find((entry) => entry.command === command)?.disabledReason).toBeTruthy();
     }
+    expect(running.find((entry) => entry.command === 'plan')?.disabledReason).toBeUndefined();
+    expect(running.find((entry) => entry.command === 'goal')?.disabledReason).toBeUndefined();
     expect(running.find((entry) => entry.command === 'status')?.disabledReason).toBeUndefined();
   });
 

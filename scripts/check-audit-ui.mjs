@@ -274,7 +274,7 @@ try {
       await page.locator('.message-stream').getByText('Live request 19', { exact: true }).waitFor();
       await page.goto(origin);
       await page.locator('.home-view textarea').fill('Home draft survives first-send failure');
-      await page.locator('.home-view .composer input[type=file]').setInputFiles({
+      await page.locator('.home-view .composer input[data-file-input]').setInputFiles({
         name: 'home-context.png', mimeType: 'image/png',
         buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4xoAAAAASUVORK5CYII=', 'base64')
       });

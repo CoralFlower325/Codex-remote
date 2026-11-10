@@ -40,8 +40,8 @@ function request(server: http.Server, pathname: string, body: Buffer = pdf,
   });
 }
 
-describe('private PDF attachment storage', () => {
-  it('stores bounded PDF data under an owned directory and makes retry idempotent', async () => {
+describe('private document attachment storage', () => {
+  it('stores bounded document data under an owned directory and makes retry idempotent', async () => {
     const directory = await root(), documents = new DocumentAttachments(directory), id = randomUUID();
     const saved = await documents.upload(id, '../../report.pdf', pdf);
     expect(saved.path).toBe(path.join(directory, id, '.._.._report.pdf'));
@@ -49,9 +49,17 @@ describe('private PDF attachment storage', () => {
     expect(await documents.upload(id, '../../report.pdf', pdf)).toEqual(saved);
     await expect(documents.upload(id, 'another.pdf', pdf)).rejects.toMatchObject({ status: 409 });
     await expect(documents.upload('../outside', 'report.pdf', pdf)).rejects.toMatchObject({ status: 400 });
-    await expect(documents.upload(randomUUID(), 'report.html', pdf)).rejects.toMatchObject({ status: 400 });
+    await expect(documents.upload(randomUUID(), 'report.exe', pdf)).rejects.toMatchObject({ status: 400 });
     await expect(documents.upload(randomUUID(), 'report.pdf', Buffer.from('<html>not a PDF</html>')))
       .rejects.toMatchObject({ status: 422 });
+  });
+
+  it('stores supported text and code files without applying the PDF signature check', async () => {
+    const directory = await root(), documents = new DocumentAttachments(directory), id = randomUUID();
+    const bytes = Buffer.from('# Notes\n\nSynthetic markdown.', 'utf8');
+    const saved = await documents.upload(id, 'notes.md', bytes);
+    expect(saved).toMatchObject({ id, name: 'notes.md', size: bytes.length });
+    expect(await fs.readFile(saved.path)).toEqual(bytes);
   });
 
   it('keeps referenced documents and removes only expired unsent uploads', async () => {
@@ -131,7 +139,7 @@ describe('private PDF attachment storage', () => {
     const id = randomUUID(), url = `/api/attachments/${id}`;
     expect((await request(server, url, pdf, { cookie: '' })).status).toBe(401);
     expect((await request(server, url, pdf, { origin: 'https://other.example' })).status).toBe(403);
-    expect((await request(server, url, Buffer.from('{}'), { 'Content-Type': 'application/json' })).status).toBe(415);
+    expect((await request(server, url, Buffer.from('{}'), { 'Content-Type': 'application/octet-stream' })).status).toBe(422);
     const response = await request(server, url);
     expect(response.status).toBe(201);
     expect(response.headers['cache-control']).toBe('no-store');

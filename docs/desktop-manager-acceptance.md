@@ -1,9 +1,19 @@
 # Desktop Manager Acceptance
 
 Current batch and historical acceptance records, reconciled 2026-11-10.
-Stable manager 0.2.7 is published with Remote 0.2.29; self-update work remains
+Stable manager 0.2.8 is published with Remote 0.2.30; self-update work remains
 paused as [0.2.0AU](manager-self-update-checkpoints.md). Historical records below
 retain their original scope and counts.
+
+## Manager 0.2.8 Versioned Node Ownership
+
+Windows status, repair, service control and web-update ownership checks now
+accept managed executable names such as `node-22.19.0-127.exe` instead of only
+`node.exe`. The live 0.2.29 installation reported `running=true` and
+`conflict=false` with the patched read-only probe, removing the false
+“port occupied” result while the backend and managed tunnel continued running.
+Manager smoke and controller tests cover the source bundle; installation of
+0.2.8 and its packaged UI are verified during the 0.2.30 deployment.
 
 ## Manager 0.2.7 Update Lock Retry
 

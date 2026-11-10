@@ -2,6 +2,13 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.30', changes: [
+    '输入栏“+”改为原生式添加上下文菜单：支持文件与文件夹、目标、计划模式和绘图，并直接列出当前目录可用的 Documents、PDF、表格、演示文稿等技能插件。',
+    '文件输入扩展为图片、PDF、Office、文本和常见代码文件；文件夹可批量选择，单个文件仍限制 20 MB，私密存储、预览和提交引用沿用原附件边界。',
+    '补齐 `/goal` 原生目标命令；`/plan` 不再因任务运行中直接消失，运行中切换会明确安排到当前轮次结束后生效。',
+    '手机端命令与添加菜单改为贴合输入栏的紧凑浮层，限制高度并在内部滚动，减少对会话页面的遮挡，同时保留 `/plan`、`/goal` 与插件列表。',
+    '管理器 0.2.8 修复版本化 Node 运行时被误判为外部进程的问题，不再把当前 Remote 服务显示成“端口被占用”。'
+  ] },
   { version: '0.2.29', changes: [
     'Windows 服务任务改用隐藏的 `wscript` 包装器启动 `ProgramData` 下受管的 Node 22.19.x 运行时，避免直接启动 Node 后在下一次控制台关闭事件中收到 `0xC000013A` 并退出。',
     '管理器 0.2.7 的启动、停止和一键修复会识别并迁移 0.2.28 的直接 Node 任务；正常操作仍是管理器控制的无窗口计划任务，不弹出命令行。',

@@ -181,7 +181,7 @@ export const MessageItem = memo(function MessageItem({ item, showFull = false, s
               <ImagePreview key={index} src={localImageSource(entry.path ?? entry.url)} alt={`图片附件 ${index + 1}`} />
             ))}
           </div>}
-          {documents.length > 0 && <div className="user-document-attachments" aria-label={`${documents.length} 个 PDF 附件`}>
+          {documents.length > 0 && <div className="user-document-attachments" aria-label={`${documents.length} 个文件附件`}>
             {documents.map(document => <PreviewLink className="user-document-attachment" href={document.path}
               key={document.path} title={document.path}><FileText size={18} aria-hidden="true" /><span>{document.name}</span></PreviewLink>)}
           </div>}

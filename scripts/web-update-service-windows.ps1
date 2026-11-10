@@ -9,7 +9,7 @@ $conflict = [bool]($task -and [IO.Path]::GetFullPath($task.Actions.WorkingDirect
 $entry = Join-Path $Root "dist-server\server\index.js"
 $background = Join-Path $Root "scripts\background-task-windows.mjs"
 function Get-OwnedProcesses {
-  @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" | Where-Object {
+  @(Get-CimInstance Win32_Process -Filter "Name LIKE 'node%.exe'" | Where-Object {
     $_.CommandLine -and ($_.CommandLine.Contains($entry) -or
       ($_.CommandLine.Contains($background) -and $_.CommandLine -match '(?:^|\s)"?server"?(?:\s|$)'))
   })

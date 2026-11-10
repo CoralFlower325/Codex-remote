@@ -1,3 +1,5 @@
+import { isSupportedDocumentName } from './document-formats.js';
+
 export interface DocumentReference { name: string; path: string }
 
 /** Use the Desktop file-context envelope, leaving the native input type as text. */
@@ -18,9 +20,9 @@ export function documentReferences(content: Array<{ type: string; text?: string 
     if (!/^\s*# Files mentioned by the user:[ \t]*\r?\n/.test(text)) continue;
     const boundary = /^## My request:[ \t]*\r?\n/m.exec(text);
     if (!boundary) continue;
-    for (const match of text.slice(0, boundary.index).matchAll(/^## ([^\r\n]+?): ([^\r\n]+\.pdf)[ \t]*$/gim)) {
+    for (const match of text.slice(0, boundary.index).matchAll(/^## ([^\r\n]+?): ([^\r\n]+)[ \t]*$/gim)) {
       const name = match[1]!, filePath = match[2]!.trim();
-      if (/^(?:[a-z]:[\\/]|\/)/i.test(filePath) && !filePath.includes('\0')) {
+      if (isSupportedDocumentName(filePath) && /^(?:[a-z]:[\\/]|\/)/i.test(filePath) && !filePath.includes('\0')) {
         documents.set(filePath, { name, path: filePath });
       }
     }

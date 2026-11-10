@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 $task = Get-ScheduledTask -TaskName "CodexRemote" -ErrorAction SilentlyContinue
 $tunnel = Get-ScheduledTask -TaskName "CodexRemoteTunnel" -ErrorAction SilentlyContinue
 $entry = Join-Path $Root "dist-server\server\index.js"
-$backend = @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
+$backend = @(Get-CimInstance Win32_Process -Filter "Name LIKE 'node%.exe'" |
   Where-Object { $_.CommandLine -and $_.CommandLine.Contains($entry) })
 @{
   installed = [bool]$task

@@ -12,6 +12,18 @@ const model = { id: 'demo', model: 'demo', displayName: 'Codex Demo', isDefault:
   defaultReasoningEffort: 'high', supportedReasoningEfforts: [{ reasoningEffort: 'high' }] };
 const skill = { name: 'synthetic-stop', path: '/skills/synthetic-stop/SKILL.md',
   description: 'Synthetic stop acceptance', enabled: true, interface: { displayName: 'Synthetic Stop' } };
+const pluginSkills = [
+  { name: 'documents', path: '/plugins/documents/SKILL.md', description: 'Create and edit documents',
+    enabled: true, interface: { displayName: 'Documents' } },
+  { name: 'pdf', path: '/plugins/pdf/SKILL.md', description: 'Read, create, and verify PDFs',
+    enabled: true, interface: { displayName: 'PDF' } },
+  { name: 'spreadsheets', path: '/plugins/spreadsheets/SKILL.md', description: 'Create and edit spreadsheets',
+    enabled: true, interface: { displayName: 'Spreadsheets' } },
+  { name: 'presentations', path: '/plugins/presentations/SKILL.md', description: 'Create and edit presentations',
+    enabled: true, interface: { displayName: 'Presentations' } },
+  { name: 'template-creator', path: '/plugins/template-creator/SKILL.md', description: 'Create reusable templates',
+    enabled: true, interface: { displayName: 'Template Creator' } }
+];
 const threads = ['a', 'b'].map(id => ({ id, name: `Synthetic chat ${id.toUpperCase()}`, cwd: '/project',
   preview: 'Synthetic data', model: 'demo', createdAt: 1, updatedAt: id === 'a' ? 20 : 10,
   status: { type: 'idle' }, permissionProfile: ':workspace' }));
@@ -67,7 +79,14 @@ function receive(socket, raw) {
     if (m.method === 'model/list') result.data = [model];
     if (['thread/read', 'thread/resume'].includes(m.method)) result = { thread: threads.find(t => t.id === p.threadId) ?? threads[0] };
     if (m.method === 'thread/turns/list') result.data = [...turns].reverse();
-    if (m.method === 'skills/list') result = { data: [{ skills: [skill], errors: [] }] };
+    if (m.method === 'skills/list') result = { data: [{ skills: [skill, ...pluginSkills], errors: [] }] };
+    if (m.method === 'collaborationMode/list') result = { data: [{ mode: 'default' }, { mode: 'plan' }] };
+    if (m.method === 'thread/goal/set') {
+      actions.push({ method: m.method, params: p });
+      const now = Math.floor(Date.now() / 1000);
+      result = { goal: { threadId: p.threadId, objective: p.objective, status: p.status ?? 'active',
+        tokenBudget: null, tokensUsed: 0, timeUsedSeconds: 0, createdAt: now, updatedAt: now } };
+    }
     if (['turn/start', 'turn/steer', 'turn/interrupt'].includes(m.method)) actions.push({ method: m.method, params: p });
     if (['thread/start', 'thread/fork'].includes(m.method) && p.ephemeral) {
       result = { thread: { ...threads[0], id: 'side', ephemeral: true } };
@@ -133,6 +152,82 @@ try {
     await page.locator('.message-stream').getByText('A short final reply.', { exact: true }).waitFor();
     await page.waitForFunction(() => !document.querySelector('.composer textarea')?.disabled);
     await page.evaluate(() => document.fonts.ready);
+    const addButton = page.getByRole('button', { name: '添加文件和上下文', exact: true });
+    await addButton.click();
+    const addMenu = page.locator('.composer-popover--add');
+    await addMenu.waitFor();
+    await page.waitForTimeout(250);
+    for (const label of ['文件和文件夹', '目标', '计划模式', '绘图', 'Documents', 'PDF', 'Spreadsheets', 'Presentations']) {
+      await addMenu.getByText(label, { exact: true }).waitFor();
+    }
+    const addMenuGeometry = await addMenu.evaluate(menu => {
+      const rect = menu.getBoundingClientRect();
+      const plugins = menu.querySelector('.composer-add-plugins');
+      const buttonHeights = [...menu.querySelectorAll('button')].filter(button => button.getClientRects().length)
+        .map(button => button.getBoundingClientRect().height);
+      return {
+        top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right,
+        viewportHeight: innerHeight, viewportWidth: innerWidth,
+        scrollHeight: plugins?.scrollHeight ?? 0, clientHeight: plugins?.clientHeight ?? 0,
+        minButtonHeight: Math.min(...buttonHeights)
+      };
+    });
+    assert(addMenuGeometry.top >= -1 && addMenuGeometry.bottom <= addMenuGeometry.viewportHeight + 1,
+      `Add menu outside viewport: ${JSON.stringify(addMenuGeometry)}`);
+    assert(addMenuGeometry.left >= -1 && addMenuGeometry.right <= addMenuGeometry.viewportWidth + 1,
+      `Add menu horizontal overflow: ${JSON.stringify(addMenuGeometry)}`);
+    if (size.mobile) assert(addMenuGeometry.minButtonHeight >= 44,
+      `Add menu touch target below 44px: ${JSON.stringify(addMenuGeometry)}`);
+    await page.screenshot({ path: `${directory}/${size.name}-add-menu.png` });
+    const filesMenu = addMenu.getByRole('menuitem', { name: /文件和文件夹/ });
+    await filesMenu.click();
+    await addMenu.getByRole('menuitem', { name: '选择文件', exact: true }).waitFor();
+    await addMenu.getByRole('menuitem', { name: '选择文件夹', exact: true }).waitFor();
+    await filesMenu.click();
+    await addMenu.getByRole('menuitem', { name: /计划模式/ }).click();
+    await page.locator('.composer-plan').waitFor();
+    await addButton.click();
+    await page.locator('.composer-popover--add').getByRole('menuitem', { name: /退出计划模式/ }).click();
+    await page.locator('.composer-plan').waitFor({ state: 'detached' });
+    await addMenu.waitFor({ state: 'detached' });
+    await input.fill('/');
+    const slashMenu = page.locator('.slash-menu');
+    await slashMenu.waitFor();
+    await page.waitForTimeout(250);
+    const planOption = slashMenu.getByRole('option', { name: /\/plan/ });
+    const goalOption = slashMenu.getByRole('option', { name: /\/goal/ });
+    await planOption.waitFor();
+    await goalOption.waitFor();
+    assert.equal(await planOption.isDisabled(), false);
+    assert.equal(await goalOption.isDisabled(), false);
+    const slashGeometry = await slashMenu.evaluate(menu => {
+      const rect = menu.getBoundingClientRect();
+      const options = menu.querySelector('.slash-menu-options');
+      const buttonHeights = [...menu.querySelectorAll('button')].filter(button => button.getClientRects().length)
+        .map(button => button.getBoundingClientRect().height);
+      return {
+        top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right,
+        viewportHeight: innerHeight, viewportWidth: innerWidth,
+        scrollHeight: options?.scrollHeight ?? 0, clientHeight: options?.clientHeight ?? 0,
+        minButtonHeight: Math.min(...buttonHeights)
+      };
+    });
+    assert(slashGeometry.top >= -1 && slashGeometry.bottom <= slashGeometry.viewportHeight + 1,
+      `Slash menu outside viewport: ${JSON.stringify(slashGeometry)}`);
+    assert(slashGeometry.left >= -1 && slashGeometry.right <= slashGeometry.viewportWidth + 1,
+      `Slash menu horizontal overflow: ${JSON.stringify(slashGeometry)}`);
+    if (size.mobile) assert(slashGeometry.minButtonHeight >= 44,
+      `Slash menu touch target below 44px: ${JSON.stringify(slashGeometry)}`);
+    await page.screenshot({ path: `${directory}/${size.name}-slash-menu.png` });
+    await page.keyboard.press('Escape');
+    await slashMenu.waitFor({ state: 'detached' });
+    const goalActionsBefore = actions.length;
+    await input.fill('/goal Synthetic persistent objective');
+    await page.locator('.slash-menu').getByRole('option').filter({ hasText: '/goal' }).click();
+    await page.getByText('目标已启动', { exact: true }).waitFor();
+    assert(actions.slice(goalActionsBefore).some(action => action.method === 'thread/goal/set' &&
+      action.params.objective === 'Synthetic persistent objective' && action.params.origin === 'user'));
+    await input.fill('');
     const toolbarGeometry = async composer => {
       const value = await composer.evaluate(root => {
         const outer = root.getBoundingClientRect();
@@ -178,7 +273,8 @@ try {
         ['发送任务', '发送补充要求', '引导当前任务', '加入队列'].includes(control.name)).length, 1);
       await page.screenshot({ path: `${directory}/${size.name}-mobile-composer.png` });
       results.push({ viewport: size.name, composerOnly: true, emptyLayout, contentLayout,
-        singleRow: true, singlePrimaryAction: true, nativeQueuedComposer: true, noDictation: true, errors });
+        singleRow: true, singlePrimaryAction: true, nativeQueuedComposer: true,
+        nativeAddMenu: true, planGoalCommands: true, goalMutation: true, noDictation: true, errors });
       await context.close();
       continue;
     }
@@ -289,7 +385,7 @@ try {
       ctx.fillStyle = 'white'; ctx.font = '20px sans-serif'; ctx.fillText('Preview', 36, 58);
       return canvas.toDataURL().split(',')[1];
     });
-    await page.locator('.composer input[type=file]').setInputFiles(Array.from({ length: 5 }, (_, i) => ({
+    await page.locator('.composer input[data-file-input]').setInputFiles(Array.from({ length: 5 }, (_, i) => ({
       name: `selected-${i}.png`, mimeType: 'image/png',
       buffer: Buffer.from(selectedImage, 'base64')
     })));
@@ -417,7 +513,7 @@ try {
     await sideComposer.locator('.composer-stop').waitFor();
     await chooseSkill(sideComposer);
     await sideComposer.locator('textarea').fill('Keep side draft');
-    await sideComposer.locator('input[type=file]').setInputFiles({
+    await sideComposer.locator('input[data-file-input]').setInputFiles({
       name: 'side-image.png', mimeType: 'image/png', buffer: Buffer.from(selectedImage, 'base64')
     });
     await sideComposer.locator('.composer-image').waitFor();
@@ -433,6 +529,7 @@ try {
     results.push({ viewport: size.name, tailBefore, anchorDrift: anchorAfter - anchorBefore, ...layout, pasteSwitch: true, imagePreview: true,
       fileSelection: true, sendWhileSwitching: true, failedSendRetained: true, removalRetained: true,
       nativeRetry: true, nativeFailure: true, errorStyle, bannerStyle, manualReconnect: true, noActionReplay: true,
+      nativeAddMenu: true, planGoalCommands: true, goalMutation: true,
       mainActiveActions, sideActiveActions, singlePrimaryAction: true, stopAvailableWhenEmpty: true,
       noDictation: true, errors });
     await context.close();

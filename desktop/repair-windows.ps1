@@ -16,14 +16,14 @@ $background = Join-Path $Root "scripts\background-task-windows.mjs"
 $watcher = Join-Path $Root "scripts\watch-network-windows.ps1"
 if ($Target -eq "Tunnel" -and -not (Test-Path -LiteralPath $token)) { throw "No managed tunnel." }
 function Get-OwnedProcesses {
-  Get-CimInstance Win32_Process -Filter "Name = 'node.exe' OR Name = 'cloudflared.exe' OR Name = 'powershell.exe'" |
+  Get-CimInstance Win32_Process -Filter "Name LIKE 'node%.exe' OR Name = 'cloudflared.exe' OR Name = 'powershell.exe'" |
     Where-Object {
       $line = $_.CommandLine
       $line -and (
-        ($_.Name -eq "node.exe" -and $line.Contains($background) -and $line -match "(?:^|\s)`"?$role`"?(?:\s|$)") -or
-        ($Target -eq "Server" -and $_.Name -eq "node.exe" -and $line.Contains($entry)) -or
+        ($_.Name -like "node*.exe" -and $line.Contains($background) -and $line -match "(?:^|\s)`"?$role`"?(?:\s|$)") -or
+        ($Target -eq "Server" -and $_.Name -like "node*.exe" -and $line.Contains($entry)) -or
         ($Target -eq "Tunnel" -and (
-          ($_.Name -eq "node.exe" -and $line.Contains($supervisor)) -or
+          ($_.Name -like "node*.exe" -and $line.Contains($supervisor)) -or
           ($_.Name -eq "cloudflared.exe" -and $line.Contains($token)) -or
           ($_.Name -eq "powershell.exe" -and $line.Contains($watcher))
         ))

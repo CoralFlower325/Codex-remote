@@ -84,6 +84,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   const [taskMenuOpen, setTaskMenuOpen] = useState(false);
   const [renameDraft, setRenameDraft] = useState<string | null>(null);
   const [newTaskMode, setNewTaskMode] = useState<'default' | 'plan'>('default');
+  const [pendingPlan, setPendingPlan] = useState<{ threadId: string; mode: 'default' | 'plan' } | null>(null);
   const [commandDialog, setCommandDialog] = useState<CommandDialogState | null>(null);
   const [commandNotice, setCommandNotice] = useState<string | null>(null);
   const [archiveNotice, setArchiveNotice] = useState<{ threadId: string; archived: boolean; busy: boolean } | null>(null);
@@ -170,6 +171,29 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
   };
 
   useEffect(() => {
+    if (!pendingPlan || remote.activeTurnId || !activeThread || activeThread.id !== pendingPlan.threadId) return;
+    if (effectiveMode === pendingPlan.mode) {
+      setPendingPlan(null);
+      return;
+    }
+    let cancelled = false;
+    const mode = pendingPlan.mode;
+    void remote.setThreadSettings(activeThread.id, {
+      collaborationMode: collaborationMode(mode, effectiveModel, activeEffort)
+    }).then(() => {
+      if (cancelled) return;
+      setPendingPlan(null);
+      setCommandNotice(mode === 'plan' ? '已切换到计划模式' : '已退出计划模式');
+    }).catch(error => {
+      if (!cancelled) remote.setLastError(error instanceof Error ? error.message : String(error));
+    });
+    return () => { cancelled = true; };
+  }, [
+    pendingPlan, remote.activeTurnId, remote.setThreadSettings, activeThread?.id,
+    effectiveMode, effectiveModel, activeEffort
+  ]);
+
+  useEffect(() => {
     if (!commandNotice) return;
     const timer = window.setTimeout(() => setCommandNotice(null), 5000);
     return () => window.clearTimeout(timer);
@@ -246,6 +270,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     if (projectId !== undefined) setSelectedProjectId(projectId);
     setSidebarOpen(false);
     setNewTaskMode('default');
+    setPendingPlan(null);
     setCommandDialog(null);
     setComposerFocusRequest((value) => value + 1);
   }
@@ -316,7 +341,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
     const definition = slashCommands.find((entry) => entry.id === command)!;
     if (definition.needsThread && !hasSavedThread) throw new Error('先打开一个已保存的聊天。');
     if (definition.idleOnly && remote.activeTurnId) throw new Error('请等待当前任务结束。');
-    if (argument && !['rename', 'review', 'plan'].includes(command)) throw new Error(`/${command} 不接受参数。`);
+    if (argument && !['rename', 'review', 'plan', 'goal'].includes(command)) throw new Error(`/${command} 不接受参数。`);
     remote.setLastError(null);
     if (command === 'new') beginNewTask(activeThread?.projectId ?? selectedProjectId);
     else if (command === 'plan') {
@@ -324,10 +349,33 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
       const available = await remote.listModes();
       if (!available.data.some((entry) => entry.mode === mode)) throw new Error('当前 Codex 没有提供该协作模式。');
       if (!effectiveModel) throw new Error('请先选择可用模型。');
-      if (activeThread) await remote.setThreadSettings(activeThread.id, {
+      if (activeThread && remote.activeTurnId) {
+        setPendingPlan({ threadId: activeThread.id, mode });
+        setCommandNotice(mode === 'plan' ? '当前任务结束后切换到计划模式' : '当前任务结束后退出计划模式');
+      } else if (activeThread) await remote.setThreadSettings(activeThread.id, {
         collaborationMode: collaborationMode(mode, effectiveModel, activeEffort)
       });
       else setNewTaskMode(mode);
+    } else if (command === 'goal') {
+      const objective = argument.trim();
+      if (!objective) throw new Error('请输入要持续追求的目标内容。');
+      if (activeThread) {
+        await remote.setGoal(activeThread.id, { objective, status: 'active' });
+      } else {
+        const project = remote.projects.find((entry) => entry.id === selectedProjectId);
+        const cwd = selectedProjectRoot(project, projectRoots);
+        const thread = await remote.createThread({
+          ...(cwd ? { cwd } : {}),
+          ...(project?.id ? { projectId: project.id } : {}),
+          ...(newTaskModel ? { model: newTaskModel } : {}),
+          ...(newTaskEffort ? { effort: newTaskEffort } : {}),
+          ...(newTaskMode === 'plan'
+            ? { collaborationMode: collaborationMode('plan', effectiveModel, activeEffort || null) } : {}),
+          ...(effectivePermissions ? { permissions: effectivePermissions } : {})
+        });
+        await remote.setGoal(thread.id, { objective, status: 'active' });
+      }
+      setCommandNotice('目标已启动');
     } else if (command === 'compact') {
       await remote.compactThread(activeThread!.id);
       setCommandNotice('已请求压缩上下文');

@@ -11,8 +11,8 @@ See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
-Remote 0.2.29 pairs with stable manager 0.2.7, using manual installer upgrades.
-Install 0.2.7 over the old app, select the same host root and retry the update.
+Remote 0.2.30 pairs with stable manager 0.2.8, using manual installer upgrades.
+Install 0.2.8 over the old app, select the same host root and retry the update.
 Updating Remote cannot change the old manager's bundled updater.
 Manager self-update is preserved on the paused 0.2.0AU development line;
 see [the checkpoint](manager-self-update-checkpoints.md).
@@ -390,7 +390,7 @@ On phones, the conversation-index sheet uses the composer corner radius and a sm
 
 On phones, swipe right from the leftmost 28 CSS pixels to open the conversation sidebar. Swipe left on the open sidebar or its backdrop to close it. A deliberate horizontal swipe travels at least 56 CSS pixels; vertical scrolling, input fields, text selection, and dialogs are excluded. Gesture logic and touch-event handling have automated coverage; physical iOS Safari/PWA gesture acceptance is separate, including browser-reserved history gestures.
 
-Use **Settings → Refresh version → Check and update** to check uncached server metadata against the loaded page's version and build. An already current page stays open without refreshing. When an update exists, review its release summary and confirm **Update to ...**. Remote downloads the full public shell, verifies the new controller, then reloads and displays the completed update summary. Failures allow retry without removing login state, main-chat text drafts or push subscriptions. A successful update clears temporary side chats; main-chat ready PDF references, skills and bounded image data survive in tab-scoped storage for up to 24 hours, with explicit warnings for omitted or unfinished content. Existing tabs keep their old public assets during manual activation; a later natural activation cleans obsolete app caches. Older installed shells can open **`/update.html` in the same browser or installed web app**. This independent recovery page and `/version.json` bypass the installed shell cache; a current recovery check offers a return link without navigating automatically. Updates require network access; physical iOS Safari/PWA acceptance remains separate.
+Use **Settings → Refresh version → Check and update** to check uncached server metadata against the loaded page's version and build. An already current page stays open without refreshing. When an update exists, review its release summary and confirm **Update to ...**. Remote downloads the full public shell, verifies the new controller, then reloads and displays the completed update summary. Failures allow retry without removing login state, main-chat text drafts or push subscriptions. A successful update clears temporary side chats; main-chat ready document references, skills and bounded image data survive in tab-scoped storage for up to 24 hours, with explicit warnings for omitted or unfinished content. Existing tabs keep their old public assets during manual activation; a later natural activation cleans obsolete app caches. Older installed shells can open **`/update.html` in the same browser or installed web app**. This independent recovery page and `/version.json` bypass the installed shell cache; a current recovery check offers a return link without navigating automatically. Updates require network access; physical iOS Safari/PWA acceptance remains separate.
 
 **Settings → Check Remote updates** checks the backend on the connected host against
 the latest stable GitHub Release. Windows x64 and Apple Silicon installations must
@@ -578,15 +578,19 @@ separate close-and-interrupt behavior.
 
 ## File and Web Previews
 
-### PDF Attachments
+### File Attachments
 
-Use the composer's attachment button to select images or PDFs. A PDF uploads to
-the authenticated host before sending; its removable draft entry opens the
-existing page preview and original download. Failed uploads stay in the owning
-draft with Retry/Remove, including when you switch tasks. Upload retries reuse
-the same identifier and validate the content to avoid duplicate files.
+Use the composer's **+** menu to add files, a folder, a goal, plan mode or an
+enabled plugin. File selection accepts images, PDF, Office documents, text,
+Markdown, data files and common source-code files. Selected documents upload to
+the authenticated host before sending; removable draft entries open the existing
+preview and original download. A folder selection can add up to 20 supported
+files at once. Failed uploads stay in the owning draft with Retry/Remove,
+including when you switch tasks. Upload retries reuse the same identifier and
+validate the content to avoid duplicate files.
 
-Each PDF is limited to 20 MiB. Private `data/document-attachments/` storage has a
+Each document is limited to 20 MiB; images are limited to 10 MiB. Private
+`data/document-attachments/` storage has a
 1 GiB / 2048-document cap. Unsent uploads expire after 24 hours and are cleaned
 on a later upload; files retained before a submission are not automatically
 deleted, including if the model submission result is uncertain. Preserve this
@@ -594,15 +598,15 @@ directory through upgrades. Operators manage retained files on the host; moving
 or deleting them can break old references. At the cap, remove unneeded files
 deliberately or choose an existing host-file reference.
 
-Remote submits the real host path in native user file context, retaining PDF
+Remote submits the real host path in native user file context, retaining document
 references through steering, queues, temporary chats and stopped-message edits.
-It does not invent a native PDF API input type or extract/OCR every page on
+It does not invent a native document API input type or extract/OCR every page on
 upload. Whether Codex can inspect a file depends on its host tools and chat
 permissions. Upload success alone does not prove the model read the document.
-Browser reload restores ready main-chat PDF references and skill selections
+Browser reload restores ready main-chat document references and skill selections
 within the draft lifetime/capacity limits; unfinished or omitted context gets a
 recovery warning. Temporary side chats remain memory-only. Uploaded bytes follow
-the host retention rules above. PDF contents are never put in public caches or
+the host retention rules above. Document contents are never put in public caches or
 sent to an external viewer.
 
 ### Preview Controls
@@ -737,6 +741,7 @@ Type `/` at the start of the composer to browse commands and enabled skills. Fil
 | `/reasoning` | Open the current model's reasoning levels; accepts a supported level as an argument |
 | `/permissions` | Open per-chat permissions; `/approvals` is an alias |
 | `/plan` | Toggle native plan mode; `/plan on` and `/plan off` select it explicitly |
+| `/goal` | Start a native persistent goal; `/goal <objective>` sets its objective |
 | `/skills` | Browse enabled skills in the current working directory |
 | `/<skill-name>` | Attach an enabled skill to the next message using native skill input |
 | `/compact` | Request native context compaction for the current saved chat |
@@ -756,7 +761,14 @@ mentions. Older skill-only records are projected for display without changing
 native history. Disabled skills are excluded, and `/skills` still exposes skills
 whose names overlap built-in commands.
 
-`/plan <request>` enables plan mode and leaves the request in the composer for review before sending. Plan settings use the selected provider model and reasoning level, and Desktop-origin mode updates are reflected in Remote. Compaction, review, and fork require a saved chat; they and mode changes are unavailable while a turn is active. Existing images remain attached when using settings commands.
+The **+** menu lists enabled plugin skills directly, alongside files and folders,
+goal, plan mode and drawing. `/plan <request>` enables plan mode and leaves the
+request in the composer for review before sending. Plan settings use the selected
+provider model and reasoning level, and Desktop-origin mode updates are reflected
+in Remote. If a plan switch is requested while a turn is active, Remote keeps the
+command available and applies the new mode after that turn completes.
+Compaction, review and fork still require a saved idle chat. Existing images
+remain attached when using settings commands.
 
 Commands call the owning App Server or open the corresponding UI. A failed command keeps its draft and reports the native error. Unknown slash words are not silently sent to the model. Paths containing further slashes and multiline messages remain ordinary text. The available list is the adaptation above, not every CLI-only or Desktop-only command; unsupported runtime methods report an error. Native compaction/review/fork mutations have synthetic browser acceptance; this release's live native check covers skill/mode/MCP reads, not model-billed reviews or compaction on real chats.
 

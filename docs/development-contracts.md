@@ -264,6 +264,14 @@ Release and privacy policy remains in AGENTS.md.
   Include the native `[$name](path)` text mention as well, including skill-only
   sends, queues, steering, side chats and edits; do not duplicate existing mentions.
   Display legacy skill-only inputs without rewriting persisted history.
+  The add control opens a native-style menu for files/folders, goal, plan mode,
+  drawing and enabled plugin skills. File/folder input accepts supported images,
+  PDF, Office, text, data and source files through private bounded storage; keep
+  the same draft, preview, retention and native file-reference rules. `/goal`
+  uses the native thread-goal mutation. Plan and goal remain selectable during a
+  running turn; a plan-mode change requested during a turn is applied after that
+  turn completes. Mobile add and slash menus stay compact overlays with bounded
+  height and internal scrolling rather than covering most of the conversation.
   Keep collaboration mode synchronized through resume/settings notifications.
   Keep main-chat image/skill drafts in workspace memory per chat, including
   pending file reads/sends across navigation. Persist ready document references,

@@ -141,9 +141,14 @@
 }
 
 .composer-setting > span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.composer-setting > span:first-child {
+  flex: 0 1 auto;
 }
 
 .composer-setting .composer-effort {
@@ -310,6 +315,149 @@
 .model-option-copy > small { color: var(--muted); font-size: 11px; line-height: 1.5; }
 .model-option > svg { flex-shrink: 0; }
 .model-menu-note { margin: 4px 9px 8px; line-height: 1.5; overflow-wrap: anywhere; }
+
+.composer-popover--add {
+  width: min(352px, calc(100vw - 24px));
+  max-height: min(72vh, 680px);
+}
+
+.composer-add-menu {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.composer-add-section {
+  display: grid;
+  gap: 1px;
+}
+
+.composer-add-section + .composer-add-section {
+  border-top: 1px solid var(--line);
+  padding-top: 7px;
+}
+
+.composer-add-section-label {
+  display: flex;
+  min-height: 26px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.composer-add-option {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  padding: 6px 9px;
+  color: var(--ink);
+  text-align: left;
+}
+
+.composer-add-option:hover,
+.composer-add-option:focus-visible {
+  background: var(--surface-hover);
+}
+
+.composer-add-option > svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.composer-add-option > svg:last-child {
+  margin-left: auto;
+  transition: transform 140ms ease-out;
+}
+
+.composer-add-option > svg:last-child.is-open {
+  transform: rotate(90deg);
+}
+
+.composer-add-option-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.composer-add-option-copy > span {
+  font-size: 13px;
+  font-weight: 450;
+}
+
+.composer-add-option-copy > small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-add-submenu {
+  display: grid;
+  gap: 1px;
+  margin: 1px 9px 5px 37px;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  padding: 3px;
+}
+
+.composer-add-submenu > button {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  padding: 6px 8px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  text-align: left;
+}
+
+.composer-add-submenu > button:hover,
+.composer-add-submenu > button:focus-visible {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.composer-add-plugins {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.composer-add-empty,
+.composer-add-error {
+  padding: 8px 9px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.composer-add-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.composer-add-error > span {
+  min-width: 0;
+  flex: 1;
+}
 
 .settings-note {
   color: var(--muted);

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { Router, raw, type RequestHandler } from 'express';
+import { documentExtension, isSupportedDocumentName } from '../shared/document-formats.js';
 
 export const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
 const MAX_STORAGE_BYTES = 1024 * 1024 * 1024;
@@ -19,8 +20,10 @@ class AttachmentError extends Error {
 
 function safeName(value: string): string {
   const name = value.normalize('NFC').replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g, '_').replace(/[. ]+$/, '');
-  if (!/\.pdf$/i.test(name) || name.length > 180 || Buffer.byteLength(name, 'utf8') > 240 || !name.slice(0, -4).trim()) {
-    throw new AttachmentError('请选择 PDF 文件；文件名过长时请缩短后重试。');
+  const extension = documentExtension(name);
+  if (!isSupportedDocumentName(name) || name.length > 180 || Buffer.byteLength(name, 'utf8') > 240 ||
+      !name.slice(0, -extension.length).trim()) {
+    throw new AttachmentError('请选择受支持的图片、PDF、Office、文本或代码文件；文件名过长时请缩短后重试。');
   }
   return /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name) ? `_${name}` : name;
 }
@@ -86,10 +89,11 @@ export class DocumentAttachments {
     return this.run(async () => {
       const folder = this.folder(id), name = safeName(originalName);
       if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > MAX_DOCUMENT_BYTES) {
-        throw new AttachmentError('单个 PDF 不能超过 20 MB，且不能为空。', 413);
+        throw new AttachmentError('单个附件不能超过 20 MB，且不能为空。', 413);
       }
-      if (!/^%PDF-\d\.\d/.test(bytes.subarray(0, 1024).toString('latin1').trimStart()) ||
-        !bytes.subarray(-2048).includes(Buffer.from('%%EOF'))) {
+      if (documentExtension(name) === '.pdf' &&
+        (!/^%PDF-\d\.\d/.test(bytes.subarray(0, 1024).toString('latin1').trimStart()) ||
+          !bytes.subarray(-2048).includes(Buffer.from('%%EOF')))) {
         throw new AttachmentError('文件内容不是有效的 PDF，请重新选择。', 422);
       }
       const used = await this.sweep();
@@ -156,14 +160,13 @@ export function documentAttachmentRouter(authenticate: RequestHandler, trusted: 
     catch (error) { next(error); }
   });
   router.post('/:id', (req, res, next) => {
-    if (!req.is('application/pdf')) { res.status(415).json({ error: '请选择 PDF 文件。' }); return; }
     if (receiving >= 4) { res.status(429).json({ error: '正在上传其他附件，请稍后重试。' }); return; }
     receiving++;
     let released = false;
     const release = () => { if (!released) { released = true; receiving--; } };
     res.once('finish', release); res.once('close', release);
     next();
-  }, raw({ type: 'application/pdf', limit: MAX_DOCUMENT_BYTES }), authenticate, async (req, res, next) => {
+  }, raw({ type: () => true, limit: MAX_DOCUMENT_BYTES }), authenticate, async (req, res, next) => {
     try {
       let name = '';
       try { name = decodeURIComponent(req.get('x-attachment-name') ?? ''); }
@@ -176,7 +179,7 @@ export function documentAttachmentRouter(authenticate: RequestHandler, trusted: 
     const status = error instanceof AttachmentError ? error.status
       : (error as { type?: string }).type === 'entity.too.large' ? 413 : 500;
     res.status(status).json({ error: error instanceof AttachmentError ? error.message
-      : status === 413 ? '单个 PDF 不能超过 20 MB。' : '附件保存失败，请重试。' });
+      : status === 413 ? '单个附件不能超过 20 MB。' : '附件保存失败，请重试。' });
   }) as import('express').ErrorRequestHandler);
   return router;
 }

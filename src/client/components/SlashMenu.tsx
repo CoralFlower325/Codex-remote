@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from 'react-dom';
 import type { SlashOption } from '../slash-commands';
 
-export function SlashMenu({ id, options, index, skillsOnly, loading, error, anchor, onSelect, onIndex, onClose }: {
+export function SlashMenu({ id, options, index, skillsOnly, loading, error, anchor, layout, onSelect, onIndex, onClose }: {
   id: string;
   options: SlashOption[];
   index: number;
@@ -11,6 +11,7 @@ export function SlashMenu({ id, options, index, skillsOnly, loading, error, anch
   loading: boolean;
   error: string | null;
   anchor: RefObject<HTMLDivElement | null>;
+  layout: 'desktop' | 'mobile';
   onSelect: (option: SlashOption) => void;
   onIndex: (index: number) => void;
   onClose: () => void;
@@ -22,11 +23,18 @@ export function SlashMenu({ id, options, index, skillsOnly, loading, error, anch
       const rect = anchor.current?.getBoundingClientRect();
       if (!rect) return;
       const viewport = window.visualViewport;
+      const viewportTop = viewport?.offsetTop ?? 0;
+      const viewportHeight = viewport?.height ?? window.innerHeight;
+      const available = Math.max(160, rect.top - viewportTop - 8);
       setStyle({
-        left: Math.max(8, rect.left),
-        width: Math.min(440, rect.width, window.innerWidth - 16),
+        left: layout === 'mobile' ? 12 : Math.max(8, rect.left),
+        ...(layout === 'mobile' ? { right: 12, width: 'auto' } : {
+          width: Math.min(440, rect.width, window.innerWidth - 16)
+        }),
         bottom: window.innerHeight - rect.top + 6,
-        maxHeight: Math.min(360, Math.max(80, rect.top - (viewport?.offsetTop ?? 0) - 12))
+        maxHeight: layout === 'mobile'
+          ? Math.min(360, viewportHeight * .48, available)
+          : Math.min(360, available)
       });
     };
     position();
@@ -41,7 +49,7 @@ export function SlashMenu({ id, options, index, skillsOnly, loading, error, anch
       window.visualViewport?.removeEventListener('resize', position);
       window.visualViewport?.removeEventListener('scroll', position);
     };
-  }, [anchor]);
+  }, [anchor, layout]);
   useEffect(() => {
     document.getElementById(`${id}-${index}`)?.scrollIntoView({ block: 'nearest' });
   }, [id, index]);
@@ -53,7 +61,11 @@ export function SlashMenu({ id, options, index, skillsOnly, loading, error, anch
     return () => window.removeEventListener('pointerdown', dismiss);
   }, [anchor, onClose]);
   return createPortal(
-    <div className="slash-menu" style={style} ref={root} onMouseDown={(event) => event.preventDefault()}>
+    <>
+      {layout === 'mobile' && <button type="button" className="slash-menu-backdrop"
+        aria-label="关闭命令菜单" onClick={onClose} tabIndex={-1} />}
+    <div className={`slash-menu${layout === 'mobile' ? ' slash-menu--mobile' : ''}`}
+      style={style} ref={root} onMouseDown={(event) => event.preventDefault()}>
       <div className="slash-menu-heading">
         <span>{skillsOnly ? '技能' : '命令与技能'}</span>
         {loading && <LoaderCircle size={13} className="spin" aria-label="正在读取技能" />}
@@ -75,7 +87,8 @@ export function SlashMenu({ id, options, index, skillsOnly, loading, error, anch
         {!options.length && <p className="slash-menu-empty">{skillsOnly ? loading ? '正在读取技能…' : '没有匹配的已启用技能' : '没有匹配的命令或技能'}</p>}
       </div>
       {error && <div className="slash-menu-error" role="status">{error}</div>}
-    </div>,
+    </div>
+    </>,
     document.body
   );
 }

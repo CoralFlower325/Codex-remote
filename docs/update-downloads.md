@@ -5,16 +5,16 @@
 失败后尝试官方 GitHub。分发由项目的 Cloudflare Worker 提供，不要求更新主机配置
 Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 
-## 安装管理器 0.2.7
+## 安装管理器 0.2.8
 
 | 系统 | 项目分发 | 官方备用 |
 | --- | --- | --- |
-| macOS Apple Silicon | [DMG](https://downloads.73916482.xyz/releases/download/v0.2.29/Codex-Remote-Manager-0.2.7-mac-arm64.dmg) · [ZIP](https://downloads.73916482.xyz/releases/download/v0.2.29/Codex-Remote-Manager-0.2.7-mac-arm64.zip) | [DMG](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.29/Codex-Remote-Manager-0.2.7-mac-arm64.dmg) · [ZIP](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.29/Codex-Remote-Manager-0.2.7-mac-arm64.zip) |
-| Windows x64 | [安装程序](https://downloads.73916482.xyz/releases/download/v0.2.29/Codex-Remote-Manager-0.2.7-win-x64.exe) | [安装程序](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.29/Codex-Remote-Manager-0.2.7-win-x64.exe) |
+| macOS Apple Silicon | [DMG](https://downloads.73916482.xyz/releases/download/v0.2.30/Codex-Remote-Manager-0.2.8-mac-arm64.dmg) · [ZIP](https://downloads.73916482.xyz/releases/download/v0.2.30/Codex-Remote-Manager-0.2.8-mac-arm64.zip) | [DMG](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.30/Codex-Remote-Manager-0.2.8-mac-arm64.dmg) · [ZIP](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.30/Codex-Remote-Manager-0.2.8-mac-arm64.zip) |
+| Windows x64 | [安装程序](https://downloads.73916482.xyz/releases/download/v0.2.30/Codex-Remote-Manager-0.2.8-win-x64.exe) | [安装程序](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.30/Codex-Remote-Manager-0.2.8-win-x64.exe) |
 
 1. 从菜单栏／托盘菜单退出旧管理器。退出管理器不停止 Remote。
-2. 下载并安装 0.2.7，覆盖旧应用。macOS 将新应用替换到原应用位置。
-3. 重新打开管理器，确认显示 0.2.7，选择原 Remote 安装目录。
+2. 下载并安装 0.2.8，覆盖旧应用。macOS 将新应用替换到原应用位置。
+3. 重新打开管理器，确认显示 0.2.8，选择原 Remote 安装目录。
 4. 有中断事务时先恢复；否则重新检查并执行主机更新。保留事务记录和备份，
    不要为重试删除本机数据、文档或更新锁。
 
@@ -24,12 +24,12 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 本次不恢复 AU 功能；签名、公证和真实 Mac 登录环境验收仍是独立断点。
 未签名安装包可能需要按系统下载信誉或 Gatekeeper 流程确认。
 
-Remote 0.2.29 稳定 Windows 隐藏服务启动，管理器 0.2.7 增加更新锁进程
-身份查询重试并迁移直接 Node 任务；四个 Remote 运行包和管理器安装包位于
-`v0.2.29`。
+Remote 0.2.30 增加原生添加上下文菜单、`/goal`、通用文件与文件夹选择，
+并修复移动端命令菜单尺寸；管理器 0.2.8 识别版本化 Node 运行时，不再误报
+端口被占用。四个 Remote 运行包和管理器安装包位于 `v0.2.30`。
 运行包 Ed25519 清单签名已启用，与仍暂停的 AU 和 macOS 应用签名分别管理。
 
-English: install manager 0.2.7 manually over the old app, reopen it and select the same
+English: install manager 0.2.8 manually over the old app, reopen it and select the same
 Remote directory before retrying. Host updates cannot patch the old manager's
 bundled updater. Manager self-update, signing and notarization remain paused.
 

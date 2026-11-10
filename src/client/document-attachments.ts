@@ -1,5 +1,6 @@
 import { api } from './api';
 import { previewContentUrl } from '../shared/file-preview';
+import { documentExtension } from '../shared/document-formats';
 import type { ComposerAttachment, ComposerDocumentAttachment } from './types';
 
 let uploading = 0;
@@ -11,7 +12,10 @@ export async function uploadDocument(file: File, id: string): Promise<ComposerDo
     const result = await api<{ id: string; name: string; path: string; size: number }>(
       `/api/attachments/${encodeURIComponent(id)}`, {
         method: 'POST', body: file, timeoutMs: 120000,
-        headers: { 'Content-Type': 'application/pdf', 'X-Attachment-Name': encodeURIComponent(file.name) }
+        headers: {
+          'Content-Type': documentExtension(file.name) === '.pdf' ? 'application/pdf' : 'application/octet-stream',
+          'X-Attachment-Name': encodeURIComponent(file.name)
+        }
       });
     return { id: result.id, uploadId: result.id, name: result.name, path: result.path,
       size: result.size, url: previewContentUrl(result.path), kind: 'document' };

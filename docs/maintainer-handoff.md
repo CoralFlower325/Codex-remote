@@ -15,8 +15,8 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.29** / manager **0.2.7**, tag
-`v0.2.29`.
+The current published release is Remote **0.2.30** / manager **0.2.8**, tag
+`v0.2.30`.
 The [native queued-guide acceptance](native-queued-guide-0.2.27.md) records the
 single primary action, immediate queued-submission strip and history-trigger
 placement, plus the 0.2.28 follow-up record for optimistic send/Guide display,
@@ -35,27 +35,28 @@ The 0.2.28 batch makes normal sends and Guide optimistic, keeps terminal turn
 state monotonic against late snapshots, prioritizes approvals and folds pending
 items under pressure.
 Runtime packaging remains gated on the tested Node 22.19.x toolchain and signed assets.
-The seven `v0.2.29` assets, refreshed download snapshot, `codexwin` static edge,
-local Windows installation and manager 0.2.7 have been verified. The 0.2.29 patch
-replaces the unstable direct Node task action with the hidden `wscript` wrapper,
-and manager Start/Stop or repair migrates existing direct tasks.
-See the [0.2.29 release acceptance](remote-0.2.29-release-acceptance.md).
+The 0.2.30 batch adds a native-style add menu for files, folders, goal, plan mode,
+drawing and enabled plugins; `/goal`; generic document/source uploads; compact
+mobile command menus; and manager 0.2.8 recognition of versioned Node runtime
+executables. The live 0.2.29 installation reported `running=true` and
+`conflict=false` with manager 0.2.8's installed read-only probe. Publication,
+Remote installation and edge deployment are recorded separately below.
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.
 
-Remote **0.2.29** keeps the mobile composer toolbar on one row without shrinking
+Remote **0.2.30** keeps the mobile composer toolbar on one row without shrinking
 its 36px or 44px controls. Active turns keep one primary action and show an
 optimistic queued row until the native queue returns the same
 `clientUserMessageId`; Guide uses `turn/steer`, and disabling queue switches that
-turn to direct steering. Manager **0.2.7** owns the Windows runtime migration,
-retry-safe update-lock identity reads and
-repair path while retaining the 0.2.5 password IPC alignment.
+turn to direct steering. The add and slash menus stay compact overlays on phones.
+Manager **0.2.8** recognizes `node-22.19.0-127.exe` and other managed versioned
+Node names in status, repair, service control and update ownership checks.
 
 Runtime updates now require Ed25519 publisher signatures against bundled public
 keys, including signed commit identity for source fallback. The private key stays
 outside the repository; the `RELEASE_SIGNING_KEY` GitHub secret and formal
 two-platform signing workflow have been validated. Follow [release-signing.md](release-signing.md) before a
-formal runtime release. Manager 0.2.7 requires its own installer; changing Remote
+formal runtime release. Manager 0.2.8 requires its own installer; changing Remote
 does not patch an already installed manager. AU self-update and macOS application
 signing/notarization remain paused.
 

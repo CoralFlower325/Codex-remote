@@ -17,6 +17,8 @@ import { useComposerDraft } from './ComposerDrafts';
 import { submittedComposerDraft, type ComposerInput } from '../composer-drafts';
 import { retainDocuments, uploadDocument } from '../document-attachments';
 import { PreviewLink } from './PreviewLinks';
+import { ComposerAddMenu } from './ComposerAddMenu';
+import { documentAccept, isSupportedDocumentName } from '../../shared/document-formats';
 
 export interface ComposerProps {
   variant: 'home' | 'thread';
@@ -75,10 +77,11 @@ export function Composer({
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
+  const [skillsRequest, setSkillsRequest] = useState(0);
   const [focused, setFocused] = useState(false);
   const [slashDismissed, setSlashDismissed] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
-  const [menu, setMenu] = useState<'settings' | 'models' | 'permissions' | 'projects' | null>(null);
+  const [menu, setMenu] = useState<'settings' | 'models' | 'permissions' | 'projects' | 'add' | null>(null);
   const [renderedMenu, setRenderedMenu] = useState<typeof menu>(null);
   const [popoverPhase, setPopoverPhase] = useState<'enter' | 'idle' | 'exit'>('enter');
   const [popoverStyle, setPopoverStyle] = useState<CSSProperties>({});
@@ -90,7 +93,9 @@ export function Composer({
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const permissionButtonRef = useRef<HTMLButtonElement>(null);
   const projectButtonRef = useRef<HTMLButtonElement>(null);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
   const commandRunningRef = useRef(false);
   const skillsLoaderRef = useRef(loadSkills);
   const skillScopeRef = useRef(skillScope);
@@ -102,7 +107,10 @@ export function Composer({
   const modelInfo = findModelInfo(models, model);
   const effortOptions = useMemo(() => reasoningOptionsWithInherit(modelInfo), [modelInfo]);
   const activeMenu = renderedMenu ?? menu;
-  const menuLabel = activeMenu === 'permissions' ? '访问权限' : activeMenu === 'models' ? '模型' : activeMenu === 'projects' ? '项目' : '推理强度';
+  const menuLabel = activeMenu === 'add' ? '添加'
+    : activeMenu === 'permissions' ? '访问权限'
+      : activeMenu === 'models' ? '模型'
+        : activeMenu === 'projects' ? '项目' : '推理强度';
   draftRef.current = draft;
   const slashQuery = parseSlashQuery(draft);
   const slashOpen = focused && Boolean(slashQuery) && !slashDismissed && !menu && !sending && !disabled;
@@ -178,7 +186,7 @@ export function Composer({
     setSkillsError(null);
   }, [skillScope]);
   useEffect(() => {
-    if (!slashOpen) return;
+    if (!slashOpen && menu !== 'add') return;
     let cancelled = false;
     setSkillsLoading(true);
     void skillsLoaderRef.current().then((result) => {
@@ -189,7 +197,7 @@ export function Composer({
       if (!cancelled) setSkillsError(`无法读取技能：${error.message}`);
     }).finally(() => { if (!cancelled) setSkillsLoading(false); });
     return () => { cancelled = true; };
-  }, [slashOpen, skillScope]);
+  }, [slashOpen, menu, skillScope, skillsRequest]);
 
   const upload = async (attachment: ComposerDocumentAttachment) => {
     if (!attachment.file) return;
@@ -206,17 +214,22 @@ export function Composer({
   };
   const addFiles = async (files: FileList | null) => {
     const input = fileRef.current;
+    const folder = folderRef.current;
     try {
-      const results = await Promise.allSettled(Array.from(files ?? []).map(async (file) => {
-        if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
-          if (file.size > 20 * 1024 * 1024 || file.size === 0) throw new Error('单个 PDF 不能超过 20 MB，且不能为空。');
+      const selected = Array.from(files ?? []);
+      if (selected.length > 20) throw new Error('一次最多添加 20 个文件。');
+      const results = await Promise.allSettled(selected.map(async (file) => {
+        if (isSupportedDocumentName(file.name)) {
+          if (file.size > 20 * 1024 * 1024 || file.size === 0) throw new Error('单个文件不能超过 20 MB，且不能为空。');
           const attachment: ComposerDocumentAttachment = { id: randomUUID(), name: file.name, kind: 'document',
             path: '', url: '', size: file.size, status: 'uploading', file };
           setAttachments(current => [...current, attachment]);
           await upload(attachment);
           return;
         }
-        if (!file.type.startsWith('image/')) throw new Error('请选择图片或 PDF 文件。');
+        if (!file.type.startsWith('image/')) {
+          throw new Error(`${file.name} 的格式不受支持；请选择图片、PDF、Office、文本或代码文件。`);
+        }
         if (file.size > 10 * 1024 * 1024) throw new Error('单张图片不能超过 10 MB。');
         const url = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -229,7 +242,10 @@ export function Composer({
       const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
       if (failed) onError(failed.reason);
     } catch (error) { onError(error); }
-    finally { if (input) input.value = ''; }
+    finally {
+      if (input) input.value = '';
+      if (folder) folder.value = '';
+    }
   };
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -243,7 +259,9 @@ export function Composer({
   }, [focusRequest]);
 
   const closeMenu = () => {
-    const trigger = activeMenu === 'permissions' ? permissionButtonRef.current : activeMenu === 'projects' ? projectButtonRef.current : settingsButtonRef.current;
+    const trigger = activeMenu === 'add' ? addButtonRef.current
+      : activeMenu === 'permissions' ? permissionButtonRef.current
+        : activeMenu === 'projects' ? projectButtonRef.current : settingsButtonRef.current;
     setMenu(null);
     trigger?.focus({ preventScroll: true });
   };
@@ -274,19 +292,25 @@ export function Composer({
     const updatePosition = () => {
       if (layout === 'mobile') {
         const top = composerRef.current?.getBoundingClientRect().top ?? window.innerHeight - 118;
+        const viewport = window.visualViewport;
+        const viewportTop = viewport?.offsetTop ?? 0;
+        const viewportHeight = viewport?.height ?? window.innerHeight;
         setPopoverStyle({
-          position: 'fixed', left: 8, right: 8, width: 'auto',
+          position: 'fixed', left: 12, right: 12, width: 'auto',
           bottom: window.innerHeight - top + 8,
-          maxHeight: Math.min(window.innerHeight * .55, top - 16),
+          maxHeight: Math.min(menu === 'add' ? 440 : viewportHeight * .58,
+            viewportHeight * (menu === 'add' ? .48 : .58), Math.max(180, top - viewportTop - 8)),
           transformOrigin: '50% 100%'
         });
         return;
       }
-      const trigger = menu === 'permissions' ? permissionButtonRef.current : menu === 'projects' ? projectButtonRef.current : settingsButtonRef.current;
+      const trigger = menu === 'add' ? addButtonRef.current
+        : menu === 'permissions' ? permissionButtonRef.current
+          : menu === 'projects' ? projectButtonRef.current : settingsButtonRef.current;
       if (!trigger) return;
       const rect = trigger.getBoundingClientRect();
-      const alignStart = menu === 'permissions' || menu === 'projects';
-      const width = Math.min(alignStart ? 296 : 224, window.innerWidth - 24);
+      const alignStart = menu === 'permissions' || menu === 'projects' || menu === 'add';
+      const width = Math.min(menu === 'add' ? 352 : alignStart ? 296 : 224, window.innerWidth - 24);
       setPopoverStyle({
         position: 'fixed',
         left: Math.max(12, Math.min(alignStart ? rect.left : rect.right - width, window.innerWidth - width - 12)),
@@ -337,8 +361,8 @@ export function Composer({
     }
     const command = option.command;
     if (!command) return;
-    if (command === 'skills' || command === 'help') {
-      updateDraft(command === 'skills' ? '/skills ' : '/');
+    if (command === 'skills' || command === 'help' || command === 'goal' && !query.argument.trim()) {
+      updateDraft(command === 'skills' ? '/skills ' : command === 'goal' ? '/goal ' : '/');
       textareaRef.current?.focus();
       return;
     }
@@ -375,6 +399,45 @@ export function Composer({
       commandRunningRef.current = false;
       setSending(false);
     }
+  };
+
+  const addSkill = (skill: SkillInfo) => {
+    setSelectedSkills(current => current.some(entry => entry.path === skill.path) ? current : [...current, skill]);
+    setMenu(null);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const beginGoal = () => {
+    setMenu(null);
+    updateDraft('/goal ');
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const beginDrawing = () => {
+    const imageSkill = skills.find(skill => skill.enabled &&
+      /imagegen|image generation|图片生成|绘图/i.test(`${skill.name} ${skill.interface?.displayName ?? ''}`));
+    if (imageSkill) {
+      addSkill(imageSkill);
+      return;
+    }
+    setMenu(null);
+    updateDraft('请绘制：');
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const togglePlan = () => {
+    setMenu(null);
+    void onCommand('plan', mode === 'plan' ? 'off' : 'on').catch(onError);
+  };
+
+  const chooseFile = () => {
+    setMenu(null);
+    window.requestAnimationFrame(() => fileRef.current?.click());
+  };
+
+  const chooseFolder = () => {
+    setMenu(null);
+    window.requestAnimationFrame(() => folderRef.current?.click());
   };
 
   const submit = async () => {
@@ -425,14 +488,14 @@ export function Composer({
   return (
     <div className={`composer-wrap composer-wrap--${variant}`} ref={composerRef}>
       {slashOpen && <SlashMenu id={slashId} options={options} index={slashIndex} skillsOnly={skillsOnly}
-        loading={skillsLoading} error={skillsError} anchor={composerRef}
+        loading={skillsLoading} error={skillsError} anchor={composerRef} layout={layout}
         onSelect={(option) => void chooseSlash(option)} onIndex={setSlashIndex} onClose={() => setSlashDismissed(true)} />}
       {renderedMenu && createPortal(
         <>
           <button type="button" className={`composer-menu-dismiss${layout === 'mobile' ? ' composer-popover-backdrop' : ''}${popoverPhase === 'exit' ? ' is-exiting' : ''}`}
             aria-label="关闭菜单" onClick={closeMenu} tabIndex={-1} />
           <div ref={popoverRef}
-            className={`composer-popover${layout === 'mobile' ? ' composer-popover--mobile' : ''} composer-popover--${popoverPhase}`}
+            className={`composer-popover${layout === 'mobile' ? ' composer-popover--mobile' : ''}${activeMenu === 'add' ? ' composer-popover--add' : ''} composer-popover--${popoverPhase}`}
             style={popoverStyle} role="menu"
             aria-label={menuLabel}
             onKeyDown={(event) => {
@@ -461,10 +524,14 @@ export function Composer({
                 <button type="button" className="icon-button icon-button--small" aria-label="返回推理强度"
                   title="返回推理强度" onClick={() => setMenu('settings')}><ArrowLeft size={15} /></button>
               )}
-              <span>{menuLabel}</span>
+              {activeMenu !== 'add' && <span>{menuLabel}</span>}
               {layout === 'mobile' && <button type="button" className="icon-button" aria-label="关闭菜单" onClick={closeMenu}><X size={18} /></button>}
             </div>
-            <div className="model-list">
+            {activeMenu === 'add' ? <ComposerAddMenu
+              skills={skills} loading={skillsLoading} error={skillsError} mode={mode}
+              onChooseFile={chooseFile} onChooseFolder={chooseFolder} onGoal={beginGoal}
+              onPlan={togglePlan} onDrawing={beginDrawing} onSkill={addSkill}
+              onRetrySkills={() => setSkillsRequest(value => value + 1)} /> : <div className="model-list">
               {activeMenu === 'projects' ? (
                 <>
                   <button type="button" role="menuitemradio" className="model-option project-option"
@@ -507,7 +574,7 @@ export function Composer({
                   {option.value === effort && <Check size={15} aria-hidden="true" />}
                 </button>
               ))}
-            </div>
+            </div>}
             {activeMenu === 'settings' && <p className="settings-note model-menu-note">推理强度影响思考深度、响应时间和用量；可用档位由当前模型决定。</p>}
             {activeMenu === 'settings' && effortOptions.length === 1 &&
               <p className="settings-note model-menu-note">当前模型目录未返回可用推理档位，请稍后重试同步。</p>}
@@ -539,7 +606,7 @@ export function Composer({
                   : <span title={attachment.name}>{attachment.name}</span>}
                 <small role={attachment.status ? 'status' : undefined}>
                   {attachment.status === 'uploading' ? '正在上传' : attachment.status === 'failed'
-                    ? attachment.error : attachment.size != null ? `${(attachment.size / 1024 / 1024).toFixed(1)} MB` : 'PDF'}
+                    ? attachment.error : attachment.size != null ? `${(attachment.size / 1024 / 1024).toFixed(1)} MB` : '文件'}
                 </small>
               </div>
               {attachment.status === 'uploading' && <LoaderCircle size={15} className="spin" aria-hidden="true" />}
@@ -554,7 +621,16 @@ export function Composer({
               onClick={() => setAttachments((current) => current.filter((image) => image.id !== attachment.id))}><X size={14} /></button>
           </div>)}
         </div>}
-        <input type="file" ref={fileRef} hidden multiple accept="image/*,application/pdf,.pdf"
+        <input type="file" data-file-input ref={fileRef} hidden multiple accept={`image/*,${documentAccept}`}
+          onChange={(event) => void addFiles(event.target.files)} />
+        <input type="file" data-folder-input hidden multiple accept={`image/*,${documentAccept}`}
+          ref={input => {
+            folderRef.current = input;
+            if (input) {
+              input.setAttribute('webkitdirectory', '');
+              input.setAttribute('directory', '');
+            }
+          }}
           onChange={(event) => void addFiles(event.target.files)} />
         <label className="sr-only" htmlFor={controlId}>{temporary ? '侧边聊天消息' : variant === 'home' ? '输入任务内容' : '继续当前任务'}</label>
         <textarea id={controlId} ref={textareaRef} value={draft}
@@ -565,7 +641,7 @@ export function Composer({
           onPaste={(event) => {
             if (sending || disabled) return;
             const files = event.clipboardData.files;
-            if ([...files].some((file) => file.type.startsWith('image/') || file.type === 'application/pdf' || /\.pdf$/i.test(file.name))) {
+            if ([...files].some((file) => file.type.startsWith('image/') || isSupportedDocumentName(file.name))) {
               event.preventDefault(); void addFiles(files);
             }
           }}
@@ -617,8 +693,10 @@ export function Composer({
         />
         <div className="composer-toolbar">
           <div className="composer-toolbar-left">
-            <button type="button" className="composer-circle-button composer-add" aria-label="添加图片或 PDF" title="添加图片或 PDF"
-              disabled={sending || disabled} onClick={() => fileRef.current?.click()}><Plus size={15} /></button>
+            <button type="button" ref={addButtonRef} className="composer-circle-button composer-add"
+              aria-label="添加文件和上下文" title="添加文件和上下文" aria-haspopup="menu"
+              aria-expanded={menu === 'add'} disabled={sending || disabled}
+              onClick={() => setMenu(current => current === 'add' ? null : 'add')}><Plus size={15} /></button>
             {mode === 'plan' && <button type="button" className="composer-plan" title="退出计划模式"
               aria-label="退出计划模式" disabled={sending || disabled || Boolean(activeTurnId)}
               onClick={() => void onCommand('plan', 'off').catch(onError)}><ListTodo size={14} /><span>计划</span><X size={12} /></button>}

@@ -29,6 +29,18 @@ describe('local manager control boundary', () => {
     expect(control).toContain('nodeRuntimeRoot');
     expect(control).toContain('hiddenLauncher');
   });
+  it('recognizes the versioned Node runtime in every Windows ownership check', async () => {
+    for (const file of [
+      '../scripts/remote-control-windows.ps1',
+      '../scripts/web-update-service-windows.ps1',
+      './status-windows.ps1',
+      './repair-windows.ps1'
+    ]) {
+      const source = await fs.readFile(new URL(file, import.meta.url), 'utf8');
+      expect(source, file).toContain("Name LIKE 'node%.exe'");
+      expect(source, file).not.toContain("Name = 'node.exe'");
+    }
+  });
   it('requires owned backend, Desktop, password and managed tunnel readiness', () => {
     const service = { running: true, tunnelManaged: true };
     const local = { reachable: true, body: { ok: true, codex: 'ready', transport: 'desktop', passwordConfigured: true } };

@@ -28,10 +28,10 @@ function Get-RemoteProcesses {
   $watcher = Join-Path $Root "scripts\watch-network-windows.ps1"
   $background = Join-Path $Root "scripts\background-task-windows.mjs"
   $hidden = Join-Path $Root "scripts\run-hidden-windows.vbs"
-  Get-CimInstance Win32_Process -Filter "Name = 'node.exe' OR Name = 'cloudflared.exe' OR Name = 'powershell.exe' OR Name = 'wscript.exe'" |
+  Get-CimInstance Win32_Process -Filter "Name LIKE 'node%.exe' OR Name = 'cloudflared.exe' OR Name = 'powershell.exe' OR Name = 'wscript.exe'" |
     Where-Object {
       $_.CommandLine -and (
-      ($_.Name -eq "node.exe" -and ($_.CommandLine.Contains($entry) -or $_.CommandLine.Contains($supervisor) -or $_.CommandLine.Contains($background))) -or
+      ($_.Name -like "node*.exe" -and ($_.CommandLine.Contains($entry) -or $_.CommandLine.Contains($supervisor) -or $_.CommandLine.Contains($background))) -or
       ($_.Name -eq "wscript.exe" -and $_.CommandLine.Contains($hidden)) -or
       ($_.Name -eq "powershell.exe" -and $_.CommandLine.Contains($watcher)) -or
       ($_.Name -eq "cloudflared.exe" -and $_.CommandLine.Contains($token)))
@@ -100,7 +100,7 @@ if ($Action -eq "Status") {
       ($tunnelTask -and $tunnelTask.Actions.WorkingDirectory -ne $Root)
     $processes = @(Get-RemoteProcesses)
     $entry = Join-Path $Root "dist-server\server\index.js"
-    $backend = @($processes | Where-Object { $_.Name -eq "node.exe" -and $_.CommandLine.Contains($entry) })
+    $backend = @($processes | Where-Object { $_.Name -like "node*.exe" -and $_.CommandLine.Contains($entry) })
     @{
       installed = [bool]$task
       running = [bool]($backend.Count -gt 0)

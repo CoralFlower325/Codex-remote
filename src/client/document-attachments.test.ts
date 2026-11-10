@@ -15,7 +15,7 @@ const document = { name: 'Report.pdf', path: '/private/document-attachments/uplo
 const attachment = { ...document, id: 'upload', kind: 'document' as const, url: '/private-preview' };
 afterEach(() => vi.unstubAllGlobals());
 
-describe('PDF inputs', () => {
+describe('document inputs', () => {
   it('uses the native file context with literal prose, independent image and skill inputs', () => {
     const skill = { name: 'review', path: '/skills/review/SKILL.md', description: '', enabled: true };
     const input = turnInput('Review **this**', [attachment, { url: 'image' }], [skill]);
@@ -29,7 +29,7 @@ describe('PDF inputs', () => {
     expect(() => turnInput('Wait', [{ ...attachment, status: 'failed' }])).toThrow('上传完成');
   });
 
-  it('retains PDF context across queue edits, side-chat draft round trips and interrupted edits', () => {
+  it('retains document context across queue edits, side-chat draft round trips and interrupted edits', () => {
     const input = turnInput('Original', [attachment, { url: 'image' }]);
     const edited = replaceQueuedText(input, 'Changed');
     expect(documentReferences(edited)).toEqual([document]);
@@ -42,22 +42,27 @@ describe('PDF inputs', () => {
     }, 'Interrupted edit'))).toEqual([document]);
   });
 
-  it('preserves native non-PDF, mixed-file and application context through side-chat drafts', () => {
-    for (const original of [
-      '# Files mentioned by the user:\n\n## notes.txt: /private/notes.txt\n\n## My request:\nOriginal',
-      withDocumentReferences('Original', [document]).replace('## My request:', '## notes.txt: /private/notes.txt\n\n## My request:'),
-      '# Applications mentioned by the user:\n<appshot>context</appshot>\n\n## My request:\nOriginal'
-    ]) {
+  it('preserves supported files, mixed-file and application context through side-chat drafts', () => {
+    const cases = [
+      { original: '# Files mentioned by the user:\n\n## notes.txt: /private/notes.txt\n\n## My request:\nOriginal',
+        attachments: 0 },
+      { original: withDocumentReferences('Original', [
+        document, { name: 'notes.txt', path: '/private/notes.txt' }
+      ]), attachments: 2 },
+      { original: '# Applications mentioned by the user:\n<appshot>context</appshot>\n\n## My request:\nOriginal',
+        attachments: 0 }
+    ];
+    for (const { original, attachments } of cases) {
       const input = [{ type: 'text', text: original, text_elements: [] }];
       const draft = queuedDraft(input);
       expect(turnInput(draft.text, draft.attachments, draft.skills)).toEqual(input);
-      expect(draft.attachments).toEqual([]);
+      expect(draft.attachments).toHaveLength(attachments);
       expect(replaceQueuedText(input, 'Changed')[0]).toMatchObject({
         text: original.replace(/Original$/, 'Changed')
       });
     }
   });
-  it('renders a PDF preview link above the request without exposing the hidden file envelope', () => {
+  it('renders a document preview link above the request without exposing the hidden file envelope', () => {
     const html = renderToStaticMarkup(createElement(MessageItem, {
       item: { type: 'userMessage', id: 'input', content: turnInput('Inspect this.', [attachment]) }
     }));
@@ -79,7 +84,7 @@ describe('PDF inputs', () => {
     expect(storage.setItem).not.toHaveBeenCalledWith('draft:first', expect.anything());
   });
 
-  it('sends raw PDF bytes with an encoded name and retains uploaded references before model submission', async () => {
+  it('sends raw document bytes with an encoded name and retains uploaded references before model submission', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _options?: RequestInit) =>
       new Response(JSON.stringify({ id: 'upload', ...document, size: 12 }), { status: 201 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -94,5 +99,19 @@ describe('PDF inputs', () => {
     await retainDocuments([result, { id: 'image', name: 'image', url: 'image' }] satisfies ComposerAttachment[]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/attachments/upload/retain');
+  });
+
+  it('uploads supported non-PDF files as private document context', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _options?: RequestInit) =>
+      new Response(JSON.stringify({ id: 'notes', name: 'notes.md', path: '/private/notes.md', size: 12 }), { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const file = new File(['# Notes'], 'notes.md', { type: 'text/markdown' });
+    expect(await uploadDocument(file, 'notes')).toMatchObject({
+      id: 'notes', name: 'notes.md', path: '/private/notes.md', kind: 'document'
+    });
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: 'POST', body: file,
+      headers: { 'Content-Type': 'application/octet-stream', 'X-Attachment-Name': 'notes.md' }
+    });
   });
 });
