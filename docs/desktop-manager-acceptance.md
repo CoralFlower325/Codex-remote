@@ -16,6 +16,11 @@ reach a stopped state. It validates task ownership, disables and stops the
 selected Remote/Tunnel tasks, terminates only matching versioned Node,
 cloudflared, watcher and hidden-wrapper processes under the selected root, and
 then reuses the normal transaction and start verification.
+Manager 0.2.9 was installed in `C:\Program Files\Codex Remote Manager`; the
+packaged stop helper is present under `app.asar.unpacked`. Its UI subsequently
+installed Remote 0.2.31 through the signed prebuilt runtime, displayed
+**更新完成** and reported `Remote v0.2.31` with local service, Desktop, tunnel
+and public entry healthy.
 
 ## Manager 0.2.8 Versioned Node Ownership
 

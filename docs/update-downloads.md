@@ -83,6 +83,27 @@ Remote 0.2.16 与管理器 0.2.2 不再将已等于目标版本的文件误判�
 
 ## 维护分发服务
 
+2026-11-10 已完成 Remote **0.2.31** / manager **0.2.9** 的分发与
+`codexwin` 部署收尾。正式标签为 `v0.2.31`，发布提交
+`c01cc69eba6d003ce9d449448dd114c5ea392cde`。
+Runtime Packages `42781200883`、Desktop Manager `42781201109` 和
+`main` CI `42780100444` 全部通过。
+
+下载 Worker `1f6cb2ab-46f9-4028-88d2-3604c4ae7de2` 已刷新七附件快照，
+`/releases/latest` 返回 `v0.2.31`。七个附件的公网 HEAD 请求全部为 `200`，
+大小与 Release 元数据一致；Windows manager 0.2.9 安装包为 `121711356` 字节，
+SHA-256 `925758d7c00fb8404cb544a94b933c14a1075265656099e6353ed146e117f10f`。
+
+本机 manager 已静默升级到 0.2.9，Remote 从 0.2.30 升级到 0.2.31；本地与
+`codexwin` 的 `/version.json` 均为 `0.2.31`，构建标识
+`assets/index-DP0yhQII.js`，`/health` 为 ready / desktop。静态边缘 Worker
+版本为 `0fca1603-565d-4a45-a233-1e971391ab50`。服务与隧道继续由隐藏
+`wscript` 包装器运行 `ProgramData` 下 `node-22.19.0-127.exe`，未弹出命令行窗口。
+
+0.2.30 曾在真实 0.2.29 升级中暴露旧停服脚本不识别版本化 Node 的兼容问题；
+事务安全回滚后，0.2.31 通过 manager 0.2.9 的随包停止助手修复升级路径。
+0.2.30 仍保留为历史正式版本，但不再是最新版本。
+
 2026-11-10 已完成 Remote **0.2.29** / manager **0.2.7** 的分发与
 `codexwin` 部署收尾。正式标签为 `v0.2.29`，发布提交
 `4e32e5c7710230fc62a09d2f38cc8ca0a54c2074`。

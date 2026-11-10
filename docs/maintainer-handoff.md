@@ -38,9 +38,14 @@ Runtime packaging remains gated on the tested Node 22.19.x toolchain and signed 
 The 0.2.30 batch adds a native-style add menu for files, folders, goal, plan mode,
 drawing and enabled plugins; `/goal`; generic document/source uploads; compact
 mobile command menus; and manager 0.2.8 recognition of versioned Node runtime
-executables. The live 0.2.29 installation reported `running=true` and
-`conflict=false` with manager 0.2.8's installed read-only probe. Publication,
-Remote installation and edge deployment are recorded separately below.
+executables. An actual 0.2.29 to 0.2.30 upgrade then showed that the old selected
+control could leave the versioned Node process alive; the transaction rolled back
+safely, and 0.2.31 adds the manager-owned stop fallback before retrying.
+The seven `v0.2.31` assets, refreshed download snapshot, `codexwin` static edge,
+manager 0.2.9 and local Remote 0.2.31 installation are verified. Local and public
+`/version.json` identify `assets/index-DP0yhQII.js`; `/health` is
+`ready / desktop`. Publication, Remote installation and edge deployment remain
+separate states.
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.
 

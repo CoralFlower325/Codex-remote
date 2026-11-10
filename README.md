@@ -116,7 +116,8 @@ time. Standard installations prefer verified prebuilt runtimes; customized sourc
 installations retain isolated builds. Interrupted installs recover when the manager restarts.
 Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
-remains pending.
+remains pending. Manager 0.2.9 also uses a bundled windowless stop helper when an
+older installation cannot confirm its versioned Node service has stopped.
 
 Remote **0.2.31** pairs with manager **0.2.9**.
 Actual installed versions remain separately recorded in each deployment's acceptance. Install the manager
