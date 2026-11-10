@@ -41,17 +41,19 @@ mobile command menus; and manager 0.2.8 recognition of versioned Node runtime
 executables. An actual 0.2.29 to 0.2.30 upgrade then showed that the old selected
 control could leave the versioned Node process alive; the transaction rolled back
 safely, and 0.2.31 adds the manager-owned stop fallback before retrying.
-The seven `v0.2.31` assets, refreshed download snapshot, `codexwin` static edge,
-manager 0.2.9 and local Remote 0.2.31 installation are verified. Local and public
-`/version.json` identify `assets/index-DP0yhQII.js`; `/health` is
-`ready / desktop`. Publication, Remote installation and edge deployment remain
-separate states.
+The four `v0.2.32` runtime assets, refreshed download snapshot, `codexwin` static
+edge and local Remote 0.2.32 installation are verified. Manager 0.2.9 is
+unchanged and remains on `v0.2.31`. Local and public `/version.json` identify
+`assets/index-Cu1mBGiP.js`; `/health` is `ready / desktop`. Publication, Remote
+installation and edge deployment remain separate states.
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.
 
-Remote **0.2.31** keeps the mobile composer toolbar on one row without shrinking
-its 36px or 44px controls. Active turns keep one primary action and show an
-optimistic queued row until the native queue returns the same
+Remote **0.2.32** fixes the history-reading race where a silent latest-page tail
+read could commit into a different history window, causing mixed windows,
+flicker and reading-position jumps. It keeps the mobile composer toolbar on one
+row without shrinking its 36px or 44px controls. Active turns keep one primary
+action and show an optimistic queued row until the native queue returns the same
 `clientUserMessageId`; Guide uses `turn/steer`, and disabling queue switches that
 turn to direct steering. The add and slash menus stay compact overlays on phones.
 Manager **0.2.9** recognizes `node-22.19.0-127.exe` and other managed versioned

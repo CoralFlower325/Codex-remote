@@ -24,10 +24,8 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 本次不恢复 AU 功能；签名、公证和真实 Mac 登录环境验收仍是独立断点。
 未签名安装包可能需要按系统下载信誉或 Gatekeeper 流程确认。
 
-Remote 0.2.31 保持原生添加上下文菜单、`/goal`、通用文件与文件夹和紧凑
-移动端菜单，并修复从 0.2.29 升级时旧停服脚本可能遗留版本化 Node 进程的问题；
-管理器 0.2.9 在旧停服脚本失败时使用随包无窗口停止助手。四个 Remote 运行包和
-管理器安装包位于 `v0.2.31`。
+Remote 0.2.32 修复历史补页与静默尾页刷新并发提交造成的闪屏和阅读位置跳动；
+运行包位于 `v0.2.32`。管理器 0.2.9 未变更，安装包继续位于 `v0.2.31`。
 运行包 Ed25519 清单签名已启用，与仍暂停的 AU 和 macOS 应用签名分别管理。
 
 English: install manager 0.2.9 manually over the old app, reopen it and select the same
@@ -82,6 +80,23 @@ Remote 0.2.16 与管理器 0.2.2 不再将已等于目标版本的文件误判�
 详见[管理器](desktop-manager.zh-CN.md)与[网页后端更新](web-backend-update.md)。
 
 ## 维护分发服务
+
+2026-11-10 已完成 Remote **0.2.32** 的分发与 `codexwin` 部署收尾。正式标签为
+`v0.2.32`，发布提交 `7009ceefbcaf932836d826cddec32a9e8bfb8e70`。main CI
+`42799699651` 和 Runtime Packages `42799810058` 通过；Desktop Manager
+`42799807769` 的 plan 通过，管理器未改版，package job 按版本门禁跳过。
+
+下载 Worker 版本 `67ca358a-f525-40f3-abcf-2fae99040636` 已刷新四附件快照，
+`/releases/latest` 返回 `v0.2.32`。四个运行包/清单公网 HEAD 均为 `200`，大小与
+Release 元数据一致；Windows x64 运行包为 `10271009` 字节，SHA-256
+`ab5cbb9aaf69f2c9a9122a6a31acbee5acb166ca64d534b260585da0031fee80`。
+
+本机 Remote 已从 0.2.31 通过管理器更新事务升级到 0.2.32，事务备份由管理器
+保留；本地与 `codexwin` 的 `/version.json` 均为 `0.2.32`，构建标识
+`assets/index-Cu1mBGiP.js`，`/health` 为 ready / desktop。静态边缘 Worker 版本为
+`9a804efc-a90b-4ca7-8564-2c4c9afa7fcf`。服务与隧道继续由隐藏 `wscript`
+包装器运行 `ProgramData` 下 `node-22.19.0-127.exe`，未弹出命令行窗口，Desktop
+保持运行。
 
 2026-11-10 已完成 Remote **0.2.31** / manager **0.2.9** 的分发与
 `codexwin` 部署收尾。正式标签为 `v0.2.31`，发布提交
