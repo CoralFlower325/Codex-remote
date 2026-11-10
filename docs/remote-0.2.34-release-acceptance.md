@@ -36,12 +36,24 @@
 
 ## 本机安装
 
-- 已选安装目录的实际 `package.json` 版本从 0.2.33 通过签名预构建运行包升级到
-  0.2.34；目录名仍沿用历史名称，不能据目录名判断版本。
+- 已选安装目录从历史名称迁移为
+  `F:\AAAAcodexremote\codex-remote-main`，其中 `package.json` 版本从 0.2.33
+  通过签名预构建运行包升级到 0.2.34。
 - 本地与公网 `/version.json` 均为 0.2.34，构建标识
   `assets/index-C3CJbpCT.js`；两端 `/health` 均为 `ready / desktop`，密码已配置。
 - `CodexRemote` 与 `CodexRemoteTunnel` 计划任务保持运行。端口 4545 只有一个
   Remote 后端监听，未启动第二个 App Server，未停止 Desktop，也没有弹出命令行窗口。
+
+## 清场与目录迁移
+
+- `.env` 的 `DATA_DIR` 已迁移到 `codex-remote-main\data`。旧运行目录中的认证、
+  会话密钥、Web Push、操作账本、文档/图片附件均先复制并校验一致，再删除旧目录。
+- Windows 计划任务已重新注册到新目录，管理器设置已切换到同一根目录；服务启动
+  后密码配置、Desktop transport 和隧道 readiness 均保持正常。
+- 删除了旧 0.2.25 开发目录、旧国内网关实验、无关 Kaggle 虚拟环境、历史手动
+  启停脚本、公共仓库生成物和除最新回滚点外的旧更新备份。
+- `F:\AAAAcodexremote` 现在只保留 `codex-remote-main` 与
+  `Codex-Remote-Public` 两个目录，没有根目录散落文件。
 
 ## 边界
 

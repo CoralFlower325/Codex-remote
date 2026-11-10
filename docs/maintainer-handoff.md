@@ -46,6 +46,10 @@ edge and local Remote 0.2.34 installation are verified. Manager 0.2.9 is
 unchanged and remains on `v0.2.31`. Local and public `/version.json` identify
 `assets/index-C3CJbpCT.js`; `/health` is `ready / desktop`. Publication, Remote
 installation and edge deployment remain separate states.
+The live installation, manager selection and both Windows tasks now use
+`F:\AAAAcodexremote\codex-remote-main`; the old version-named directory and
+private experimental residue were removed after the runtime data migration was
+verified.
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.
 
