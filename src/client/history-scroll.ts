@@ -5,6 +5,19 @@ export function historyScrollDelta(previous: number, current: number, maximum: n
   return bounded(current) - bounded(previous);
 }
 
+/**
+ * Later pages may load only when the reader is genuinely near the end of
+ * the retained window and is not travelling upward. A window trimmed to
+ * the item cap can be shorter than a two-viewport lookahead once activity
+ * folds; the old distance-only trigger then stayed true even at the very
+ * top, and every later page dragged the window back towards the latest
+ * items, discarding the older pages the reader had just loaded.
+ */
+export function laterHistoryLoadReady(distanceToBottom: number, viewportHeight: number, wantsEarlier: boolean): boolean {
+  if (wantsEarlier) return false;
+  return distanceToBottom <= Math.max(0, viewportHeight) * 0.5;
+}
+
 /** Keep history layout changes out of both the drag and its momentum scroll. */
 export class HistoryScroll {
   private touching = false;

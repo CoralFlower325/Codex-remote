@@ -83,6 +83,8 @@ Release and privacy policy remains in AGENTS.md.
   Preserve native item timing anchors: the work divider freezes at the final
   answer's native startedAtMs, before answer generation ends. Use saved turn
   completedAt when that anchor is unavailable, then durationMs as a fallback.
+  An intermediate slice of a turn truncated by the window's newer boundary
+  is not the final answer; treat its anchor as unavailable the same way.
   Format narrow Chinese units with zero units omitted, matching Desktop.
   Keep one work divider at the first response of a native turn. Steering never
   moves or restarts it; share final-answer timing and process expansion across
@@ -124,6 +126,9 @@ Release and privacy policy remains in AGENTS.md.
   Never prepend history or compensate its position during a drag.
   Use a passive history sentinel, never a load-more button. A new upward
   gesture retries a failed foreground page; idle failures must not loop.
+  Later pages load only when the reader is near the retained window's end
+  and is not travelling upward; a window trimmed shorter than the lookahead
+  must not make the later-page trigger permanently true at its top.
   Clamp scroll offsets to their real range before inferring direction so
   Safari rubber-band rebound cannot cancel upward intent. Accumulate small
   touch movements across events; do not discard each sub-threshold move.

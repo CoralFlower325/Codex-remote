@@ -8,7 +8,7 @@ import type { TurnTiming } from '../../shared/turn-timing';
 import type { OutlineTurn } from '../../shared/thread-outline';
 import { ThreadNavigation, type NavigationTarget } from './ThreadNavigation';
 import { captureReadingAnchor, releaseReadingTail, restoreReadingAnchor, type ReadingAnchor } from '../reading-anchor';
-import { HistoryScroll, historyScrollDelta, type BeforeHistoryCommit } from '../history-scroll';
+import { HistoryScroll, historyScrollDelta, laterHistoryLoadReady, type BeforeHistoryCommit } from '../history-scroll';
 import { isReadableHistoryItem } from '../history-prefetch';
 import { NativeTurnError } from './NativeTurnError';
 import { ResponseSection, MessageItem, TurnDuration } from './TurnResponse';
@@ -108,7 +108,11 @@ export function ThreadTimeline({
   const entries = useMemo(() => buildTimelineEntries(items, activeTurnId,
     previousSectionsRef.current.flatMap(section => section.entries)), [items, activeTurnId]);
   const sections = useMemo(() => buildTimelineSections(entries, previousSectionsRef.current), [entries]);
-  const responses = useMemo(() => timelineTurnResponses(sections), [sections]);
+  // While the window is bounded on the newer side, its last turn may be
+  // truncated mid-turn; do not let a partial slice anchor its duration.
+  const truncatedTailTurnId = hasNewerHistory ? items.at(-1)?.turnId ?? null : null;
+  const responses = useMemo(() => timelineTurnResponses(sections, truncatedTailTurnId),
+    [sections, truncatedTailTurnId]);
   const heartbeatTurns = useMemo(() => new Set(items.flatMap(item =>
     item.type === 'userMessage' && item.turnId && parseHeartbeatPrompt(
       item.content.filter(part => part.type === 'text').map(part => part.text ?? '').join('\n'))
@@ -169,7 +173,8 @@ export function ThreadTimeline({
     const load = () => {
       if (loadingLaterHistory || loadingHistory || revealingHistory || laterPendingRef.current ||
           !navigator.onLine || document.visibilityState !== 'visible' ||
-          stream.scrollHeight - stream.scrollTop - stream.clientHeight > stream.clientHeight * 2) return;
+          !laterHistoryLoadReady(stream.scrollHeight - stream.scrollTop - stream.clientHeight,
+            stream.clientHeight, wantsEarlierRef.current)) return;
       const key = `${newerHistoryCursor}:${items.length}:${items.at(-1) ? itemKey(items.at(-1)!) : ''}`;
       if (laterAttemptRef.current === key) return;
       laterAttemptRef.current = key;
@@ -195,7 +200,7 @@ export function ThreadTimeline({
       load();
     };
     const observer = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) load(); },
-      { root: stream, rootMargin: `0px 0px ${stream.clientHeight * 2}px 0px` });
+      { root: stream, rootMargin: `0px 0px ${Math.round(stream.clientHeight * 0.5)}px 0px` });
     observer.observe(sentinel);
     stream.addEventListener('scroll', load, { passive: true });
     window.addEventListener('online', recover);
@@ -443,12 +448,14 @@ export function ThreadTimeline({
       aria-label="会话记录"
       onWheel={event => {
         if (!laterPendingRef.current) laterAttemptRef.current = null;
-        loadLaterRef.current();
         navigationAnchorRef.current = null;
         wantsEarlierRef.current = event.deltaY < 0;
         if (event.deltaY < 0) onHistoryReading?.(threadId, true);
         if (!wantsEarlierRef.current) continuationTopRef.current = null;
         if (event.deltaY < 0 && !loadingEarlierRef.current) earlierAttemptRef.current = null;
+        // Direction is settled before later paging is reconsidered, so an
+        // upward gesture can never trigger a newer page.
+        loadLaterRef.current();
         scrollActivityRef.current!.activity();
       }}
       onTouchStart={event => {
@@ -475,10 +482,10 @@ export function ThreadTimeline({
         navigationAnchorRef.current = null;
         if (['Home', 'PageUp', 'ArrowUp', 'End', 'PageDown', 'ArrowDown'].includes(event.key)) {
           if (!laterPendingRef.current) laterAttemptRef.current = null;
-          loadLaterRef.current();
           wantsEarlierRef.current = ['Home', 'PageUp', 'ArrowUp'].includes(event.key);
           if (!wantsEarlierRef.current) continuationTopRef.current = null;
           if (wantsEarlierRef.current && !loadingEarlierRef.current) earlierAttemptRef.current = null;
+          loadLaterRef.current();
           scrollActivityRef.current!.activity();
         }
       }}
