@@ -41,15 +41,20 @@ mobile command menus; and manager 0.2.8 recognition of versioned Node runtime
 executables. An actual 0.2.29 to 0.2.30 upgrade then showed that the old selected
 control could leave the versioned Node process alive; the transaction rolled back
 safely, and 0.2.31 adds the manager-owned stop fallback before retrying.
-The four `v0.2.33` runtime assets, refreshed download snapshot, `codexwin` static
-edge and local Remote 0.2.33 installation are verified. Manager 0.2.9 is
+The four `v0.2.34` runtime assets, refreshed download snapshot, `codexwin` static
+edge and local Remote 0.2.34 installation are verified. Manager 0.2.9 is
 unchanged and remains on `v0.2.31`. Local and public `/version.json` identify
-`assets/index-DraSBu-b.js`; `/health` is `ready / desktop`. Publication, Remote
+`assets/index-C3CJbpCT.js`; `/health` is `ready / desktop`. Publication, Remote
 installation and edge deployment remain separate states.
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.
 
-Remote **0.2.33** fixes repeated later-page loads dragging a long-history window
+Remote **0.2.34** caps whole-turn retreat so a giant turn crossing the retained
+window boundary is cut by item anchor instead of unloading its loaded section
+in one commit. Settled turn anchors are remembered for the viewing session,
+and later paging additionally requires travel toward the window end or a
+recent explicit downward gesture. Remote **0.2.33** fixes repeated later-page
+loads dragging a long-history window
 back toward the latest items while the reader is moving upward. Later paging now
 requires the reader to be near the retained window end without upward intent,
 and a turn truncated by the newer window boundary falls back to native timing
