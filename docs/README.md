@@ -67,6 +67,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
+| [Remote 0.2.31 发布与部署验收](remote-0.2.31-release-acceptance.md) | 0.2.31 / manager 0.2.9：修复 0.2.29 的版本化 Node 停服兼容，增加管理器无窗口停止兜底 |
 | [Remote 0.2.30 发布与部署验收](remote-0.2.30-release-acceptance.md) | 0.2.30 / manager 0.2.8：原生添加上下文菜单、`/goal`、通用文件与文件夹、紧凑手机菜单、版本化 Node 所有权识别 |
 | [Remote 0.2.29 发布与部署验收](remote-0.2.29-release-acceptance.md) | 0.2.29 / manager 0.2.7：隐藏 Windows 服务启动、直接 Node 任务迁移、更新锁查询重试、分发与本机部署；真机边界保留 |
 | [Remote 0.2.28 发布与部署验收](remote-0.2.28-release-acceptance.md) | 0.2.28 / manager 0.2.6：即时发送与引导、轮次状态单向推进、待处理区优先级、分发 Worker、Windows 公网与本地安装；真机边界保留 |

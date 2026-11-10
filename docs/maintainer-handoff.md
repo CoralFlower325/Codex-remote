@@ -15,8 +15,8 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.30** / manager **0.2.8**, tag
-`v0.2.30`.
+The current published release is Remote **0.2.31** / manager **0.2.9**, tag
+`v0.2.31`.
 The [native queued-guide acceptance](native-queued-guide-0.2.27.md) records the
 single primary action, immediate queued-submission strip and history-trigger
 placement, plus the 0.2.28 follow-up record for optimistic send/Guide display,
@@ -44,19 +44,22 @@ Remote installation and edge deployment are recorded separately below.
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.
 
-Remote **0.2.30** keeps the mobile composer toolbar on one row without shrinking
+Remote **0.2.31** keeps the mobile composer toolbar on one row without shrinking
 its 36px or 44px controls. Active turns keep one primary action and show an
 optimistic queued row until the native queue returns the same
 `clientUserMessageId`; Guide uses `turn/steer`, and disabling queue switches that
 turn to direct steering. The add and slash menus stay compact overlays on phones.
-Manager **0.2.8** recognizes `node-22.19.0-127.exe` and other managed versioned
-Node names in status, repair, service control and update ownership checks.
+Manager **0.2.9** recognizes `node-22.19.0-127.exe` and other managed versioned
+Node names in status, repair, service control and update ownership checks. If an
+older installation's stop script leaves the versioned process alive during an
+upgrade, the manager uses a bundled windowless stop helper scoped to the selected
+root before retrying the normal transactional install.
 
 Runtime updates now require Ed25519 publisher signatures against bundled public
 keys, including signed commit identity for source fallback. The private key stays
 outside the repository; the `RELEASE_SIGNING_KEY` GitHub secret and formal
 two-platform signing workflow have been validated. Follow [release-signing.md](release-signing.md) before a
-formal runtime release. Manager 0.2.8 requires its own installer; changing Remote
+formal runtime release. Manager 0.2.9 requires its own installer; changing Remote
 does not patch an already installed manager. AU self-update and macOS application
 signing/notarization remain paused.
 

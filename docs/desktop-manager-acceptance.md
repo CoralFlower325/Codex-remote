@@ -1,9 +1,21 @@
 # Desktop Manager Acceptance
 
 Current batch and historical acceptance records, reconciled 2026-11-10.
-Stable manager 0.2.8 is published with Remote 0.2.30; self-update work remains
+Stable manager 0.2.9 is published with Remote 0.2.31; self-update work remains
 paused as [0.2.0AU](manager-self-update-checkpoints.md). Historical records below
 retain their original scope and counts.
+
+## Manager 0.2.9 Upgrade Stop Fallback
+
+An actual 0.2.29 to 0.2.30 upgrade showed that the old installation's stop script
+could see the versioned Node child as stopped while its listener and process
+remained live. The transaction rolled back safely, but retrying required
+replacing that old control first. Manager 0.2.9 adds a bundled, windowless
+Windows stop helper used only when the selected installation's stop path does not
+reach a stopped state. It validates task ownership, disables and stops the
+selected Remote/Tunnel tasks, terminates only matching versioned Node,
+cloudflared, watcher and hidden-wrapper processes under the selected root, and
+then reuses the normal transaction and start verification.
 
 ## Manager 0.2.8 Versioned Node Ownership
 

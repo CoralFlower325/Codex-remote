@@ -319,6 +319,11 @@ Release and privacy policy remains in AGENTS.md.
   Keep locally modified Markdown documentation/rules during updates and retain
   incoming copies for reconciliation; source/configuration conflicts still block.
   Windows tasks use the windowless host with logs and owned-process shutdown.
+  During upgrades from older controls, if the selected installation's stop path
+  leaves its owned listener running, the manager may use its bundled windowless
+  stop helper after ownership validation. That helper must terminate only the
+  selected root's Remote/Tunnel children and hidden wrappers, never Desktop or an
+  unrelated installation, before the normal transaction continues.
   External macOS tunnels retain their original configuration and management.
   Explicit confirmed repair may enable/bootstrap/kickstart a selected existing
   cloudflared LaunchAgent/Daemon after fresh definition and loaded-job checks;

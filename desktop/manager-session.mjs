@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { health, installation, control, serviceStatus, portListening, startupReady } from './controller.mjs';
+import { fileURLToPath } from 'node:url';
+import { health, installation, control, serviceStatus, portListening, startupReady, commandEnvironment } from './controller.mjs';
 import { latestRelease, prepareUpdate, installUpdate } from './updater.mjs';
 import { discoverInstallations, preferredInstallation } from './discovery.mjs';
 import { updateError, createUpdateProgress } from './update-progress.mjs';
@@ -8,6 +9,7 @@ import { pendingUpdate, recoverPendingUpdate } from './update-transaction.mjs';
 import { manageAuthentication } from './security.mjs';
 import { repairControl } from './diagnostics.mjs';
 import { discoverMacTunnels } from './macos-tunnel.mjs';
+import { run } from './process.mjs';
 // Installation state and serialized operations; the Electron shell owns windows.
 export function createManagerSession({ app, dialog, shell, fetchRelease, getWindow, publish, here }) {
   const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
@@ -63,7 +65,26 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
     }
     throw new Error('旧 Remote 仍在运行，已停止后续操作。');
   }
-  async function stop() { await control(settings.root, 'Stop'); await waitStopped(); }
+  async function stop() {
+    try {
+      await control(settings.root, 'Stop');
+      await waitStopped();
+      return;
+    } catch (error) {
+      if (process.platform !== 'win32') throw error;
+    }
+    // Older installations may only recognize node.exe. During an upgrade, use
+    // the manager-owned stop helper so versioned Node tasks cannot survive the
+    // stop request and turn a valid update into a port-conflict rollback.
+    const info = await installation(settings.root);
+    const script = fileURLToPath(new URL('./stop-windows.ps1', import.meta.url))
+      .replace(/([\\/])app\.asar([\\/])/, '$1app.asar.unpacked$2');
+    await run('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script,
+      '-Root', info.root], {
+      cwd: info.root, env: commandEnvironment(), timeout: 60_000, windowsHide: true
+    });
+    await waitStopped();
+  }
   async function verify({ requireDesktop = true } = {}) {
     let status;
     for (let i = 0; i < 6; i++) {

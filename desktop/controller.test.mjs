@@ -41,6 +41,13 @@ describe('local manager control boundary', () => {
       expect(source, file).not.toContain("Name = 'node.exe'");
     }
   });
+  it('ships a manager-owned Windows stop helper for upgrades from old controls', async () => {
+    const source = await fs.readFile(new URL('./stop-windows.ps1', import.meta.url), 'utf8');
+    expect(source).toContain("Name LIKE 'node%.exe'");
+    expect(source).toContain('Disable-ScheduledTask');
+    expect(source).toContain('Stop-ScheduledTask');
+    expect(source).toContain('run-hidden-windows.vbs');
+  });
   it('requires owned backend, Desktop, password and managed tunnel readiness', () => {
     const service = { running: true, tunnelManaged: true };
     const local = { reachable: true, body: { ok: true, codex: 'ready', transport: 'desktop', passwordConfigured: true } };

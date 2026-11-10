@@ -2,6 +2,11 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.31', changes: [
+    '修复从 Remote 0.2.29 直接更新时的停服兼容问题：旧安装脚本只识别 `node.exe`，可能留下版本化 Node 进程并触发端口冲突。',
+    '管理器 0.2.9 在安装目录停止脚本失败时使用随包的无窗口停止助手，只禁用并结束当前目录的 Remote、Tunnel 和隐藏包装器进程，不触碰 Desktop。',
+    '新增停止助手回归检查；更新事务、备份、失败恢复和预构建运行包校验边界保持不变。'
+  ] },
   { version: '0.2.30', changes: [
     '输入栏“+”改为原生式添加上下文菜单：支持文件与文件夹、目标、计划模式和绘图，并直接列出当前目录可用的 Documents、PDF、表格、演示文稿等技能插件。',
     '文件输入扩展为图片、PDF、Office、文本和常见代码文件；文件夹可批量选择，单个文件仍限制 20 MB，私密存储、预览和提交引用沿用原附件边界。',
