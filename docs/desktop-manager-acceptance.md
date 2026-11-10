@@ -1,9 +1,23 @@
 # Desktop Manager Acceptance
 
-Current batch and historical acceptance records, reconciled 2026-11-08.
-Stable manager 0.2.4 is published with Remote 0.2.23; self-update work remains
+Current batch and historical acceptance records, reconciled 2026-11-10.
+Stable manager 0.2.6 is published with Remote 0.2.28; self-update work remains
 paused as [0.2.0AU](manager-self-update-checkpoints.md). Historical records below
 retain their original scope and counts.
+
+## Manager 0.2.6 Windows Task Runtime
+
+Windows scheduled tasks now resolve and stage the tested Node 22.19.x runtime
+under `ProgramData`, then launch the background wrapper directly. Old task
+actions are migrated through manager Start/Stop or repair; normal operation stays
+windowless. The 0.2.28 Windows release was installed over manager 0.2.5, retained
+its settings, selected the current Remote root and reported 0.2.6 after install.
+See the [0.2.28 release acceptance](remote-0.2.28-release-acceptance.md).
+
+## Manager 0.2.5 Password IPC
+
+Manager 0.2.5 aligned local password IPC validation with the server's 12–256
+character rule. It remains the preceding package baseline.
 
 ## Manager 0.2.3 Existing macOS Tunnel Repair
 

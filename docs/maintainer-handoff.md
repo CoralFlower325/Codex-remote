@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-11-09.
+Last reconciled: 2026-11-10.
 
 ## Authority
 
@@ -31,12 +31,17 @@ the old dual-button layout, moves the conversation-history trigger beside Send,
 and fixes Windows task ownership of its Node runtime. Manager 0.2.6 stages
 Node 22.19.x under `ProgramData`, migrates old task actions and lets the existing
 manager Start/Stop and repair controls perform the change without a console window.
+The 0.2.28 batch makes normal sends and Guide optimistic, keeps terminal turn
+state monotonic against late snapshots, prioritizes approvals and folds pending
+items under pressure.
 Runtime packaging remains gated on the tested Node 22.19.x toolchain and signed assets.
-The 0.2.26 release remains the previous signed baseline until 0.2.28 assets and
-the separate deployment are verified. A source release does not by itself change
-the installed or public frontend. Never start another App Server.
+The seven `v0.2.28` assets, the refreshed download snapshot, the `codexwin`
+static edge, the local Windows installation and manager 0.2.6 have been verified.
+See the [0.2.28 release acceptance](remote-0.2.28-release-acceptance.md).
+Keep source publication, download distribution, installation and physical-device
+acceptance as separate states. Never start another App Server.
 
-Remote **0.2.27** keeps the mobile composer toolbar on one row without shrinking
+Remote **0.2.28** keeps the mobile composer toolbar on one row without shrinking
 its 36px or 44px controls. Active turns keep one primary action and show an
 optimistic queued row until the native queue returns the same
 `clientUserMessageId`; Guide uses `turn/steer`, and disabling queue switches that
@@ -60,16 +65,15 @@ and real PTY lifecycle tests pass. Platform output uses bounded rotating logs;
 macOS controls use the same-PID background wrapper and retain ownership checks.
 Local synthetic checks do not establish signed-in macOS service behavior.
 
-The current implementation branch after `v0.2.25` adds complete cursor-following
+The current implementation through `v0.2.28` adds complete cursor-following
 model/project catalogs, explicit reasoning inherit/default semantics, ordered
 settings acknowledgements, isolated Office conversion workers, bounded SSE
 backpressure, a supervisor-owned dynamic tunnel metrics port, explicit client
 view/action contracts and split Home/Thread screens. It also requires prebuilt
 runtime packages to match the tested Node 22.19.x ABI. These changes are not a
-claim that a new Release or host installation exists. The latest branch-level
-validation passed 135 test files (1049 tests, two platform skips), typecheck,
-the application and manager builds, synthetic browser acceptance and the
-Windows worker acceptance. Physical-device acceptance is tracked in
+claim that every platform has physical-device acceptance. The released batch
+includes catalog completion, terminal isolation, live previews, automations,
+subagent history, signed runtime updates and Windows manager repair. Physical-device acceptance is tracked in
 [physical-device-acceptance.md](physical-device-acceptance.md).
 
 The following paragraphs retain historical 0.2.23 and earlier observations:
