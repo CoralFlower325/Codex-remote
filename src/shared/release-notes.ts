@@ -2,6 +2,11 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.32', changes: [
+    '修复上滑加载历史时，静默刷新最新页与历史分页并发提交导致窗口混合、闪屏和阅读位置跳动的问题；用户开始阅读历史后，先前启动的最新页响应立即失效。',
+    '恢复会话、轮次完成和前台恢复的尾页刷新统一使用历史窗口修订号，晚到响应不能覆盖当前历史；上滑补页继续保留阅读锚点。',
+    '新增历史页先提交、最新页延迟返回，以及上滑期间轮次完成的回归覆盖；管理器 0.2.9 无变更。'
+  ] },
   { version: '0.2.31', changes: [
     '修复从 Remote 0.2.29 直接更新时的停服兼容问题：旧安装脚本只识别 `node.exe`，可能留下版本化 Node 进程并触发端口冲突。',
     '管理器 0.2.9 在安装目录停止脚本失败时使用随包的无窗口停止助手，只禁用并结束当前目录的 Remote、Tunnel 和隐藏包装器进程，不触碰 Desktop。',

@@ -109,6 +109,8 @@ export function useRemote({
   const newerHistoryCursorRef = useRef<string | null>(null);
   const viewingHistoryRef = useRef(false);
   const historyReadingRef = useRef({ threadId: '', reading: false });
+  // A latest-tail read must not commit into a different history window.
+  const historyRevisionRef = useRef(0);
   const pendingRevealRef = useRef<{ version: number; wasViewing: boolean } | null>(null);
   const turnsCursorRef = useRef<string | null>(null);
   const turnTimingsRef = useRef(turnTimings);
@@ -332,7 +334,8 @@ export function useRemote({
       options: { silent?: boolean; preserveHistory?: boolean; force?: boolean } = {}
     ) => {
       if (options.silent && activeThreadRef.current !== threadId) return;
-      if (options.silent && viewingHistoryRef.current) return;
+      if (options.silent && (viewingHistoryRef.current ||
+          (historyReadingRef.current.threadId === threadId && historyReadingRef.current.reading))) return;
       if (!options.silent && !options.force && activeThreadRef.current === threadId &&
           (openingThreadRef.current?.threadId === threadId ||
             verifiedThreadRef.current === threadId && timedThreadRef.current === threadId &&
@@ -341,6 +344,7 @@ export function useRemote({
               resumedThreadRef.current.version === selectionVersionRef.current &&
               resumedThreadRef.current.socket === socketRef.current &&
               socketRef.current?.readyState === WebSocket.OPEN)) return;
+      historyRevisionRef.current += 1;
       const isNew = newThreadsRef.current.has(threadId);
       const archived = getThread(threadId)?.archived;
       const query = new URLSearchParams({
@@ -359,6 +363,7 @@ export function useRemote({
         historyRefreshNextRef.current = null;
         if (!historyRequestsRef.current.has(path)) historyRequestsRef.current.cancel();
         pendingRevealRef.current = null;
+        historyReadingRef.current = { threadId, reading: false };
         viewingHistoryRef.current = false;
         newerHistoryCursorRef.current = null;
         setViewingHistory(false);
@@ -394,6 +399,7 @@ export function useRemote({
         if (!sameThread) { goalRevisionRef.current++; setActiveGoal(null); }
       }
       const version = selectionVersionRef.current;
+      const historyRevision = historyRevisionRef.current;
       let settleOpening = () => {};
       const opening = !options.silent ? { threadId, version, reconcile: false,
         settled: new Promise<void>(resolve => { settleOpening = resolve; }) } : null;
@@ -407,7 +413,8 @@ export function useRemote({
       let historyFailed = false;
       let savedPreview: Awaited<ReturnType<typeof readDeviceChat>> = null;
       let stalePreview: { thread: Thread; page: ThreadHistoryPage } | null = null;
-      const currentSelection = () => version === selectionVersionRef.current && activeThreadRef.current === threadId;
+      const currentSelection = () => version === selectionVersionRef.current && activeThreadRef.current === threadId &&
+        (!options.silent || historyRevision === historyRevisionRef.current);
       const preview = (thread: Thread, page: ThreadHistoryPage) => {
         if (!currentSelection() || options.silent || nativeArrived) return;
         const display = provisionalHistory(page);
@@ -634,7 +641,8 @@ export function useRemote({
         resolveError(resumeFailureRef.current);
         resumeFailureRef.current = null;
         // The initial read can finish before the native subscription is attached.
-        if (!viewingHistoryRef.current) {
+        if (!viewingHistoryRef.current &&
+            !(historyReadingRef.current.threadId === threadId && historyReadingRef.current.reading)) {
           const opening = openingThreadRef.current;
           if (opening?.threadId === threadId && opening.version === version) opening.reconcile = true;
           else void openThread(threadId, { silent: true, preserveHistory: true }).catch(() => undefined);
@@ -659,6 +667,7 @@ export function useRemote({
     const threadId = activeThreadRef.current;
     const cursor = olderHistoryCursorRef.current;
     const version = selectionVersionRef.current;
+    const historyRevision = historyRevisionRef.current;
     if (!threadId || cursor === null) return null;
     return earlierPageRef.current.read(JSON.stringify([version, threadId, cursor]), async signal => {
       const turnRevision = turnRevisionRef.current;
@@ -671,7 +680,8 @@ export function useRemote({
       signal.throwIfAborted();
       if (page.continuationError) throw new Error(page.continuationError);
       if (initialTimings && timedThreadRef.current !== threadId &&
-          version === selectionVersionRef.current && activeThreadRef.current === threadId) {
+          version === selectionVersionRef.current && historyRevision === historyRevisionRef.current &&
+          activeThreadRef.current === threadId) {
         setTurnTimings(current => {
           const next = mergeOlderTurnTimings(current, initialTimings.turns);
           turnTimingsRef.current = next;
@@ -714,13 +724,16 @@ export function useRemote({
     const cursor = olderHistoryCursorRef.current;
     const version = selectionVersionRef.current;
     if (!threadId || cursor === null || loadingHistoryRef.current) return;
+    historyRevisionRef.current += 1;
+    const historyRevision = historyRevisionRef.current;
     loadingHistoryRef.current = true;
     setLoadingHistory(true);
     try {
       const page = await prepareEarlierHistory();
       if (!page) return;
       if (beforeCommit && !await beforeCommit()) return;
-      if (threadId !== activeThreadRef.current || version !== selectionVersionRef.current) return;
+      if (threadId !== activeThreadRef.current || version !== selectionVersionRef.current ||
+          historyRevision !== historyRevisionRef.current) return;
       const olderItems = page.items.map((entry) => ({
         ...entry.item, turnId: entry.turnId,
         startedAtMs: entry.startedAtMs, completedAtMs: entry.completedAtMs
@@ -758,12 +771,15 @@ export function useRemote({
     const cursor = newerHistoryCursorRef.current;
     const version = selectionVersionRef.current;
     if (!threadId || !cursor || loadingHistoryRef.current) return;
+    historyRevisionRef.current += 1;
+    const historyRevision = historyRevisionRef.current;
     loadingHistoryRef.current = true;
     setLoadingLaterHistory(true);
     try {
       const page = await fetchHistoryPage(threadId, cursor, 'after');
       if (beforeCommit && !await beforeCommit()) return;
-      if (version !== selectionVersionRef.current || threadId !== activeThreadRef.current) return;
+      if (version !== selectionVersionRef.current || threadId !== activeThreadRef.current ||
+          historyRevision !== historyRevisionRef.current) return;
       const later = page.items.map(entry => ({ ...entry.item, turnId: entry.turnId,
         startedAtMs: entry.startedAtMs, completedAtMs: entry.completedAtMs }));
       const window = applyHistoryWindow(mergeLatestHistoryItems(itemsRef.current, later), 'newer',
@@ -787,7 +803,10 @@ export function useRemote({
   }, [fetchHistoryPage]);
 
   const setHistoryReading = useCallback((threadId: string, reading: boolean) => {
-    if (activeThreadRef.current === threadId) historyReadingRef.current = { threadId, reading };
+    if (activeThreadRef.current !== threadId) return;
+    const previous = historyReadingRef.current;
+    if (previous.threadId !== threadId || previous.reading !== reading) historyRevisionRef.current += 1;
+    historyReadingRef.current = { threadId, reading };
   }, []);
 
   useEffect(() => {
@@ -796,6 +815,7 @@ export function useRemote({
     const window = applyHistoryWindow(items, reading ? 'older' : 'newer',
       { older: olderHistoryCursorRef.current, newer: newerHistoryCursorRef.current }, 800, !reading);
     if (!window.trimmed) return;
+    historyRevisionRef.current += 1;
     olderHistoryCursorRef.current = window.older;
     itemsRef.current = window.items;
     setItems(window.items);
@@ -1000,6 +1020,7 @@ export function useRemote({
   const closeThread = useCallback(() => {
     editSelectionRef.current += 1;
     selectionVersionRef.current += 1;
+    historyRevisionRef.current += 1;
     earlierPageRef.current.clear();
     historyRequestsRef.current.cancel();
     activeThreadRef.current = null;
@@ -1007,6 +1028,7 @@ export function useRemote({
     clearStreamingDeltas();
     olderHistoryCursorRef.current = null;
     newerHistoryCursorRef.current = null;
+    historyReadingRef.current = { threadId: '', reading: false };
     viewingHistoryRef.current = false;
     setViewingHistory(false);
     setHasNewerHistory(false);
@@ -1065,6 +1087,7 @@ export function useRemote({
       appendThread(thread);
       editSelectionRef.current += 1;
       selectionVersionRef.current += 1;
+      historyRevisionRef.current += 1;
       earlierPageRef.current.clear();
       historyRequestsRef.current.cancel();
       activeThreadRef.current = thread.id;
@@ -1078,6 +1101,7 @@ export function useRemote({
       setTimedThreadId(thread.id);
       olderHistoryCursorRef.current = null;
       newerHistoryCursorRef.current = null;
+      historyReadingRef.current = { threadId: thread.id, reading: false };
       viewingHistoryRef.current = false;
       setViewingHistory(false);
       setHasNewerHistory(false);
@@ -1269,6 +1293,7 @@ export function useRemote({
     void removeDeviceChat(threadId);
     if (activeThreadRef.current !== threadId) return;
     selectionVersionRef.current += 1;
+    historyRevisionRef.current += 1;
     turnRevisionRef.current += 1;
     historyRequestsRef.current.cancel();
     earlierPageRef.current.clear();
@@ -1284,6 +1309,7 @@ export function useRemote({
     turnsCursorRef.current = null;
     olderHistoryCursorRef.current = null;
     newerHistoryCursorRef.current = null;
+    historyReadingRef.current = { threadId, reading: false };
     viewingHistoryRef.current = false;
     setViewingHistory(false);
     setHasNewerHistory(false);
@@ -1327,7 +1353,8 @@ export function useRemote({
 
   const refreshActiveHistory = useCallback(() => {
     const threadId = activeThreadRef.current;
-    if (!threadId || viewingHistoryRef.current) return;
+    if (!threadId || viewingHistoryRef.current ||
+        (historyReadingRef.current.threadId === threadId && historyReadingRef.current.reading)) return;
     historyRefreshNextRef.current = { threadId, version: selectionVersionRef.current };
     if (historyRefreshRef.current) return;
     historyRefreshRef.current = (async () => {
@@ -1338,7 +1365,9 @@ export function useRemote({
         historyRefreshNextRef.current = null;
         if (!next) continue;
         if (activeThreadRef.current !== next.threadId || selectionVersionRef.current !== next.version ||
-            viewingHistoryRef.current || disposedRef.current) continue;
+            viewingHistoryRef.current ||
+            (historyReadingRef.current.threadId === next.threadId && historyReadingRef.current.reading) ||
+            disposedRef.current) continue;
         await openThread(next.threadId, { silent: true, preserveHistory: true }).catch(() => undefined);
       }
     })().finally(() => { historyRefreshRef.current = null; });

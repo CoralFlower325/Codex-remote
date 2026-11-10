@@ -893,6 +893,73 @@ describe('cached history verification', () => {
     expect(f.remote.activeTurnId).toBe('new-live');
     expect(f.remote.turnTimings['new-live']?.status).toBe('inProgress');
   });
+  it('discards a delayed latest-page refresh after history reading starts', async () => {
+    const initialItems = Array.from({ length: 800 }, (_, index) => ({
+      turnId: `old-${Math.floor(index / 2)}`,
+      item: { type: 'agentMessage' as const, id: `old-${index}`, text: `Old ${index}` }
+    }));
+    const olderItems = Array.from({ length: 100 }, (_, index) => ({
+      turnId: `older-${index}`,
+      item: { type: 'agentMessage' as const, id: `older-${index}`, text: `Older ${index}` }
+    }));
+    const initialPage = {
+      result: { thread }, items: initialItems, turns: [], turnsCursor: null,
+      activeTurnId: null, nextCursor: 'older'
+    };
+    const latestPage = {
+      ...initialPage,
+      items: [{ turnId: 'latest', item: { type: 'agentMessage', id: 'latest', text: 'Latest' } }],
+      nextCursor: null
+    };
+    let openReads = 0;
+    let finishSilent: ((value: Response) => void) | null = null;
+    const fetcher = vi.fn((path: RequestInfo | URL) => {
+      const value = String(path);
+      if (value.includes('/thread/open?')) {
+        openReads++;
+        return openReads === 1 ? json(initialPage) : new Promise<Response>(resolve => { finishSilent = resolve; });
+      }
+      if (value.includes('/thread/history?')) return json({
+        items: olderItems, turns: [], turnsCursor: null, activeTurnId: null, nextCursor: null
+      });
+      if (value.includes('/thread/timings?')) return json({ turns: [], turnsCursor: null, activeTurnId: null });
+      return new Promise<Response>(() => {});
+    });
+    const f = fixture(fetcher);
+    await f.remote.openThread(thread.id); await settle();
+    connection.options.onSocket({ readyState: 1, send: (payload: string) => {
+      const message = JSON.parse(payload);
+      if (message.type === 'rpc') connection.options.onMessage({ type: 'rpc.result', id: message.id,
+        result: message.method === 'thread/resume' ? { thread } : { data: [], nextCursor: null } });
+    } });
+    synchronizeConnection();
+    await settle();
+    expect(openReads).toBe(2);
+    expect(finishSilent).toBeTypeOf('function');
+    f.remote.setHistoryReading(thread.id, true);
+    await f.remote.loadEarlierHistory();
+    await settle();
+    const mountedHistory = f.remote.items;
+    expect(f.remote.items[0]?.id).toBe('older-0');
+    expect(f.remote.items.at(-1)?.id).toBe('old-699');
+    finishSilent!(await json(latestPage));
+    await settle();
+    expect(f.remote.items).toBe(mountedHistory);
+    expect(f.remote.items.at(-1)?.id).toBe('old-699');
+    expect(f.remote.viewingHistory).toBe(true);
+  });
+  it('does not start a tail refresh while an upward history gesture is active', async () => {
+    let openReads = 0;
+    const f = fixture(path => String(path).includes('/thread/open?')
+      ? (openReads++, json(page))
+      : String(path).includes('/thread/timings?') ? json(page) : new Promise(() => {}));
+    await f.remote.openThread(thread.id); await settle();
+    f.remote.setHistoryReading(thread.id, true);
+    connection.options.onMessage({ type: 'event', method: 'turn/completed',
+      params: { threadId: thread.id } });
+    await settle();
+    expect(openReads).toBe(1);
+  });
   it('refreshes the selected tail on foreground return without restarting task pagination', async () => {
     let reads = 0;
     const fetcher = vi.fn<typeof fetch>(path => String(path).includes('/thread/open?')
