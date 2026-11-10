@@ -24,8 +24,9 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 本次不恢复 AU 功能；签名、公证和真实 Mac 登录环境验收仍是独立断点。
 未签名安装包可能需要按系统下载信誉或 Gatekeeper 流程确认。
 
-Remote 0.2.32 修复历史补页与静默尾页刷新并发提交造成的闪屏和阅读位置跳动；
-运行包位于 `v0.2.32`。管理器 0.2.9 未变更，安装包继续位于 `v0.2.31`。
+Remote 0.2.33 修复长会话上滑时向下补页误触发造成的窗口乒乓，并让被窗口边界
+截断的轮次回退到原生时长；运行包位于 `v0.2.33`。管理器 0.2.9 未变更，
+安装包继续位于 `v0.2.31`。
 运行包 Ed25519 清单签名已启用，与仍暂停的 AU 和 macOS 应用签名分别管理。
 
 English: install manager 0.2.9 manually over the old app, reopen it and select the same
@@ -80,6 +81,22 @@ Remote 0.2.16 与管理器 0.2.2 不再将已等于目标版本的文件误判�
 详见[管理器](desktop-manager.zh-CN.md)与[网页后端更新](web-backend-update.md)。
 
 ## 维护分发服务
+
+2026-11-10 已完成 Remote **0.2.33** 的分发与 `codexwin` 部署收尾。正式标签为
+`v0.2.33`，发布提交 `b2e3d9ecc2ee6afbb6fcef87ff74de9334dc9e10`。main CI
+`42808058587`、Runtime Packages `42808168637` 和 Desktop Manager
+`42808168788` 全部通过；管理器未改版。
+
+发布后首先发现下载 Worker 的已校验快照仍返回 `v0.2.32`，管理器会因此漏报
+新版本。刷新快照并部署下载 Worker 后，`/releases/latest` 返回 `v0.2.33`；
+Worker 版本为 `a5a09717-3d5d-4bb8-8d78-aa86f6b465ec`。四个运行包/清单的
+项目分发 HEAD 均为 `200`，大小与 Release 元数据一致。
+
+本机 Remote 已从 0.2.32 通过预构建运行包升级到 0.2.33，事务备份由管理器
+保留；本地与 `codexwin` 的 `/version.json` 均为 `0.2.33`，构建标识
+`assets/index-DraSBu-b.js`，`/health` 为 ready / desktop。静态边缘 Worker 版本为
+`d291018d-8fb0-47a2-b2c9-91c92631ee1e`。服务与隧道继续由隐藏计划任务运行
+`node-22.19.0-127.exe`，未弹出命令行窗口，Desktop 保持运行。
 
 2026-11-10 已完成 Remote **0.2.32** 的分发与 `codexwin` 部署收尾。正式标签为
 `v0.2.32`，发布提交 `7009ceefbcaf932836d826cddec32a9e8bfb8e70`。main CI
