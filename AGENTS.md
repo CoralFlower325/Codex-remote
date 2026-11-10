@@ -13,6 +13,10 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 
 - Develop and publish in this public repository on `main`. The sibling
   private Windows installation is deployment-only; never push or reset it.
+- On this Windows host, the public repository is
+  `F:\AAAAcodexremote\Codex-Remote-Public` and the live installation is
+  `F:\AAAAcodexremote\codex-remote-main`. Keep `F:\AAAAcodexremote` limited to
+  those two directories with no loose files or version-named copies.
 - Before changing code or tests, read all
   [development contracts](docs/development-contracts.md). They preserve the
   detailed UI, loading, history, transport, terminal and manager constraints.
