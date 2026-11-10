@@ -61,12 +61,26 @@ describe('local manager control boundary', () => {
     finally { await new Promise((resolve) => server.close(resolve)); }
     expect(await portListening(url)).toBe(false);
   });
-  it.each(['win32', 'darwin'])('reads older installation status using the bundled %s fallback', async (platform) => {
+  it('uses the bundled Windows ownership probe before a stale installation status script', async () => {
+    const execute = vi.fn().mockResolvedValueOnce('{"running":true,"conflict":false}');
+    expect(await serviceStatus({ root: 'selected installation' }, execute, 'win32')).toEqual({ running: true, conflict: false });
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute.mock.calls[0][1]).toContain('selected installation');
+    expect(execute.mock.calls[0][1].some((arg) => arg.includes('status-windows.ps1'))).toBe(true);
+  });
+  it('falls back from the bundled Windows probe to the selected installation', async () => {
+    const execute = vi.fn().mockRejectedValueOnce(new Error('missing bundled probe'))
+      .mockResolvedValueOnce('{"running":true,"conflict":false}');
+    expect(await serviceStatus({ root: 'selected installation' }, execute, 'win32')).toEqual({ running: true, conflict: false });
+    expect(execute.mock.calls[1][1].some((arg) => arg.includes('remote-control-windows.ps1'))).toBe(true);
+  });
+  it('reads older macOS installation status using the bundled fallback', async () => {
+    const platform = 'darwin';
     const execute = vi.fn().mockRejectedValueOnce(new Error('unknown JSON option'))
       .mockResolvedValueOnce('{"running":false,"conflict":true}');
     expect(await serviceStatus({ root: 'selected installation' }, execute, platform)).toEqual({ running: false, conflict: true });
     expect(execute.mock.calls[1][1]).toContain('selected installation');
-    expect(execute.mock.calls[1][1].some((arg) => arg.includes('status-' + (platform === 'win32' ? 'windows.ps1' : 'macos.sh')))).toBe(true);
+    expect(execute.mock.calls[1][1].some((arg) => arg.includes('status-macos.sh'))).toBe(true);
   });
   it('does not follow redirects or expose health errors as healthy', async () => {
     const fetcher = vi.fn().mockRejectedValue(new Error('offline'));

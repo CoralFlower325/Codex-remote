@@ -64,15 +64,22 @@ export function commandEnvironment() {
 export async function serviceStatus(info, execute = run, platform = process.platform) {
   const [file, args] = controlCommand(platform, info.root, 'Status');
   const options = { cwd: info.root, env: commandEnvironment() };
+  const script = fileURLToPath(new URL(platform === 'win32' ? './status-windows.ps1' : './status-macos.sh', import.meta.url))
+    .replace(/([\\/])app\.asar([\\/])/, '$1app.asar.unpacked$2');
+  const bundled = platform === 'win32'
+    ? ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-Root', info.root] : [script, info.root];
+  // Managed runtimes may have versioned executable names. The bundled read-only
+  // probe understands the current ownership rules, so a stale installation
+  // status script must not turn a healthy process into an unowned port.
+  if (platform === 'win32') {
+    try { return JSON.parse(await execute(file, bundled, options)); }
+    catch { /* Fall through to the selected installation for older managers. */ }
+  }
   try { return JSON.parse(await execute(file, args, options)); }
   catch {
     // Earlier releases lack structured status. The bundled fallback only reads
     // ownership/process state; mutations still use the selected host's controls.
-    const script = fileURLToPath(new URL(platform === 'win32' ? './status-windows.ps1' : './status-macos.sh', import.meta.url))
-      .replace(/([\\/])app\.asar([\\/])/, '$1app.asar.unpacked$2');
-    const fallback = platform === 'win32'
-      ? ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-Root', info.root] : [script, info.root];
-    return JSON.parse(await execute(file, fallback, options));
+    return JSON.parse(await execute(file, bundled, options));
   }
 }
 
