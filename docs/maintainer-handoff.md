@@ -15,7 +15,7 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.29** / manager **0.2.6**, tag
+The current published release is Remote **0.2.29** / manager **0.2.7**, tag
 `v0.2.29`.
 The [native queued-guide acceptance](native-queued-guide-0.2.27.md) records the
 single primary action, immediate queued-submission strip and history-trigger
@@ -48,14 +48,15 @@ Remote **0.2.29** keeps the mobile composer toolbar on one row without shrinking
 its 36px or 44px controls. Active turns keep one primary action and show an
 optimistic queued row until the native queue returns the same
 `clientUserMessageId`; Guide uses `turn/steer`, and disabling queue switches that
-turn to direct steering. Manager **0.2.6** owns the Windows runtime migration and
+turn to direct steering. Manager **0.2.7** owns the Windows runtime migration,
+retry-safe update-lock identity reads and
 repair path while retaining the 0.2.5 password IPC alignment.
 
 Runtime updates now require Ed25519 publisher signatures against bundled public
 keys, including signed commit identity for source fallback. The private key stays
 outside the repository; the `RELEASE_SIGNING_KEY` GitHub secret and formal
 two-platform signing workflow have been validated. Follow [release-signing.md](release-signing.md) before a
-formal runtime release. Manager 0.2.6 requires its own installer; changing Remote
+formal runtime release. Manager 0.2.7 requires its own installer; changing Remote
 does not patch an already installed manager. AU self-update and macOS application
 signing/notarization remain paused.
 

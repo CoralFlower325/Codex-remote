@@ -1,9 +1,15 @@
 # Desktop Manager Acceptance
 
 Current batch and historical acceptance records, reconciled 2026-11-10.
-Stable manager 0.2.6 is published with Remote 0.2.28; self-update work remains
+Stable manager 0.2.7 is published with Remote 0.2.29; self-update work remains
 paused as [0.2.0AU](manager-self-update-checkpoints.md). Historical records below
 retain their original scope and counts.
+
+## Manager 0.2.7 Update Lock Retry
+
+Update-lock process identity reads now retry a transient Windows process-query
+failure before treating the lock as unresolved. This keeps uncertain process
+metadata from becoming a false update-occupancy failure.
 
 ## Manager 0.2.6 Windows Task Runtime
 
