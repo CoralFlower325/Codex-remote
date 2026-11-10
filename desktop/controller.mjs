@@ -68,19 +68,27 @@ export async function serviceStatus(info, execute = run, platform = process.plat
     .replace(/([\\/])app\.asar([\\/])/, '$1app.asar.unpacked$2');
   const bundled = platform === 'win32'
     ? ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-Root', info.root] : [script, info.root];
-  // Managed runtimes may have versioned executable names. The bundled read-only
-  // probe understands the current ownership rules, so a stale installation
-  // status script must not turn a healthy process into an unowned port.
+  let selectedStatus = null;
+  try {
+    selectedStatus = JSON.parse(await execute(file, args, options));
+    if (selectedStatus.running || selectedStatus.conflict) return selectedStatus;
+  } catch { /* Older selected installations may not support JSON status. */ }
+  // Managed runtimes may have versioned executable names. If the selected
+  // installation reports stopped, cross-check the current read-only ownership
+  // probe so a stale script cannot turn a healthy process into an unowned port.
   if (platform === 'win32') {
-    try { return JSON.parse(await execute(file, bundled, options)); }
+    try {
+      const bundledStatus = JSON.parse(await execute(file, bundled, options));
+      if (bundledStatus.running || bundledStatus.conflict) return bundledStatus;
+      if (selectedStatus) return selectedStatus;
+      return bundledStatus;
+    }
     catch { /* Fall through to the selected installation for older managers. */ }
   }
-  try { return JSON.parse(await execute(file, args, options)); }
-  catch {
-    // Earlier releases lack structured status. The bundled fallback only reads
-    // ownership/process state; mutations still use the selected host's controls.
-    return JSON.parse(await execute(file, bundled, options));
-  }
+  if (selectedStatus) return selectedStatus;
+  // Earlier releases lack structured status. The bundled fallback only reads
+  // ownership/process state; mutations still use the selected host's controls.
+  return JSON.parse(await execute(file, bundled, options));
 }
 
 export async function probe(url, json = true, fetcher = fetch, timeout = 2500) {

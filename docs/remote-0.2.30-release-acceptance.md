@@ -20,9 +20,9 @@
 - manager 0.2.8 的源码构建与 Electron smoke 通过。
 - Windows 服务控制、状态、修复和网页更新所有权检查统一识别
   `node-22.19.0-127.exe` 等受管运行时文件名，不再只接受 `node.exe`。
-- Windows 状态读取优先使用管理器随包的新只读探针；安装目录中较旧的
-  `remote-control-windows.ps1` 只在新探针失败时回退，避免旧脚本把健康服务
-  覆盖成“端口被占用”。
+- Windows 状态读取先采用安装目录脚本报告的已运行/冲突结果；若它报告停止，
+  再用管理器随包的新只读探针交叉核对。这样既兼容合成/外部服务，也避免旧脚本
+  把健康的版本化 Node 进程覆盖成“端口被占用”。
 - manager 0.2.8 已静默安装在 `C:\Program Files\Codex Remote Manager`；安装后的
   只读探针针对当前 Remote 0.2.29 返回：
 

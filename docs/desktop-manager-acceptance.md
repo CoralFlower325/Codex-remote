@@ -12,8 +12,10 @@ accept managed executable names such as `node-22.19.0-127.exe` instead of only
 `node.exe`. The live 0.2.29 installation reported `running=true` and
 `conflict=false` with the patched read-only probe, removing the false
 “port occupied” result while the backend and managed tunnel continued running.
-Windows status also prefers the manager's bundled read-only probe over a stale
-installation control script, with the installation script retained as fallback.
+Windows status first accepts a selected script's running/conflict result, then
+cross-checks the manager's bundled read-only probe only when that script reports
+stopped. This preserves synthetic/external ownership while preventing stale
+versioned-Node detection from overriding a healthy service.
 Manager smoke and controller tests cover both paths. The installed 0.2.8 UI was
 rechecked live and displayed **运行正常** with Desktop, tunnel and public entry
 available.

@@ -61,18 +61,25 @@ describe('local manager control boundary', () => {
     finally { await new Promise((resolve) => server.close(resolve)); }
     expect(await portListening(url)).toBe(false);
   });
-  it('uses the bundled Windows ownership probe before a stale installation status script', async () => {
+  it('cross-checks the bundled Windows ownership probe when an installation reports stopped', async () => {
+    const execute = vi.fn().mockResolvedValueOnce('{"running":false,"conflict":false}')
+      .mockResolvedValueOnce('{"running":true,"conflict":false}');
+    expect(await serviceStatus({ root: 'selected installation' }, execute, 'win32')).toEqual({ running: true, conflict: false });
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute.mock.calls[1][1]).toContain('selected installation');
+    expect(execute.mock.calls[1][1].some((arg) => arg.includes('status-windows.ps1'))).toBe(true);
+  });
+  it('retains a selected installation status for synthetic or externally owned services', async () => {
     const execute = vi.fn().mockResolvedValueOnce('{"running":true,"conflict":false}');
     expect(await serviceStatus({ root: 'selected installation' }, execute, 'win32')).toEqual({ running: true, conflict: false });
     expect(execute).toHaveBeenCalledTimes(1);
-    expect(execute.mock.calls[0][1]).toContain('selected installation');
-    expect(execute.mock.calls[0][1].some((arg) => arg.includes('status-windows.ps1'))).toBe(true);
+    expect(execute.mock.calls[0][1].some((arg) => arg.includes('remote-control-windows.ps1'))).toBe(true);
   });
-  it('falls back from the bundled Windows probe to the selected installation', async () => {
-    const execute = vi.fn().mockRejectedValueOnce(new Error('missing bundled probe'))
+  it('falls back from an unreadable selected Windows status to the bundled probe', async () => {
+    const execute = vi.fn().mockRejectedValueOnce(new Error('unknown JSON option'))
       .mockResolvedValueOnce('{"running":true,"conflict":false}');
     expect(await serviceStatus({ root: 'selected installation' }, execute, 'win32')).toEqual({ running: true, conflict: false });
-    expect(execute.mock.calls[1][1].some((arg) => arg.includes('remote-control-windows.ps1'))).toBe(true);
+    expect(execute.mock.calls[1][1].some((arg) => arg.includes('status-windows.ps1'))).toBe(true);
   });
   it('reads older macOS installation status using the bundled fallback', async () => {
     const platform = 'darwin';
