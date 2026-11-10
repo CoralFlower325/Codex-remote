@@ -85,6 +85,9 @@ Release and privacy policy remains in AGENTS.md.
   completedAt when that anchor is unavailable, then durationMs as a fallback.
   An intermediate slice of a turn truncated by the window's newer boundary
   is not the final answer; treat its anchor as unavailable the same way.
+  Once a settled turn's final-answer anchor has been observed, remember it
+  for the rest of the viewing session: the divider must not fall back to
+  durationMs merely because the answer scrolled out of the window again.
   Format narrow Chinese units with zero units omitted, matching Desktop.
   Keep one work divider at the first response of a native turn. Steering never
   moves or restarts it; share final-answer timing and process expansion across
@@ -128,7 +131,14 @@ Release and privacy policy remains in AGENTS.md.
   gesture retries a failed foreground page; idle failures must not loop.
   Later pages load only when the reader is near the retained window's end
   and is not travelling upward; a window trimmed shorter than the lookahead
-  must not make the later-page trigger permanently true at its top.
+  must not make the later-page trigger permanently true at its top. When
+  the window is barely taller than the viewport its end is permanently in
+  range, so passive triggers additionally require travel towards the end
+  or a just-made explicit downward gesture.
+  Whole-turn retreat at a window cut is capped by span: a turn occupying
+  hundreds of retained items is cut by item anchor instead of being
+  evicted whole, so crossing a giant turn's head cannot unload the
+  reader's whole section in one commit.
   Clamp scroll offsets to their real range before inferring direction so
   Safari rubber-band rebound cannot cancel upward intent. Accumulate small
   touch movements across events; do not discard each sub-threshold move.

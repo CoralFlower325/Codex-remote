@@ -3,7 +3,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { HistoryThreadContext } from '../history-details';
 import { itemKey } from '../remote-state';
 import type { ThreadItem } from '../types';
-import { buildTimelineEntries, buildTimelineSections, timelineTurnResponses, type TimelineEntry, type TimelineSection } from '../timeline-model';
+import { applyRememberedAnchors, buildTimelineEntries, buildTimelineSections, timelineTurnResponses, type TimelineEntry, type TimelineSection } from '../timeline-model';
 import type { TurnTiming } from '../../shared/turn-timing';
 import type { OutlineTurn } from '../../shared/thread-outline';
 import { ThreadNavigation, type NavigationTarget } from './ThreadNavigation';
@@ -103,6 +103,7 @@ export function ThreadTimeline({
   const laterSentinelRef = useRef<HTMLDivElement | null>(null);
   const laterAttemptRef = useRef<string | null>(null);
   const laterPendingRef = useRef(false);
+  const forwardIntentRef = useRef(0);
   const loadLaterRef = useRef<() => void>(() => {});
   const previousSectionsRef = useRef<TimelineSection[]>([]);
   const entries = useMemo(() => buildTimelineEntries(items, activeTurnId,
@@ -111,8 +112,17 @@ export function ThreadTimeline({
   // While the window is bounded on the newer side, its last turn may be
   // truncated mid-turn; do not let a partial slice anchor its duration.
   const truncatedTailTurnId = hasNewerHistory ? items.at(-1)?.turnId ?? null : null;
-  const responses = useMemo(() => timelineTurnResponses(sections, truncatedTailTurnId),
-    [sections, truncatedTailTurnId]);
+  // Anchors of settled turns are remembered for the rest of the viewing
+  // session so the divider cannot flip back to the native duration when
+  // the final answer scrolls out of the window again.
+  const anchorMemoryRef = useRef(new Map<string, number>());
+  useEffect(() => () => { anchorMemoryRef.current.clear(); }, [threadId]);
+  const settledTurnIds = useMemo(() => new Set(Object.values(turnTimings)
+    .filter(turn => turn.status !== 'inProgress' && turn.completedAt != null)
+    .map(turn => turn.id)), [turnTimings]);
+  const responses = useMemo(() => applyRememberedAnchors(
+    timelineTurnResponses(sections, truncatedTailTurnId), anchorMemoryRef.current, settledTurnIds),
+    [sections, truncatedTailTurnId, settledTurnIds]);
   const heartbeatTurns = useMemo(() => new Set(items.flatMap(item =>
     item.type === 'userMessage' && item.turnId && parseHeartbeatPrompt(
       item.content.filter(part => part.type === 'text').map(part => part.text ?? '').join('\n'))
@@ -171,10 +181,16 @@ export function ThreadTimeline({
     }
     let frame = 0;
     const load = () => {
+      // A window barely taller than the viewport is permanently within
+      // range of its own end; passive triggers (sentinel, scroll events
+      // from anchor restoration) must not page later from its top. Only
+      // travel towards the end, or a just-made downward gesture, may.
+      const travelledToEnd = stream.scrollTop > stream.clientHeight * 0.5 ||
+        performance.now() - forwardIntentRef.current < 1500;
       if (loadingLaterHistory || loadingHistory || revealingHistory || laterPendingRef.current ||
           !navigator.onLine || document.visibilityState !== 'visible' ||
           !laterHistoryLoadReady(stream.scrollHeight - stream.scrollTop - stream.clientHeight,
-            stream.clientHeight, wantsEarlierRef.current)) return;
+            stream.clientHeight, wantsEarlierRef.current, travelledToEnd)) return;
       const key = `${newerHistoryCursor}:${items.length}:${items.at(-1) ? itemKey(items.at(-1)!) : ''}`;
       if (laterAttemptRef.current === key) return;
       laterAttemptRef.current = key;
@@ -450,6 +466,7 @@ export function ThreadTimeline({
         if (!laterPendingRef.current) laterAttemptRef.current = null;
         navigationAnchorRef.current = null;
         wantsEarlierRef.current = event.deltaY < 0;
+        if (event.deltaY > 0) forwardIntentRef.current = performance.now();
         if (event.deltaY < 0) onHistoryReading?.(threadId, true);
         if (!wantsEarlierRef.current) continuationTopRef.current = null;
         if (event.deltaY < 0 && !loadingEarlierRef.current) earlierAttemptRef.current = null;
@@ -471,6 +488,7 @@ export function ThreadTimeline({
         const direction = scrollActivityRef.current!.moveTouch(event.touches[0]?.clientY ?? null);
         if (direction !== null) {
           wantsEarlierRef.current = direction < 0;
+          if (direction > 0) forwardIntentRef.current = performance.now();
           if (!wantsEarlierRef.current) continuationTopRef.current = null;
           if (wantsEarlierRef.current && !loadingEarlierRef.current) earlierAttemptRef.current = null;
         }
@@ -483,6 +501,7 @@ export function ThreadTimeline({
         if (['Home', 'PageUp', 'ArrowUp', 'End', 'PageDown', 'ArrowDown'].includes(event.key)) {
           if (!laterPendingRef.current) laterAttemptRef.current = null;
           wantsEarlierRef.current = ['Home', 'PageUp', 'ArrowUp'].includes(event.key);
+          if (!wantsEarlierRef.current) forwardIntentRef.current = performance.now();
           if (!wantsEarlierRef.current) continuationTopRef.current = null;
           if (wantsEarlierRef.current && !loadingEarlierRef.current) earlierAttemptRef.current = null;
           loadLaterRef.current();

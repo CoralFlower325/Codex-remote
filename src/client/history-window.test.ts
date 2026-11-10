@@ -39,9 +39,30 @@ describe('bounded native history windows', () => {
   });
 
   it('does not discard the whole requested window when its first or last turn is oversized', () => {
+    // Geometry of the giant-turn boundary flash: a few small turns, then a
+    // turn with thousands of records. Retreating past the giant turn would
+    // drop every loaded item of the section being read in one commit, so the
+    // window cuts it by item anchor and keeps the full requested size.
     const items = [...turn('one', 10), ...turn('huge', 2000), ...turn('last', 10)];
-    expect(boundHistoryItems(items, 'older', 800).items).toEqual(items.slice(0, 10));
-    expect(boundHistoryItems(items, 'newer', 800).items).toEqual(items.slice(-10));
+    const older = boundHistoryItems(items, 'older', 800);
+    expect(older.items).toHaveLength(800);
+    expect(older.items.slice(0, 10)).toEqual(items.slice(0, 10));
+    expect(older.after).toEqual({ turnId: 'huge', itemId: '789' });
+    const newer = boundHistoryItems(items, 'newer', 800);
+    expect(newer.items).toHaveLength(800);
+    expect(newer.items.slice(-10)).toEqual(items.slice(-10));
+    expect(newer.before).toEqual({ turnId: 'huge', itemId: '1210' });
+  });
+
+  it('still retreats past a modest straddling turn to keep it whole', () => {
+    const items = [...turn('one', 10), ...turn('mid', 150), ...turn('last', 700)];
+    const older = boundHistoryItems(items, 'older', 100);
+    expect(older.items).toEqual(items.slice(0, 10));
+    expect(older.after).toEqual({ turnId: 'one', itemId: '9' });
+    const newerItems = [...turn('first', 900), ...turn('mid', 150), ...turn('last', 10)];
+    const newer = boundHistoryItems(newerItems, 'newer', 100);
+    expect(newer.items).toEqual(newerItems.slice(-10));
+    expect(newer.before).toEqual({ turnId: 'last', itemId: '0' });
   });
 
   it('supports ungrouped legacy records and a one-item bound', () => {
