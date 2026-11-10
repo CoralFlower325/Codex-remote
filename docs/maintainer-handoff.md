@@ -15,8 +15,8 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.33** / manager **0.2.9**, tag
-`v0.2.33`.
+The current published release is Remote **0.2.34** / manager **0.2.9**, tag
+`v0.2.34`.
 The [native queued-guide acceptance](native-queued-guide-0.2.27.md) records the
 single primary action, immediate queued-submission strip and history-trigger
 placement, plus the 0.2.28 follow-up record for optimistic send/Guide display,

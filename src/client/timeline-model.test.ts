@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildTimelineEntries, buildTimelineSections, finalAnswerIndex, isActivityIssue, timelineTurnResponses } from './timeline-model';
+import { applyRememberedAnchors, buildTimelineEntries, buildTimelineSections, finalAnswerIndex, isActivityIssue, timelineTurnResponses, type TimelineTurnResponse } from './timeline-model';
 import { elapsedTurnMs } from '../shared/turn-timing';
 import type { ThreadItem } from './types';
 import { collectSubagents, isSubagentItem } from './subagents';
@@ -335,5 +335,37 @@ describe('timeline model', () => {
     const prefixed = buildTimelineEntries([{ ...agent('prefix'), turnId: 'older' }, earlier, latest], null, initialEntries);
     expect(buildTimelineSections(prefixed, initial).slice(1)).toEqual(initial);
     expect(buildTimelineSections(prefixed, initial)[1]).toBe(initial[0]);
+  });
+});
+
+describe('remembered turn anchors', () => {
+  const response = (finalStartedAtMs: number | null): TimelineTurnResponse =>
+    ({ finalStartedAtMs, hasTrace: true, lastResponseKey: 'k' });
+
+  it('refills a settled turn anchor after its answer leaves the window', () => {
+    const remembered = new Map<string, number>();
+    const settled = new Set(['t']);
+    applyRememberedAnchors(new Map([['t', response(280_000)]]), remembered, settled);
+    expect(remembered.get('t')).toBe(280_000);
+    const later = new Map([['t', response(null)]]);
+    applyRememberedAnchors(later, remembered, settled);
+    expect(later.get('t')!.finalStartedAtMs).toBe(280_000);
+  });
+
+  it('never remembers anchors of in-progress turns', () => {
+    const remembered = new Map<string, number>();
+    applyRememberedAnchors(new Map([['live', response(123)]]), remembered, new Set());
+    expect(remembered.size).toBe(0);
+    const later = new Map([['live', response(null)]]);
+    applyRememberedAnchors(later, remembered, new Set());
+    expect(later.get('live')!.finalStartedAtMs).toBeNull();
+  });
+
+  it('leaves turns without any observed anchor untouched', () => {
+    const remembered = new Map<string, number>();
+    const responses = new Map([['x', response(null)]]);
+    applyRememberedAnchors(responses, remembered, new Set(['x']));
+    expect(responses.get('x')!.finalStartedAtMs).toBeNull();
+    expect(remembered.size).toBe(0);
   });
 });
