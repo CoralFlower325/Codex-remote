@@ -82,25 +82,26 @@ Remote 0.2.16 与管理器 0.2.2 不再将已等于目标版本的文件误判�
 
 ## 维护分发服务
 
-2026-11-10 已完成 Remote **0.2.28** / manager **0.2.6** 的分发与
-`codexwin` 部署收尾。正式标签为 `v0.2.28`，发布提交
-`e9a3417c2d06306655437f823b7cb1b2cf087307`；`main` 后续合并的运行时
-查询修复为 `e22a923883f493bb72b09568eb345b0bbf5be8c7`。
-Runtime Packages `42663449220`、Desktop Manager `42663449323` 和
-`main` CI `42668536324` 全部通过。
+2026-11-10 已完成 Remote **0.2.29** / manager **0.2.7** 的分发与
+`codexwin` 部署收尾。正式标签为 `v0.2.29`，发布提交
+`4e32e5c7710230fc62a09d2f38cc8ca0a54c2074`。
+Runtime Packages `42759896664`、Desktop Manager `42759896184` 和
+`main` CI `42759828842` 全部通过。
 
-下载 Worker `044b4962-becc-489b-a0a8-c70deab4277c` 已刷新七附件快照，
-`/releases/latest` 对 GitHub `Accept` 请求返回 `v0.2.28`。七个附件的
-公网 HEAD 请求全部返回 `200`，大小与 Release 元数据一致；Windows 管理器
-安装包完整下载为 `121709707` 字节，SHA-256
-`9e8a1d9ca6b13d60f66df8d415240ed582689a66c506f81e5ae72810e2bfc2ba`。
+下载 Worker `cd20471a-3e91-4f64-8ec0-af57bc07a63d` 已刷新七附件快照，
+`/releases/latest` 对 GitHub `Accept` 请求返回 `v0.2.29`。七个附件的
+公网 HEAD 请求全部返回 `200`，大小与 Release 元数据一致；Windows manager
+0.2.7 安装包完整下载为 `121709945` 字节，SHA-256
+`15849a70a9415a1bf143e05c383ea3a71f9de8c3c5c10df10e2f02faf6eb35e1`。
 
-本机 manager 已静默升级到 0.2.6，Remote 通过预构建运行包升级到 0.2.28；
-本地与 `codexwin` 的 `/version.json` 均为 `0.2.28`，构建标识
-`assets/index-ColwNQ7W.js`，`/health` 为 ready / desktop。静态边缘 Worker
-版本为 `f7f5b88c-6874-45a8-b8b5-d0d84fea75ef`。服务与隧道均由隐藏计划任务
-运行，使用 `C:\ProgramData\CodexRemoteNode\node.exe`，未弹出命令行窗口。
+本机 manager 已静默升级到 0.2.7，Remote 通过预构建运行包升级到 0.2.29；
+本地与 `codexwin` 的 `/version.json` 均为 `0.2.29`，构建标识
+`assets/index-D1_M0Otf.js`，`/health` 为 ready / desktop。静态边缘 Worker
+版本为 `e27d31f2-cecf-4825-a852-e9ab9c2a9180`。服务与隧道均由隐藏
+`wscript` 包装器运行 `C:\ProgramData\CodexRemoteNode\node.exe`，
+未弹出命令行窗口。
 
+0.2.28 的发送/引导即时呈现、轮次状态单向推进和待处理区优先级继续保留。
 下载分发、GitHub Release、静态边缘、本机安装与真机验收仍分别记录，
 不能相互替代。`codexmacos` 站点本轮未完成版本/健康确认。
 历史版本的下载速度、节点和失败调查保留在 Git 历史及对应版本证据中，

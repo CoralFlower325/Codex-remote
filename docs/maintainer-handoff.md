@@ -35,12 +35,11 @@ The 0.2.28 batch makes normal sends and Guide optimistic, keeps terminal turn
 state monotonic against late snapshots, prioritizes approvals and folds pending
 items under pressure.
 Runtime packaging remains gated on the tested Node 22.19.x toolchain and signed assets.
-The seven `v0.2.28` assets, the refreshed download snapshot, the `codexwin`
-static edge, the local Windows installation and manager 0.2.6 have been verified.
-See the [0.2.28 release acceptance](remote-0.2.28-release-acceptance.md).
-The 0.2.29 patch keeps the same components but replaces the unstable direct
-Node task action with the hidden `wscript` wrapper and migrates direct tasks
-through manager Start/Stop or repair.
+The seven `v0.2.29` assets, refreshed download snapshot, `codexwin` static edge,
+local Windows installation and manager 0.2.7 have been verified. The 0.2.29 patch
+replaces the unstable direct Node task action with the hidden `wscript` wrapper,
+and manager Start/Stop or repair migrates existing direct tasks.
+See the [0.2.29 release acceptance](remote-0.2.29-release-acceptance.md).
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.
 

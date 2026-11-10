@@ -67,6 +67,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
+| [Remote 0.2.29 发布与部署验收](remote-0.2.29-release-acceptance.md) | 0.2.29 / manager 0.2.7：隐藏 Windows 服务启动、直接 Node 任务迁移、更新锁查询重试、分发与本机部署；真机边界保留 |
 | [Remote 0.2.28 发布与部署验收](remote-0.2.28-release-acceptance.md) | 0.2.28 / manager 0.2.6：即时发送与引导、轮次状态单向推进、待处理区优先级、分发 Worker、Windows 公网与本地安装；真机边界保留 |
 | [Remote 0.2.27 原生待发与引导条](native-queued-guide-0.2.27.md) | 0.2.27 / manager 0.2.6：单按钮、即时待发条、编辑/引导/关闭排队、历史入口位置与 Windows Node 任务迁移；真机边界保留 |
 | [Remote 0.2.26 发布验收](remote-0.2.26-release-acceptance.md) | 0.2.26：完整目录、插话同步、终端隔离、预览/网络与发布治理；真机边界保留 |
