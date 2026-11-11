@@ -1,9 +1,9 @@
-import { Component, lazy, memo, Suspense, useMemo, type ReactNode } from 'react';
+import { Component, lazy, memo, Suspense, useMemo, useRef, type ReactNode } from 'react';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import { localImageSource } from '../markdown-media';
-import { markdownBlocks, remarkAssistantSources } from '../markdown-blocks';
+import { createMarkdownBlocksCache, markdownBlocks, remarkAssistantSources, type MarkdownBlocksCache } from '../markdown-blocks';
 import { normalizeMathDelimiters, remarkMathText } from '../markdown-math';
 import { PreviewImage, PreviewLink } from './PreviewLinks';
 
@@ -14,9 +14,14 @@ const assistantPlugins = [remarkGfm, remarkMath, remarkAssistantSources, remarkM
 export const MarkdownText = memo(function MarkdownText({ text, assistant = false, preserveDocument = false }: {
   text: string; assistant?: boolean; preserveDocument?: boolean;
 }) {
+  // One incremental parse cache per rendered message: while a message
+  // streams, only its tail block is re-parsed and the stable blocks keep
+  // their identity, so their memoized rendering is reused as-is.
+  const blocksCacheRef = useRef<MarkdownBlocksCache | null>(null);
+  if (!blocksCacheRef.current) blocksCacheRef.current = createMarkdownBlocksCache();
   const blocks = useMemo(() => preserveDocument
     ? [{ offset: 0, text: normalizeMathDelimiters(text) }]
-    : markdownBlocks(text), [preserveDocument, text]);
+    : markdownBlocks(text, blocksCacheRef.current!), [preserveDocument, text]);
   return <>{blocks.map(block => <MarkdownBlock key={block.offset} text={block.text} assistant={assistant} />)}</>;
 });
 

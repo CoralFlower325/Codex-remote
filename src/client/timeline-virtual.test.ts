@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   captureKeyAnchor, captureKeyAnchorBelow, estimateSectionHeight, expandRangeByPixels, resolveKeyAnchor,
-  virtualizeTimelineEnabled, type RowMeasurement
+  shouldAdjustForSizeChange, virtualizeTimelineEnabled, type RowMeasurement, type SizeChangeAdjustment
 } from './timeline-virtual';
 import type { TimelineSection } from './timeline-model';
 
@@ -24,6 +24,42 @@ describe('virtualizeTimelineEnabled', () => {
     expect(virtualizeTimelineEnabled('?virt=0')).toBe(false);
     expect(virtualizeTimelineEnabled('?virt=1')).toBe(true);
     expect(virtualizeTimelineEnabled('?virt=yes')).toBe(true);
+  });
+});
+
+describe('shouldAdjustForSizeChange', () => {
+  const base: SizeChangeAdjustment = {
+    hasKeyAnchor: false, touchIntent: false, scrollIdle: true, firstMeasure: false,
+    itemStart: 0, itemSize: 100, scrollOffset: 500, scrollDirection: 'forward'
+  };
+
+  it('never adjusts while a keyed reading anchor is held', () => {
+    expect(shouldAdjustForSizeChange({ ...base, hasKeyAnchor: true })).toBe(false);
+  });
+
+  it('freezes writes during a touch drag and its momentum window', () => {
+    expect(shouldAdjustForSizeChange({ ...base, touchIntent: true })).toBe(false);
+    expect(shouldAdjustForSizeChange({ ...base, scrollIdle: false })).toBe(false);
+  });
+
+  it('compensates a re-measured row entirely above the fold once idle', () => {
+    expect(shouldAdjustForSizeChange(base)).toBe(true);
+    expect(shouldAdjustForSizeChange({ ...base, scrollDirection: null })).toBe(true);
+  });
+
+  it('does not compensate a row spanning the fold (the streaming-growth case)', () => {
+    expect(shouldAdjustForSizeChange({ ...base, itemStart: 450, itemSize: 200 })).toBe(false);
+  });
+
+  it('does not compensate while scrolling backward', () => {
+    expect(shouldAdjustForSizeChange({ ...base, scrollDirection: 'backward' })).toBe(false);
+  });
+
+  it('lets a first measurement compensate any row whose top is above the fold', () => {
+    expect(shouldAdjustForSizeChange({ ...base, firstMeasure: true, itemStart: 450, itemSize: 200 })).toBe(true);
+    expect(shouldAdjustForSizeChange({ ...base, firstMeasure: true, itemStart: 500 })).toBe(false);
+    // The backward-scroll protection does not apply to first measurements.
+    expect(shouldAdjustForSizeChange({ ...base, firstMeasure: true, scrollDirection: 'backward' })).toBe(true);
   });
 });
 

@@ -18,55 +18,103 @@ export type TimelineEntry =
 
 export type ActivityKind = 'command' | 'file' | 'reasoning' | 'tool' | 'search' | 'image';
 
-export function buildTimelineEntries(
-  items: ThreadItem[], activeTurnId: string | null = null, previous: TimelineEntry[] = []
-): TimelineEntry[] {
-  const entries: TimelineEntry[] = [];
+interface EntryScanState {
+  activityItems: ThreadItem[];
+  /** Global item index of activityItems[0], for entry start recording. */
+  activityStart: number;
+  responseTurnId: string | undefined;
+  hasSubagentEntrance: boolean;
+  retainedActivityKeys: Set<string>;
+  /** Append-only mirror of retainedActivityKeys in insertion order;
+   * checkpoints remember a length into this log instead of copying
+   * the set. */
+  retainedKeyLog: string[];
+}
+
+function createEntryScanState(): EntryScanState {
+  return {
+    activityItems: [], activityStart: 0, responseTurnId: undefined,
+    hasSubagentEntrance: false, retainedActivityKeys: new Set(), retainedKeyLog: []
+  };
+}
+
+function activityKeyRegistry(entries: TimelineEntry[]): Map<string, string> {
   const activityKeys = new Map<string, string>();
-  const retainedActivityKeys = new Set<string>();
-  for (const entry of previous) {
+  for (const entry of entries) {
     if (entry.type === 'activity') for (const item of entry.items) activityKeys.set(itemKey(item), entry.key);
   }
-  let activityItems: ThreadItem[] = [];
-  let responseTurnId: string | undefined;
-  let hasSubagentEntrance = false;
-  const flushActivity = (isLast = false) => {
-    if (activityItems.length === 0) return;
-    const failedCount = activityItems.filter((item) => 'status' in item && item.status === 'failed').length;
-    const declinedCount = activityItems.filter((item) => 'status' in item && item.status === 'declined').length;
-    const running = isLast && activeTurnId !== null && activityItems[0]!.turnId === activeTurnId &&
-      activityItems[0]!.type !== 'imageView';
-    const kinds = [...new Set(activityItems.map((item) => activityKind(item)!))];
-    const kind = (['tool', 'file', 'command', 'search', 'image'] as ActivityKind[]).find((kind) => kinds.includes(kind))!;
-    const baseKey = `activity-${itemKey(activityItems[0]!)}`;
-    let key = activityItems.map(item => activityKeys.get(itemKey(item)))
-      .find(key => key && !retainedActivityKeys.has(key)) ?? baseKey;
-    let suffix = 1;
-    while (retainedActivityKeys.has(key)) key = `${baseKey}-${++suffix}`;
-    retainedActivityKeys.add(key);
-    entries.push({
-      type: 'activity',
-      key,
-      kind,
-      kinds,
-      items: activityItems,
-      failedCount,
-      declinedCount,
-      running
-    });
-    activityItems = [];
-  };
+  return activityKeys;
+}
 
-  items.forEach((item) => {
-    if (item.turnId !== responseTurnId || item.type === 'userMessage') {
-      responseTurnId = item.turnId;
-      hasSubagentEntrance = false;
+function flushActivityGroup(
+  state: EntryScanState, activityKeys: Map<string, string>, activeTurnId: string | null,
+  isLast: boolean, entries: TimelineEntry[], entryItemStarts: number[] | null
+): void {
+  const activityItems = state.activityItems;
+  if (activityItems.length === 0) return;
+  const failedCount = activityItems.filter((item) => 'status' in item && item.status === 'failed').length;
+  const declinedCount = activityItems.filter((item) => 'status' in item && item.status === 'declined').length;
+  const running = isLast && activeTurnId !== null && activityItems[0]!.turnId === activeTurnId &&
+    activityItems[0]!.type !== 'imageView';
+  const kindSet = new Set<ActivityKind>();
+  for (const item of activityItems) {
+    kindSet.add(activityKind(item)!);
+    if (kindSet.size === 5) break;
+  }
+  const kinds = [...kindSet];
+  const kind = (['tool', 'file', 'command', 'search', 'image'] as ActivityKind[]).find((kind) => kinds.includes(kind))!;
+  const baseKey = `activity-${itemKey(activityItems[0]!)}`;
+  let key = baseKey;
+  for (const item of activityItems) {
+    const candidate = activityKeys.get(itemKey(item));
+    if (candidate && !state.retainedActivityKeys.has(candidate)) { key = candidate; break; }
+  }
+  let suffix = 1;
+  while (state.retainedActivityKeys.has(key)) key = `${baseKey}-${++suffix}`;
+  state.retainedActivityKeys.add(key);
+  state.retainedKeyLog.push(key);
+  entries.push({
+    type: 'activity',
+    key,
+    kind,
+    kinds,
+    items: activityItems,
+    failedCount,
+    declinedCount,
+    running
+  });
+  if (entryItemStarts) entryItemStarts.push(state.activityStart);
+  state.activityItems = [];
+}
+
+/**
+ * The sequential grouping scan behind buildTimelineEntries, factored out
+ * so the incremental chain below can resume it from a checkpoint with an
+ * exact snapshot of this state. `baseIndex` is the global item index of
+ * items[0]; entry starts are recorded globally when `entryItemStarts` is
+ * given. The scan does NOT flush the trailing activity group: callers
+ * finish with flushActivityGroup(state, ..., isLast=true).
+ */
+function scanTimelineEntries(
+  items: ThreadItem[], baseIndex: number, activeTurnId: string | null,
+  activityKeys: Map<string, string>, state: EntryScanState,
+  entries: TimelineEntry[], entryItemStarts: number[] | null,
+  onItemProcessed?: (itemIndex: number) => void
+): void {
+  const flushActivity = (isLast = false) =>
+    flushActivityGroup(state, activityKeys, activeTurnId, isLast, entries, entryItemStarts);
+
+  items.forEach((item, offset) => {
+    const index = baseIndex + offset;
+    if (item.turnId !== state.responseTurnId || item.type === 'userMessage') {
+      state.responseTurnId = item.turnId;
+      state.hasSubagentEntrance = false;
     }
-    if (item.type === 'reasoning' || item.type === 'imageGeneration') return;
-    if (item.type === 'webSearch' && !item.query?.trim()) return;
-    if (item.type === 'agentMessage' && !item.text.trim() && !item.questions?.length) return;
-    if (activityItems.length > 0 && (item.turnId !== activityItems[0]!.turnId ||
-      item.type === 'imageView' || activityItems[0]!.type === 'imageView')) flushActivity();
+    if (item.type === 'reasoning' || item.type === 'imageGeneration') { onItemProcessed?.(index); return; }
+    if (item.type === 'webSearch' && !item.query?.trim()) { onItemProcessed?.(index); return; }
+    if (item.type === 'agentMessage' && !item.text.trim() && !item.questions?.length) { onItemProcessed?.(index); return; }
+    if (state.activityItems.length > 0 && (item.turnId !== state.activityItems[0]!.turnId ||
+      item.type === 'imageView' || state.activityItems[0]!.type === 'imageView')) flushActivity();
     if (isConversationItem(item)) {
       flushActivity();
       entries.push({
@@ -74,23 +122,33 @@ export function buildTimelineEntries(
         key: `message-${itemKey(item)}`,
         item
       });
+      if (entryItemStarts) entryItemStarts.push(index);
+      onItemProcessed?.(index);
       return;
     }
     if (isSubagentItem(item)) {
       // ResponseSection renders all child updates at the first entrance. Later
       // updates keep their order for state projection but have no separate row.
-      if (!hasSubagentEntrance) flushActivity();
-      hasSubagentEntrance = true;
+      if (!state.hasSubagentEntrance) flushActivity();
+      state.hasSubagentEntrance = true;
       entries.push({ type: 'event', key: `event-${itemKey(item)}`, item });
+      if (entryItemStarts) entryItemStarts.push(index);
+      onItemProcessed?.(index);
       return;
     }
-    if (activityKind(item)) activityItems.push(item);
-    else {
+    if (activityKind(item)) {
+      if (state.activityItems.length === 0) state.activityStart = index;
+      state.activityItems.push(item);
+    } else {
       flushActivity();
       entries.push({ type: 'event', key: `event-${itemKey(item)}`, item });
+      if (entryItemStarts) entryItemStarts.push(index);
     }
+    onItemProcessed?.(index);
   });
-  flushActivity(true);
+}
+
+function reuseEntryIdentity(entries: TimelineEntry[], previous: TimelineEntry[]): TimelineEntry[] {
   const previousByKey = new Map(previous.map(entry => [entry.key, entry]));
   return entries.map(entry => {
     const existing = previousByKey.get(entry.key);
@@ -101,6 +159,17 @@ export function buildTimelineEntries(
     }
     return entry.type !== 'activity' && existing.type === entry.type && entry.item === existing.item ? existing : entry;
   });
+}
+
+export function buildTimelineEntries(
+  items: ThreadItem[], activeTurnId: string | null = null, previous: TimelineEntry[] = []
+): TimelineEntry[] {
+  const activityKeys = activityKeyRegistry(previous);
+  const state = createEntryScanState();
+  const entries: TimelineEntry[] = [];
+  scanTimelineEntries(items, 0, activeTurnId, activityKeys, state, entries, null);
+  flushActivityGroup(state, activityKeys, activeTurnId, true, entries, null);
+  return reuseEntryIdentity(entries, previous);
 }
 
 function activityKind(item: ThreadItem): ActivityKind | null {
@@ -132,42 +201,476 @@ export interface TimelineSection {
   showTiming: boolean;
 }
 
-export function buildTimelineSections(entries: TimelineEntry[], previous: TimelineSection[] = []): TimelineSection[] {
-  const sections: TimelineSection[] = [];
-  const firstResponse = new Map<string, TimelineSection>();
-  for (const entry of entries) {
-    const item = entry.type === 'activity' ? entry.items[0]! : entry.item;
-    const user = item.type === 'userMessage';
-    let section = sections.at(-1);
-    if (!section || user || section.user || section.turnId !== item.turnId) {
-      section = { key: entry.key, turnId: item.turnId, entries: [], user, showTiming: false };
-      sections.push(section);
-    }
-    section.entries.push(entry);
-    if (!user && item.turnId && !firstResponse.has(item.turnId)) firstResponse.set(item.turnId, section);
-  }
-  for (const section of firstResponse.values()) section.showTiming = true;
-  // A page can begin inside a response. Keep its identity when its prefix arrives.
+function sectionItemRegistry(sections: TimelineSection[]): Map<string, string> {
   const previousByItem = new Map<string, string>();
-  for (const section of previous) {
+  for (const section of sections) {
     for (const entry of section.entries) {
       const items = entry.type === 'activity' ? entry.items : [entry.item];
       for (const item of items) previousByItem.set(itemKey(item), section.key);
     }
   }
-  const retained = new Set<string>();
+  return previousByItem;
+}
+
+/**
+ * The grouping scan behind buildTimelineSections, factored out so the
+ * incremental chain can resume it at a section boundary. Appends to
+ * `sections` and registers first responses into `firstResponse`;
+ * showTiming, key retention and identity reuse are separate passes.
+ * `onSectionStart` fires (with the global entry index) right before a
+ * new section is pushed, when every section so far is closed.
+ */
+function scanTimelineSections(
+  entries: TimelineEntry[], baseIndex: number,
+  sections: TimelineSection[], firstResponse: Map<string, TimelineSection>,
+  onSectionStart?: (entryIndex: number) => void,
+  firstResponseLog?: Array<readonly [string, TimelineSection]>
+): void {
+  entries.forEach((entry, offset) => {
+    const item = entry.type === 'activity' ? entry.items[0]! : entry.item;
+    const user = item.type === 'userMessage';
+    let section = sections.at(-1);
+    if (!section || user || section.user || section.turnId !== item.turnId) {
+      if (section) onSectionStart?.(baseIndex + offset);
+      section = { key: entry.key, turnId: item.turnId, entries: [], user, showTiming: false };
+      sections.push(section);
+    }
+    section.entries.push(entry);
+    if (!user && item.turnId && !firstResponse.has(item.turnId)) {
+      firstResponse.set(item.turnId, section);
+      firstResponseLog?.push([item.turnId, section]);
+    }
+  });
+}
+
+function retainSectionKeys(
+  sections: TimelineSection[], previousByItem: Map<string, string>, retained: Set<string>
+): void {
+  // A page can begin inside a response. Keep its identity when its prefix arrives.
   for (const section of sections) {
-    const key = section.entries.flatMap(entry => (entry.type === 'activity' ? entry.items : [entry.item])
-      .map(item => previousByItem.get(itemKey(item)))).find(key => key && !retained.has(key));
+    let key: string | undefined;
+    outer: for (const entry of section.entries) {
+      const entryItems = entry.type === 'activity' ? entry.items : [entry.item];
+      for (const item of entryItems) {
+        const candidate = previousByItem.get(itemKey(item));
+        if (candidate && !retained.has(candidate)) { key = candidate; break outer; }
+      }
+    }
     if (key) section.key = key;
     retained.add(section.key);
   }
+}
+
+function reuseSectionIdentity(sections: TimelineSection[], previous: TimelineSection[]): TimelineSection[] {
   const previousByKey = new Map(previous.map(section => [section.key, section]));
   return sections.map(section => {
     const existing = previousByKey.get(section.key);
     return existing && existing.showTiming === section.showTiming && existing.entries.length === section.entries.length &&
       existing.entries.every((entry, index) => entry === section.entries[index]) ? existing : section;
   });
+}
+
+export function buildTimelineSections(entries: TimelineEntry[], previous: TimelineSection[] = []): TimelineSection[] {
+  const sections: TimelineSection[] = [];
+  const firstResponse = new Map<string, TimelineSection>();
+  scanTimelineSections(entries, 0, sections, firstResponse);
+  for (const section of firstResponse.values()) section.showTiming = true;
+  retainSectionKeys(sections, sectionItemRegistry(previous), new Set());
+  return reuseSectionIdentity(sections, previous);
+}
+
+/**
+ * Incremental timeline chain.
+ *
+ * Profiling (2,431–5,090 retained items) put the entries+sections chain
+ * at roughly 3–8ms per streaming flush on an unthrottled core — small in
+ * isolation, but at a 60ms flush cadence under CPU throttling it is a
+ * visible share of every frame budget. The chain therefore resumes from
+ * exact scan checkpoints when the change is confined to the tail:
+ *
+ * - Entry checkpoints snapshot the grouping scan's full state (pending
+ *   activity included) every 256 items and at clean points, so a resume
+ *   rescans only the items after the last checkpoint at or before the
+ *   first divergent item.
+ * - Section checkpoints snapshot at every section start (when all prior
+ *   sections are closed), so sections resume the same way.
+ * - ANY other shape — a changed head, a shrink, a divergence before the
+ *   last usable checkpoint — falls back to the full builders above,
+ *   whose output the chain's full path shares verbatim. The public
+ *   builders remain the reference semantics; the equivalence tests pin
+ *   the chain to them.
+ *
+ * The cache is treated as immutable: every call returns a fresh cache,
+ * so a discarded render can never corrupt the stored one.
+ */
+const TIMELINE_CHECKPOINT_ITEMS = 256;
+const TIMELINE_CHECKPOINT_CLEAN_ITEMS = 32;
+
+interface EntryCheckpoint {
+  itemIndex: number;
+  entriesLength: number;
+  activityItems: ThreadItem[];
+  activityStart: number;
+  responseTurnId: string | undefined;
+  hasSubagentEntrance: boolean;
+  retainedCount: number;
+}
+
+interface SectionCheckpoint {
+  entryIndex: number;
+  sectionsLength: number;
+  firstResponseCount: number;
+}
+
+export interface TimelineChainCache {
+  items: ThreadItem[];
+  activeTurnId: string | null;
+  entries: TimelineEntry[];
+  sections: TimelineSection[];
+  entryItemStarts: number[];
+  entryCheckpoints: EntryCheckpoint[];
+  sectionCheckpoints: SectionCheckpoint[];
+  /** Item -> activity entry key, built from `entries`. */
+  activityKeys: Map<string, string>;
+  /** Item -> section key, built from `sections`. */
+  previousByItem: Map<string, string>;
+  /**
+   * The registries this cache's output was produced under. Key
+   * retention is a cross-build function: a later registry can rekey an
+   * earlier group even when its items never changed (a reorder that
+   * changes which entry a shared item maps to is enough). A checkpoint
+   * resume is therefore only sound for the leading entries/sections
+   * whose items both registries still agree on — `stableEntries` and
+   * `stableSections` count exactly those.
+   */
+  producedActivityKeys: Map<string, string>;
+  producedPreviousByItem: Map<string, string>;
+  stableEntries: number;
+  stableSections: number;
+  /** Insertion-ordered retained activity keys of the latest build;
+   * entry checkpoints index into it by `retainedCount`. */
+  retainedKeyLog: string[];
+  /** Registration-ordered [turnId, section] pairs of the latest
+   * build; section checkpoints index into it by
+   * `firstResponseCount`, and its values are the final (identity
+   * reused) section objects. */
+  firstResponseLog: Array<readonly [string, TimelineSection]>;
+}
+
+/**
+ * Count the leading units whose items the produced-under registry and
+ * the current registry agree on; the first disagreement ends the stable
+ * prefix. `itemsOf` returns null for units that never consult the
+ * registry (message/event entries).
+ */
+function registryAgreementBoundary<T>(
+  units: T[], produced: Map<string, string>, current: Map<string, string>,
+  itemsOf: (unit: T) => ThreadItem[] | null
+): number {
+  for (let index = 0; index < units.length; index++) {
+    const unitItems = itemsOf(units[index]!);
+    if (!unitItems) continue;
+    for (const item of unitItems) {
+      const key = itemKey(item);
+      if (produced.get(key) !== current.get(key)) return index;
+    }
+  }
+  return units.length;
+}
+
+function entryStability(
+  entries: TimelineEntry[], produced: Map<string, string>, current: Map<string, string>
+): number {
+  return registryAgreementBoundary(entries, produced, current,
+    entry => entry.type === 'activity' ? entry.items : null);
+}
+
+function sectionStability(
+  sections: TimelineSection[], produced: Map<string, string>, current: Map<string, string>
+): number {
+  return registryAgreementBoundary(sections, produced, current,
+    section => section.entries.flatMap(entry => entry.type === 'activity' ? entry.items : [entry.item]));
+}
+
+export interface TimelineProjection {
+  entries: TimelineEntry[];
+  sections: TimelineSection[];
+  cache: TimelineChainCache;
+}
+
+function snapshotEntryCheckpoint(
+  state: EntryScanState, itemIndex: number, entriesLength: number
+): EntryCheckpoint {
+  return {
+    itemIndex, entriesLength,
+    activityItems: state.activityItems.slice(), activityStart: state.activityStart,
+    responseTurnId: state.responseTurnId, hasSubagentEntrance: state.hasSubagentEntrance,
+    retainedCount: state.retainedKeyLog.length
+  };
+}
+
+function remapFirstResponseLog(
+  log: Array<readonly [string, TimelineSection]>, scanned: TimelineSection[], final: TimelineSection[]
+): Array<readonly [string, TimelineSection]> {
+  if (log.length === 0) return log;
+  const remapped = new Map<TimelineSection, TimelineSection>();
+  scanned.forEach((section, index) => { if (final[index]) remapped.set(section, final[index]!); });
+  return log.map(([turnId, section]) => [turnId, remapped.get(section) ?? section] as const);
+}
+
+function buildChainFull(
+  items: ThreadItem[], activeTurnId: string | null,
+  previous: { entries: TimelineEntry[]; sections: TimelineSection[] } | null
+): TimelineChainCache {
+  const scanRegistry = activityKeyRegistry(previous?.entries ?? []);
+  const state = createEntryScanState();
+  const entries: TimelineEntry[] = [];
+  const entryItemStarts: number[] = [];
+  const entryCheckpoints: EntryCheckpoint[] = [];
+  let lastCheckpointAt = 0;
+  scanTimelineEntries(items, 0, activeTurnId, scanRegistry, state, entries, entryItemStarts, processed => {
+    const next = processed + 1;
+    if (next - lastCheckpointAt >= TIMELINE_CHECKPOINT_ITEMS ||
+        (state.activityItems.length === 0 && next - lastCheckpointAt >= TIMELINE_CHECKPOINT_CLEAN_ITEMS)) {
+      entryCheckpoints.push(snapshotEntryCheckpoint(state, next, entries.length));
+      lastCheckpointAt = next;
+    }
+  });
+  flushActivityGroup(state, scanRegistry, activeTurnId, true, entries, entryItemStarts);
+  const finalEntries = reuseEntryIdentity(entries, previous?.entries ?? []);
+
+  const sections: TimelineSection[] = [];
+  const firstResponse = new Map<string, TimelineSection>();
+  const firstResponseLog: Array<readonly [string, TimelineSection]> = [];
+  const sectionCheckpoints: SectionCheckpoint[] = [];
+  scanTimelineSections(finalEntries, 0, sections, firstResponse, entryIndex => {
+    sectionCheckpoints.push({
+      entryIndex, sectionsLength: sections.length, firstResponseCount: firstResponseLog.length
+    });
+  }, firstResponseLog);
+  for (const section of firstResponse.values()) section.showTiming = true;
+  const producedPreviousByItem = sectionItemRegistry(previous?.sections ?? []);
+  retainSectionKeys(sections, producedPreviousByItem, new Set());
+  const finalSections = reuseSectionIdentity(sections, previous?.sections ?? []);
+
+  const activityKeys = activityKeyRegistry(finalEntries);
+  const previousByItem = sectionItemRegistry(finalSections);
+  return {
+    items, activeTurnId, entries: finalEntries, sections: finalSections, entryItemStarts,
+    entryCheckpoints,
+    sectionCheckpoints,
+    firstResponseLog: remapFirstResponseLog(firstResponseLog, sections, finalSections),
+    retainedKeyLog: state.retainedKeyLog,
+    activityKeys, previousByItem,
+    producedActivityKeys: scanRegistry, producedPreviousByItem,
+    stableEntries: entryStability(finalEntries, scanRegistry, activityKeys),
+    stableSections: sectionStability(finalSections, producedPreviousByItem, previousByItem)
+  };
+}
+
+export function projectTimeline(
+  items: ThreadItem[], activeTurnId: string | null, cache: TimelineChainCache | null
+): TimelineProjection {
+  const full = (): TimelineProjection => {
+    const built = buildChainFull(items, activeTurnId,
+      cache ? { entries: cache.entries, sections: cache.sections } : null);
+    return { entries: built.entries, sections: built.sections, cache: built };
+  };
+  if (!cache || items.length < cache.items.length) return full();
+  if (items === cache.items && activeTurnId === cache.activeTurnId) {
+    return { entries: cache.entries, sections: cache.sections, cache };
+  }
+  let divergence = 0;
+  const limit = Math.min(cache.items.length, items.length);
+  while (divergence < limit && cache.items[divergence] === items[divergence]) divergence++;
+  if (divergence === 0) return full();
+  if (divergence === cache.items.length && items.length === cache.items.length &&
+      activeTurnId === cache.activeTurnId) {
+    return { entries: cache.entries, sections: cache.sections, cache };
+  }
+  // A changed active turn can only flip the trailing activity group's
+  // running flag; force the resume point to at most that group's start.
+  let target = divergence;
+  if (activeTurnId !== cache.activeTurnId) {
+    target = Math.min(target, cache.entryItemStarts.at(-1) ?? 0);
+  }
+  // The resume point must also sit inside the registry-stable prefix:
+  // beyond it, a full rescan could rekey a kept group purely because
+  // the registry moved since that group was produced.
+  let entryCheckpoint: EntryCheckpoint | null = null;
+  for (let index = cache.entryCheckpoints.length - 1; index >= 0; index--) {
+    const candidate = cache.entryCheckpoints[index]!;
+    if (candidate.itemIndex <= target && candidate.entriesLength <= cache.stableEntries) {
+      entryCheckpoint = candidate;
+      break;
+    }
+  }
+  if (!entryCheckpoint || entryCheckpoint.itemIndex === 0) return full();
+
+  // --- Resume the entries scan from the checkpoint ---
+  const retainedLogPrefix = cache.retainedKeyLog.slice(0, entryCheckpoint.retainedCount);
+  const entryState: EntryScanState = {
+    activityItems: entryCheckpoint.activityItems.slice(), activityStart: entryCheckpoint.activityStart,
+    responseTurnId: entryCheckpoint.responseTurnId, hasSubagentEntrance: entryCheckpoint.hasSubagentEntrance,
+    retainedActivityKeys: new Set(retainedLogPrefix), retainedKeyLog: retainedLogPrefix
+  };
+  const entries = cache.entries.slice(0, entryCheckpoint.entriesLength);
+  const entryItemStarts = cache.entryItemStarts.slice(0, entryCheckpoint.entriesLength);
+  const entryCheckpoints = cache.entryCheckpoints.filter(cp => cp.itemIndex <= entryCheckpoint!.itemIndex);
+  let lastCheckpointAt = entryCheckpoint.itemIndex;
+  scanTimelineEntries(items.slice(entryCheckpoint.itemIndex), entryCheckpoint.itemIndex,
+    activeTurnId, cache.activityKeys, entryState, entries, entryItemStarts, processed => {
+      const next = processed + 1;
+      if (next - lastCheckpointAt >= TIMELINE_CHECKPOINT_ITEMS ||
+          (entryState.activityItems.length === 0 && next - lastCheckpointAt >= TIMELINE_CHECKPOINT_CLEAN_ITEMS)) {
+        entryCheckpoints.push(snapshotEntryCheckpoint(entryState, next, entries.length));
+        lastCheckpointAt = next;
+      }
+    });
+  flushActivityGroup(entryState, cache.activityKeys, activeTurnId, true, entries, entryItemStarts);
+  const finalEntries = [...entries.slice(0, entryCheckpoint.entriesLength),
+    ...reuseEntryIdentity(entries.slice(entryCheckpoint.entriesLength), cache.entries)];
+
+  // --- Resume the sections scan from its checkpoint ---
+  let sectionCheckpoint: SectionCheckpoint | null = null;
+  for (let index = cache.sectionCheckpoints.length - 1; index >= 0; index--) {
+    const candidate = cache.sectionCheckpoints[index]!;
+    if (candidate.entryIndex <= entryCheckpoint.entriesLength &&
+        candidate.sectionsLength <= cache.stableSections) {
+      sectionCheckpoint = candidate;
+      break;
+    }
+  }
+  const sectionsPrefixLength = sectionCheckpoint?.sectionsLength ?? 0;
+  const sections = cache.sections.slice(0, sectionsPrefixLength);
+  if (sections.length > 0) {
+    // The scan may keep appending to the last (closed) prefix section if
+    // the first rebuilt entry continues it; never mutate the cached one.
+    const last = sections[sections.length - 1]!;
+    sections[sections.length - 1] = { ...last, entries: [...last.entries] };
+  }
+  const firstResponseLog = cache.firstResponseLog.slice(0, sectionCheckpoint?.firstResponseCount ?? 0);
+  const firstResponse = new Map<string, TimelineSection>(firstResponseLog);
+  const sectionCheckpoints = cache.sectionCheckpoints
+    .filter(cp => cp.entryIndex <= (sectionCheckpoint?.entryIndex ?? 0));
+  scanTimelineSections(finalEntries.slice(sectionCheckpoint?.entryIndex ?? 0),
+    sectionCheckpoint?.entryIndex ?? 0, sections, firstResponse, entryIndex => {
+      sectionCheckpoints.push({
+        entryIndex, sectionsLength: sections.length, firstResponseCount: firstResponseLog.length
+      });
+    }, firstResponseLog);
+  for (const section of firstResponse.values()) section.showTiming = true;
+  const retentionStart = sectionsPrefixLength > 0 ? sectionsPrefixLength - 1 : 0;
+  const retained = new Set(sections.slice(0, retentionStart).map(section => section.key));
+  const suffixSections = sections.slice(retentionStart);
+  retainSectionKeys(suffixSections, cache.previousByItem, retained);
+  const finalSections = [...sections.slice(0, retentionStart),
+    ...reuseSectionIdentity(suffixSections, cache.sections)];
+
+  // --- Repair the registries to describe the new output ---
+  // Pair each discarded unit with the rebuilt unit of the same key:
+  // unchanged pairs need no writes at all, and changed pairs only
+  // touch the items that actually moved (compared by reference), so a
+  // streaming tail update costs proportionally to the change rather
+  // than to the size of the trailing group. The map is copied lazily,
+  // only when a write actually happens.
+  const repairRegistry = (
+    source: Map<string, string>,
+    discarded: Array<{ key: string; items: ThreadItem[] }>,
+    rebuilt: Array<{ key: string; items: ThreadItem[] }>
+  ): { map: Map<string, string>; changedKeys: Set<string> } => {
+    let result = source;
+    const writable = () => {
+      if (result === source) result = new Map(source);
+      return result;
+    };
+    const rebuiltByKey = new Map(rebuilt.map(unit => [unit.key, unit]));
+    const consumed = new Set<string>();
+    const changedKeys = new Set<string>();
+    for (const unit of discarded) {
+      const pair = rebuiltByKey.get(unit.key);
+      if (pair && !consumed.has(pair.key)) {
+        consumed.add(pair.key);
+        if (pair.items.length === unit.items.length &&
+            pair.items.every((item, index) => item === unit.items[index])) continue;
+        const pairItems = new Set(pair.items);
+        const unitItems = new Set(unit.items);
+        for (const item of unit.items) {
+          const key = itemKey(item);
+          if (!pairItems.has(item) && result.get(key) === unit.key) { writable().delete(key); changedKeys.add(key); }
+        }
+        for (const item of pair.items) {
+          const key = itemKey(item);
+          if (!unitItems.has(item) && result.get(key) !== pair.key) { writable().set(key, pair.key); changedKeys.add(key); }
+        }
+      } else {
+        for (const item of unit.items) {
+          const key = itemKey(item);
+          if (result.get(key) === unit.key) { writable().delete(key); changedKeys.add(key); }
+        }
+      }
+    }
+    for (const unit of rebuilt) {
+      if (consumed.has(unit.key)) continue;
+      for (const item of unit.items) {
+        const key = itemKey(item);
+        if (result.get(key) !== unit.key) { writable().set(key, unit.key); changedKeys.add(key); }
+      }
+    }
+    return { map: result, changedKeys };
+  };
+  const activityUnits = (list: TimelineEntry[]) => list.flatMap(entry =>
+    entry.type === 'activity' ? [{ key: entry.key, items: entry.items }] : []);
+  const sectionUnits = (list: TimelineSection[]) => list.map(section => ({
+    key: section.key,
+    items: section.entries.flatMap(entry => entry.type === 'activity' ? entry.items : [entry.item])
+  }));
+  const entryRepair = repairRegistry(cache.activityKeys,
+    activityUnits(cache.entries.slice(entryCheckpoint.entriesLength)),
+    activityUnits(finalEntries.slice(entryCheckpoint.entriesLength)));
+  const sectionRepair = repairRegistry(cache.previousByItem,
+    sectionUnits(cache.sections.slice(retentionStart)),
+    sectionUnits(finalSections.slice(retentionStart)));
+  const activityKeys = entryRepair.map;
+  const previousByItem = sectionRepair.map;
+  // Stability of the new output under the registries it was produced
+  // with: only items the repair actually rewrote can disagree, and
+  // every rewritten item lives in a rebuilt unit — or, when the same
+  // item also appears in a kept prefix unit, in that unit. So the
+  // boundary is the first prefix unit holding a rewritten item, else
+  // the resume point itself; no rewrites means full agreement.
+  const stabilityBoundary = <T,>(
+    units: T[], changedKeys: Set<string>, resumePoint: number,
+    itemsOf: (unit: T) => ThreadItem[] | null
+  ): number => {
+    if (changedKeys.size === 0) return units.length;
+    const prefixLimit = Math.min(resumePoint, units.length);
+    for (let index = 0; index < prefixLimit; index++) {
+      const unitItems = itemsOf(units[index]!);
+      if (!unitItems) continue;
+      for (const item of unitItems) if (changedKeys.has(itemKey(item))) return index;
+    }
+    return prefixLimit;
+  };
+
+  const built: TimelineChainCache = {
+    items, activeTurnId, entries: finalEntries, sections: finalSections, entryItemStarts,
+    entryCheckpoints,
+    sectionCheckpoints,
+    firstResponseLog: remapFirstResponseLog(firstResponseLog, sections, finalSections),
+    retainedKeyLog: entryState.retainedKeyLog,
+    activityKeys, previousByItem,
+    // The whole output is reproducible under the registries this
+    // resume scanned with: the kept prefix is inside the stable region
+    // (so those registries reproduce it too), the suffix used them
+    // directly.
+    producedActivityKeys: cache.activityKeys, producedPreviousByItem: cache.previousByItem,
+    stableEntries: stabilityBoundary(finalEntries, entryRepair.changedKeys,
+      entryCheckpoint.entriesLength, entry => entry.type === 'activity' ? entry.items : null),
+    stableSections: stabilityBoundary(finalSections, sectionRepair.changedKeys, retentionStart,
+      section => section.entries.flatMap(entry => entry.type === 'activity' ? entry.items : [entry.item]))
+  };
+  return { entries: finalEntries, sections: finalSections, cache: built };
 }
 
 export function finalAnswerIndex(entries: TimelineEntry[]): number {

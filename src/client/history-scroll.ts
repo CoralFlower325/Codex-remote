@@ -39,6 +39,9 @@ export class HistoryScroll {
 
   get hasTouchIntent(): boolean { return this.directedTouch; }
 
+  /** True once a full quiet window has passed with no scroll activity. */
+  get isIdle(): boolean { return this.idle; }
+
   startTouch(y: number | null = null): void {
     this.touching = true;
     this.touchY = y;

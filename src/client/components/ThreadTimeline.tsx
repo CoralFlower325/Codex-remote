@@ -3,14 +3,14 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { HistoryThreadContext } from '../history-details';
 import { itemKey } from '../remote-state';
 import type { ThreadItem } from '../types';
-import { applyRememberedAnchors, buildTimelineEntries, buildTimelineSections, timelineTurnResponses, type TimelineEntry, type TimelineSection } from '../timeline-model';
+import { applyRememberedAnchors, projectTimeline, timelineTurnResponses, type TimelineChainCache, type TimelineEntry, type TimelineSection } from '../timeline-model';
 import type { TurnTiming } from '../../shared/turn-timing';
 import type { OutlineTurn } from '../../shared/thread-outline';
 import { ThreadNavigation, type NavigationTarget } from './ThreadNavigation';
 import { captureBlockAnchor, captureReadingAnchor, releaseReadingTail, restoreReadingAnchor, settleBlockAnchor, type BlockAnchor, type ReadingAnchor } from '../reading-anchor';
 import { HistoryScroll, historyScrollDelta, laterHistoryLoadReady, type BeforeHistoryCommit } from '../history-scroll';
-import { estimateSectionHeight, expandRangeByPixels, virtualizeTimelineEnabled, type KeyAnchor } from '../timeline-virtual';
-import { defaultRangeExtractor, useVirtualizer, type Virtualizer } from '@tanstack/react-virtual';
+import { estimateSectionHeight, expandRangeByPixels, shouldAdjustForSizeChange, virtualizeTimelineEnabled, type KeyAnchor } from '../timeline-virtual';
+import { defaultRangeExtractor, useVirtualizer, type VirtualItem, type Virtualizer } from '@tanstack/react-virtual';
 import { isReadableHistoryItem } from '../history-prefetch';
 import { NativeTurnError } from './NativeTurnError';
 import { ResponseSection, MessageItem, TurnDuration } from './TurnResponse';
@@ -93,6 +93,24 @@ export function ThreadTimeline({
   const blockAnchorRef = useRef<BlockAnchor | null>(null);
   const blockSettlePendingRef = useRef(false);
   const blockSettleVersionRef = useRef(0);
+  // Streaming-frequency row restores are coalesced into one settle at the
+  // HistoryScroll idle point instead of a geometry pass per flush.
+  const anchorSettlePendingRef = useRef(false);
+  const anchorSettleVersionRef = useRef(0);
+  // A size-change adjustment the virtualizer predicate suppressed during
+  // a gesture: the measurement is kept, the write is owed, and the idle
+  // handler must run an anchor settle to pay it even if nothing else
+  // changes afterwards.
+  const sizeCompensationDeferredRef = useRef(false);
+  // From a history commit (an earlier/later page landing, a window
+  // trim) until the scroll next goes idle, row-size changes belong to
+  // the history settle, not to streaming growth: the virtualizer's
+  // default compensation for them must land synchronously, exactly as
+  // the synchronous reading-position restore does, or a reader (or an
+  // acceptance probe) measuring right after the commit catches the
+  // anchor mid-settle. The gesture freeze only governs size changes
+  // outside this window.
+  const historySettleRef = useRef(false);
   const virtualRestoreFrameRef = useRef(0);
   const virtualRestoreAttemptsRef = useRef(0);
   const virtualRestoreGuardUntilRef = useRef(0);
@@ -124,10 +142,16 @@ export function ThreadTimeline({
   const laterPendingRef = useRef(false);
   const forwardIntentRef = useRef(0);
   const loadLaterRef = useRef<() => void>(() => {});
-  const previousSectionsRef = useRef<TimelineSection[]>([]);
-  const entries = useMemo(() => buildTimelineEntries(items, activeTurnId,
-    previousSectionsRef.current.flatMap(section => section.entries)), [items, activeTurnId]);
-  const sections = useMemo(() => buildTimelineSections(entries, previousSectionsRef.current), [entries]);
+  // The incremental chain resumes from scan checkpoints when a change
+  // is confined to the tail (the streaming shape) and falls back to the
+  // full builders for any other shape; its output is pinned to the full
+  // builders by the timeline-chain equivalence tests.
+  const chainCacheRef = useRef<TimelineChainCache | null>(null);
+  const projection = useMemo(() => projectTimeline(items, activeTurnId, chainCacheRef.current),
+    [items, activeTurnId]);
+  chainCacheRef.current = projection.cache;
+  const entries = projection.entries;
+  const sections = projection.sections;
   // While the window is bounded on the newer side, its last turn may be
   // truncated mid-turn; do not let a partial slice anchor its duration.
   const truncatedTailTurnId = hasNewerHistory ? items.at(-1)?.turnId ?? null : null;
@@ -156,8 +180,6 @@ export function ThreadTimeline({
       return next;
     });
   }, []);
-  useLayoutEffect(() => { previousSectionsRef.current = sections; }, [sections]);
-
   // --- Section virtualization (timeline-virtual.ts holds the pure logic) ---
   // Rows are the existing sections, plus the standalone turn-error notice
   // and the in-progress turn placeholder as tail rows, so the virtual list
@@ -233,8 +255,47 @@ export function ThreadTimeline({
     // echo reads as a downward gesture and reopens the later-page gate.
     ...({
       // Supported by virtual-core but omitted from the React wrapper's type.
-      shouldAdjustScrollPositionOnItemSizeChange: () => !keyAnchorRef.current
-    } as { shouldAdjustScrollPositionOnItemSizeChange: () => boolean }),
+      // The measurement is kept by the library even when this returns
+      // false; only the write is dropped, so a suppression is a debt the
+      // keyed-anchor restore settles at the scroll idle point. When this
+      // predicate suppresses an adjustment the library default would
+      // have made, it flags the debt so the idle handler guarantees a
+      // settle runs even if nothing else changes afterwards.
+      shouldAdjustScrollPositionOnItemSizeChange: (item: VirtualItem, _delta: number,
+        instance: Virtualizer<HTMLDivElement, HTMLDivElement>) => {
+        const activity = scrollActivityRef.current!;
+        const libraryDefault = shouldAdjustForSizeChange({
+          hasKeyAnchor: false, touchIntent: false, scrollIdle: true,
+          firstMeasure: !instance.itemSizeCache.has(item.key),
+          itemStart: item.start, itemSize: item.size,
+          scrollOffset: instance.scrollOffset ?? 0, scrollDirection: instance.scrollDirection
+        });
+        // History commits keep the library's synchronous compensation
+        // until the settle completes at the next idle point (see
+        // historySettleRef); the freeze below is for streaming growth.
+        if (historySettleRef.current) return libraryDefault;
+        const allowed = shouldAdjustForSizeChange({
+          hasKeyAnchor: Boolean(keyAnchorRef.current),
+          // The freeze gates on directed touch only, deliberately not
+          // on the idle signal: scroll activity also fires for wheel
+          // paging and for programmatic restore echoes, and freezing
+          // compensation there starves history paging of the library's
+          // synchronous settle (the debt's idle restore then fights
+          // the reader's own scroll position). A touch fling's
+          // momentum window is already covered: directedTouch stays
+          // set from the first directed move until the 160ms quiet
+          // timer resets it, which is exactly the gesture-plus-inertia
+          // span the freeze exists for.
+          touchIntent: activity.hasTouchIntent, scrollIdle: true,
+          firstMeasure: !instance.itemSizeCache.has(item.key),
+          itemStart: item.start, itemSize: item.size,
+          scrollOffset: instance.scrollOffset ?? 0, scrollDirection: instance.scrollDirection
+        });
+        if (libraryDefault && !allowed) sizeCompensationDeferredRef.current = true;
+        return allowed;
+      }
+    } as { shouldAdjustScrollPositionOnItemSizeChange:
+      (item: VirtualItem, delta: number, instance: Virtualizer<HTMLDivElement, HTMLDivElement>) => boolean }),
     scrollToFn: (offset, { adjustments, behavior }) => {
       const stream = streamRef.current;
       if (!stream) return;
@@ -323,6 +384,7 @@ export function ThreadTimeline({
     readingAnchorRef.current = null;
     blockAnchorRef.current = null;
     blockSettleVersionRef.current += 1;
+    anchorSettleVersionRef.current += 1;
     const key = itemKey({ turnId: target.turnId, id: target.itemId });
     navigationAnchorRef.current = key;
     const find = () => [...(innerRef.current?.querySelectorAll<HTMLElement>('[data-user-key]') ?? [])]
@@ -488,6 +550,7 @@ export function ThreadTimeline({
     readingAnchorRef.current = null;
     blockAnchorRef.current = null;
     blockSettleVersionRef.current += 1;
+    anchorSettleVersionRef.current += 1;
     stream.scrollTop = stream.scrollHeight;
     previousScrollTopRef.current = stream.scrollTop;
     onHistoryReading?.(threadId, false);
@@ -579,6 +642,23 @@ export function ThreadTimeline({
     }
   }, []);
   restoreReadingPositionRef.current = restoreReadingPosition;
+  // The deferred half of restoreReadingPosition: streaming-frequency
+  // triggers (tail growth, resize observations, image loads, suppressed
+  // size adjustments) coalesce into a single settle once scrolling goes
+  // quiet, so a drag or its momentum never meets a scrollToIndex/rAF
+  // retry storm. History commits never take this path — their restore
+  // stays synchronous before paint (see the items effect below).
+  const scheduleAnchorRestore = useCallback(() => {
+    if (anchorSettlePendingRef.current) return;
+    anchorSettlePendingRef.current = true;
+    const version = anchorSettleVersionRef.current;
+    void scrollActivityRef.current!.waitForIdle().then(ready => {
+      anchorSettlePendingRef.current = false;
+      if (!ready || version !== anchorSettleVersionRef.current || !mountedRef.current) return;
+      if (navigatingRef.current || navigationAnchorRef.current) return;
+      restoreReadingPositionRef.current();
+    });
+  }, []);
   const preserveActivityPosition = useCallback(() => {
     earlierBoundaryRef.current = null;
     continuationTopRef.current = null;
@@ -667,6 +747,18 @@ export function ThreadTimeline({
   }, [hasMoreHistory, onPrefetchEarlier, revealingHistory, threadId, items]);
   loadWhenIdleRef.current = () => {
     const stream = streamRef.current;
+    // Every scroll idle point pays any size-compensation debt the
+    // virtualizer predicate froze during the gesture, even when the
+    // stream ended right after the suppressed measurement and no items,
+    // resize or load event follows to trigger a settle of its own.
+    if (sizeCompensationDeferredRef.current) {
+      sizeCompensationDeferredRef.current = false;
+      scheduleAnchorRestore();
+    }
+    // The history settle window ends at this idle point: from here on,
+    // row-size changes are streaming growth again and the gesture
+    // freeze governs them.
+    historySettleRef.current = false;
     if (!wantsEarlierRef.current && !loadingEarlierRef.current && !navigationAnchorRef.current &&
         (!virtualActiveRef.current || performance.now() - forwardIntentRef.current < 1500)) {
       releaseTailAfterReading();
@@ -711,6 +803,7 @@ export function ThreadTimeline({
     navigationVersionRef.current += 1;
     navigationAnchorRef.current = null;
     blockSettleVersionRef.current += 1;
+    anchorSettleVersionRef.current += 1;
     blockAnchorRef.current = null;
   }, [threadId]);
 
@@ -721,13 +814,18 @@ export function ThreadTimeline({
       if (navigationAnchorRef.current) { alignNavigationTarget(); return; }
       const stream = streamRef.current;
       if (stream && stickToBottomRef.current && !viewingHistory) followLatest();
+      // In virtual mode a resize is a streaming-frequency trigger: route
+      // it through the same idle-coalesced settle as tail growth instead
+      // of a synchronous geometry pass per observation. The legacy
+      // full-render path keeps its immediate restore unchanged.
+      else if (virtualActiveRef.current) scheduleAnchorRestore();
       else restoreReadingPosition();
       settleBlockPosition();
     });
     observer.observe(inner);
     if (streamRef.current) observer.observe(streamRef.current);
     return () => observer.disconnect();
-  }, [loading, threadId, viewingHistory, alignNavigationTarget, restoreReadingPosition, followLatest, settleBlockPosition]);
+  }, [loading, threadId, viewingHistory, alignNavigationTarget, restoreReadingPosition, followLatest, settleBlockPosition, scheduleAnchorRestore]);
 
   useLayoutEffect(() => {
     if (loading) return;
@@ -742,7 +840,42 @@ export function ThreadTimeline({
   useLayoutEffect(alignNavigationTarget, [items, turnTimings, alignNavigationTarget]);
 
   // Correct before paint, then keep the same item fixed as skipped content and images acquire real heights.
-  useLayoutEffect(restoreReadingPosition, [items, turnTimings, loadingHistory, restoreReadingPosition]);
+  // Timing/history transitions keep that synchronous restore: a history
+  // commit must land before the browser paints, or the reader sees the
+  // one-frame jump the history work eliminated.
+  useLayoutEffect(restoreReadingPosition, [turnTimings, loadingHistory, restoreReadingPosition]);
+
+  // Item changes split by shape. A changed head (an earlier page
+  // commit, a window trim, a thread switch) or the landing of an
+  // in-flight later-page load is a history commit and also restores
+  // synchronously. A pure tail change in virtual mode is streaming
+  // growth: it can only move the reader through row-size debt, which
+  // the keyed anchor settles at the scroll idle point — never as a
+  // per-flush geometry pass during a drag or its momentum. The legacy
+  // full-render path keeps its immediate restore for every change.
+  const previousItemsRef = useRef<ThreadItem[] | null>(null);
+  // Whether a later-page load was in flight when the current commit
+  // began: such a commit appends at the tail (the streaming shape) but
+  // is a history commit and keeps the synchronous restore. Updated in
+  // a passive effect so the layout effect below still reads the value
+  // from the end of the previous commit.
+  const laterLoadWasInFlightRef = useRef(false);
+  useEffect(() => { laterLoadWasInFlightRef.current = loadingLaterHistory; }, [loadingLaterHistory]);
+  useLayoutEffect(() => {
+    const previous = previousItemsRef.current;
+    previousItemsRef.current = items;
+    if (!virtualActiveRef.current || previous === null || previous === items) {
+      restoreReadingPosition();
+      return;
+    }
+    const headChanged = previous.length === 0 || items.length < previous.length ||
+      (previous[0] && items[0] ? itemKey(previous[0]) !== itemKey(items[0]) : previous[0] !== items[0]);
+    if (headChanged || laterLoadWasInFlightRef.current) {
+      historySettleRef.current = true;
+      restoreReadingPosition();
+    }
+    else scheduleAnchorRestore();
+  }, [items, restoreReadingPosition, scheduleAnchorRestore]);
 
   useLayoutEffect(() => {
     const boundary = earlierBoundaryRef.current;
@@ -838,6 +971,14 @@ export function ThreadTimeline({
     virtualRestoreFrameRef.current = 0;
     virtualRestoreAttemptsRef.current = 0;
     virtualRestoreGuardUntilRef.current = 0;
+    // Every reader-takeover signal funnels through here (wheel, touch,
+    // keys, pointer, scroll-to-top), so it must also void a pending
+    // idle anchor settle: the settle is the deferred half of the same
+    // restore, and letting it fire after a takeover drags the reader
+    // back to the pre-takeover anchor — the exact fight the cancel
+    // exists to prevent.
+    anchorSettleVersionRef.current += 1;
+    anchorSettlePendingRef.current = false;
   };
 
   return (
@@ -903,6 +1044,7 @@ export function ThreadTimeline({
         if (navigationAnchorRef.current) { alignNavigationTarget(); return; }
         const stream = streamRef.current;
         if (stream && stickToBottomRef.current && !viewingHistory) followLatest();
+        else if (virtualActiveRef.current) { scheduleAnchorRestore(); settleBlockPosition(); }
         else { restoreReadingPosition(); settleBlockPosition(); }
       }}
       onScroll={(event) => {
