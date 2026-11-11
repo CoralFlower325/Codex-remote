@@ -5,6 +5,7 @@ export const releaseNotes: ReleaseNote[] = [
   { version: '0.2.36', changes: [
     '修复 Windows 终端 Job helper 已先退出时，清理路径仍向关闭的 stdin 写入 `STOP` 并触发未处理 `EPIPE` 的问题；终端的正常关闭与异常回收不再污染 Remote 进程。',
     '停止 Windows Job helper 前检查输入流是否已销毁或结束，并持续吸收迟到的 stdin 错误；新增 helper 先退出后再次停止的回归覆盖。',
+    'Windows 测试文件改为顺序执行，避免并发 PTY、PowerShell Job 与更新事务争用管道和文件系统造成发布门禁误报。',
     '延续 0.2.35 的 section 时间线虚拟化、5,000 条历史窗口与稳定补页锚点。管理器 0.2.9 无变更。'
   ] },
   { version: '0.2.35', changes: [

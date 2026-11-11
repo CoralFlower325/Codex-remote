@@ -5,10 +5,10 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts', 'desktop/**/*.test.mjs', 'scripts/**/*.test.mjs'],
     exclude: ['**/node_modules/**', 'node_modules.pnpm-backup/**', 'dist/**', 'dist-server/**'],
-    // Windows runners serialize enough file-system work that the default
-    // five-second timeout can fail healthy updater transactions under load.
+    // Windows PTY, PowerShell job and updater transaction tests contend for
+    // process, pipe and file-system resources; keep that suite deterministic.
     testTimeout: 20_000,
     hookTimeout: 20_000,
-    maxWorkers: process.platform === 'win32' ? 4 : undefined
+    maxWorkers: process.platform === 'win32' ? 1 : undefined
   }
 });
