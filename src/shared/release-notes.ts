@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.38', changes: [
+    '已完成且折叠的轮次改为按 turn 语义投影布局：中途插话仍保留用户消息，过程切片不再创建无内容的虚拟行；历史补页后按 section 身份校准当前下标，失败轮的原生错误不会被吞。',
+    '历史补页改为按检查点拼接增量链：只重扫新页和边界轮，其余轮保留 section、key、测量与 React 身份；不满足安全条件时自动回退完整语义构建。',
+    '行高估算改为按文本、附件、答复和活动结构计算，展开时使用已挂载行的实测种子；冷启动内容不足一屏时释放垫高并落在顶部，巨型轮展开和折叠不产生位置漂移。',
+    '补充插话首次提交、连续上滑、缓存下标修复和巨型轮展开的回归覆盖；管理器 0.2.9 无变更。'
+  ] },
   { version: '0.2.37', changes: [
     '流式增量改为按阅读状态自适应刷新：贴底保持 60ms 跟手，离开底部阅读历史时降到 300ms，返回最新立即补刷；后台和受限网络档位继续保留。',
     'Markdown 改为单消息增量切块：复用稳定块，只重解析尾部未稳定内容，并对引用定义、脚注和数学定界符等全局变化回退完整解析。',
