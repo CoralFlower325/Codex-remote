@@ -55,6 +55,73 @@ export function expandRangeByPixels(
   return indexes;
 }
 
+export interface SizeChangeAdjustment {
+  /** The reader holds a keyed anchor away from the bottom. */
+  hasKeyAnchor: boolean;
+  /** A directed touch drag (or its momentum) is in progress. */
+  touchIntent: boolean;
+  /** The HistoryScroll gate has been quiet for its full idle window. */
+  scrollIdle: boolean;
+  /** The row has never been measured before (estimate -> first actual). */
+  firstMeasure: boolean;
+  /** Row start in the virtualizer's current geometry. */
+  itemStart: number;
+  /** The row's previously cached size, as virtual-core reports it. */
+  itemSize: number;
+  /** Current scroll offset of the stream. */
+  scrollOffset: number;
+  /** The virtualizer's current scroll direction, when known. */
+  scrollDirection: 'forward' | 'backward' | null;
+}
+
+/**
+ * Decide whether virtual-core may write scrollTop to compensate a row
+ * size change. virtual-core 3.19 stores the new measurement even when
+ * this returns false — the adjustment is dropped, never replayed — so
+ * every suppression here is settled later by the keyed-anchor restore,
+ * which the caller guarantees runs at the scroll idle point.
+ *
+ * The layers, in order:
+ * - A keyed reading anchor suppresses library writes entirely (the
+ *   pre-existing application gate): the anchor restore owns the debt.
+ * - During a touch drag or its momentum (touch intent, or any scroll
+ *   activity inside the idle window) a scrollTop write would fight the
+ *   reader's own scrolling — on iOS it visibly breaks momentum — so the
+ *   write is frozen until the idle point.
+ * - Otherwise virtual-core's own default protections apply, restored
+ *   here because supplying any custom predicate replaces them: a first
+ *   measurement compensates rows whose top sits above the fold; a
+ *   re-measurement compensates only rows entirely above the fold (a row
+ *   spanning the fold — typically the streaming message growing at its
+ *   bottom — must not drag the viewport), and never while scrolling
+ *   backward.
+ */
+export function shouldAdjustForSizeChange(context: SizeChangeAdjustment): boolean {
+  if (context.hasKeyAnchor) return false;
+  if (context.touchIntent || !context.scrollIdle) return false;
+  if (context.firstMeasure) return context.itemStart < context.scrollOffset;
+  return context.itemStart + context.itemSize <= context.scrollOffset &&
+    context.scrollDirection !== 'backward';
+}
+
+export interface HistorySizeAdjustment {
+  historySettle: boolean;
+  touchIntent: boolean;
+  libraryDefault: boolean;
+  readingAdjustment: boolean;
+}
+
+/**
+ * A history commit may keep virtual-core's synchronous compensation until
+ * its before-paint anchor restore has landed. Reader takeover always wins:
+ * once a directed touch starts, a stale history-settle flag must not bypass
+ * the gesture freeze and write scrollTop under the reader's finger.
+ */
+export function resolveSizeChangeAdjustment(context: HistorySizeAdjustment): boolean {
+  if (context.historySettle && !context.touchIntent) return context.libraryDefault;
+  return context.readingAdjustment;
+}
+
 export interface KeyAnchor {
   key: string;
   offsetWithin: number;

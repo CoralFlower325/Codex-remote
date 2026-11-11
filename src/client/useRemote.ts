@@ -31,6 +31,7 @@ import { loadedOutline, mergeOutlineTurns } from './thread-navigation';
 import type { ChatEventListener, ChatTransport } from './chat-transport';
 import { isTaskThread } from '../shared/thread-source';
 import { HistoryPrefetch, prepareHistoryPage } from './history-prefetch';
+import { streamFlushDelayMs } from './streaming-refresh';
 import type { BeforeHistoryCommit } from './history-scroll';
 import { markStartup } from './startup';
 import { parseThreadGoal, goalUpdateParams, type GoalUpdate } from './goal';
@@ -280,9 +281,14 @@ export function useRemote({
 
     setItems((current) => {
       let next = current;
+      // While browsing history, deltas for items outside the retained
+      // window are dropped. Resolve the membership test once per flush
+      // instead of rescanning the whole window for every delta.
+      const retainedKeys = viewingHistoryRef.current && agentDeltas.size > 0
+        ? new Set(current.map(item => itemKey(item))) : null;
       for (const [key, delta] of agentDeltas) {
         const [turnId, itemId] = JSON.parse(key) as [string, string];
-        if (viewingHistoryRef.current && !next.some(item => itemKey(item) === key)) continue;
+        if (retainedKeys && !retainedKeys.has(key)) continue;
         next = upsertItem(
           next,
           {
@@ -318,7 +324,12 @@ export function useRemote({
       streamFlushTimerRef.current = window.setTimeout(() => {
         streamFlushTimerRef.current = null;
         flushStreamingDeltas();
-      }, document.visibilityState === 'hidden' ? 250 : constrainedNetwork() ? 100 : 60);
+      }, streamFlushDelayMs({
+        hidden: document.visibilityState === 'hidden',
+        constrained: constrainedNetwork(),
+        readingHistory: historyReadingRef.current.threadId === activeThreadRef.current &&
+          historyReadingRef.current.reading
+      }));
     },
     [flushStreamingDeltas]
   );
@@ -808,7 +819,10 @@ export function useRemote({
     const previous = historyReadingRef.current;
     if (previous.threadId !== threadId || previous.reading !== reading) historyRevisionRef.current += 1;
     historyReadingRef.current = { threadId, reading };
-  }, []);
+    // Returning to the latest must not wait out the slow reading cadence:
+    // whatever accumulated while the reader was away lands immediately.
+    if (previous.threadId === threadId && previous.reading && !reading) flushStreamingDeltas();
+  }, [flushStreamingDeltas]);
 
   useEffect(() => {
     if (items.length <= HISTORY_WINDOW_LIMIT || viewingHistoryRef.current) return;

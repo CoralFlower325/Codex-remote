@@ -21,6 +21,13 @@ import type { UserMessage } from '../message-edit';
 import { documentReferences } from '../../shared/document-input';
 import { PreviewLink } from './PreviewLinks';
 
+/** Entries kept mounted in a still-streaming turn's activity trace. */
+export const TRACE_WINDOW_ENTRIES = 200;
+/** Extra entries revealed per "show earlier" step in the trace fold. */
+export const TRACE_PAGE_ENTRIES = 200;
+
+type TraceWindow = { kind: 'auto' } | { kind: 'from'; key: string } | { kind: 'all' };
+
 export const ResponseSection = memo(function ResponseSection({
   section, timing, finalStartedAtMs, finalAnswer, hasTrace, showError, open, onToggleTurn, active, heartbeatTurn = false, threadIdle = false, onInteract, onFork, onError
 }: {
@@ -55,6 +62,19 @@ export const ResponseSection = memo(function ResponseSection({
     .filter(entry => !completed || entry.type !== 'event' || !isSubagentItem(entry.item));
   const answer = completed && finalIndex >= 0 ? section.entries.slice(finalIndex)
     .filter(entry => entry.type !== 'event' || !isSubagentItem(entry.item)) : [];
+  // Append-stable head fold for a still-streaming turn: once the trace
+  // outgrows the window, the window's first entry is latched by key, so
+  // appends only grow the folded head count — a mounted entry is never
+  // unmounted (losing its expansion state) because newer entries arrived.
+  // Completed turns keep their full trace under the duration disclosure.
+  const [traceWindow, setTraceWindow] = useState<TraceWindow>({ kind: 'auto' });
+  if (traceWindow.kind === 'auto' && !completed && trace.length > TRACE_WINDOW_ENTRIES) {
+    setTraceWindow({ kind: 'from', key: trace[trace.length - TRACE_WINDOW_ENTRIES]!.key });
+  }
+  const traceStart = completed || traceWindow.kind === 'all' ? 0
+    : traceWindow.kind === 'from' ? Math.max(0, trace.findIndex(entry => entry.key === traceWindow.key))
+    : Math.max(0, trace.length - TRACE_WINDOW_ENTRIES);
+  const visibleTrace = traceStart > 0 ? trace.slice(traceStart) : trace;
   const renderEntry = (entry: TimelineEntry) => entry.type === 'activity'
     ? <ActivityGroup entry={entry} onInteract={onInteract} key={entry.key} />
     : entry.type === 'event' ? isSubagentItem(entry.item)
@@ -69,7 +89,20 @@ export const ResponseSection = memo(function ResponseSection({
         <ChevronRight size={13} className={open ? 'is-open' : ''} aria-hidden="true" />
       </button> : <TurnDuration timing={timing} active={active} finalStartedAtMs={finalStartedAtMs} />}
     </div>}
-    {(!completed || open) && <div className="turn-activity" id={bodyId}>{trace.map(renderEntry)}</div>}
+    {(!completed || open) && <div className="turn-activity" id={bodyId}>
+      {traceStart > 0 && <button type="button" className="activity-group-more"
+        onClick={() => {
+          // Expansion grows the giant row around the reader's eye line:
+          // capture the reading anchors through the existing interaction
+          // path before the state change, never around it.
+          onInteract();
+          const next = traceStart - TRACE_PAGE_ENTRIES;
+          setTraceWindow(next <= 0 ? { kind: 'all' } : { kind: 'from', key: trace[next]!.key });
+        }}>
+        显示更早的记录（{traceStart}）
+      </button>}
+      {visibleTrace.map(renderEntry)}
+    </div>}
     {completed && agentItems.length > 0 && <SubagentRows items={agentItems} />}
     {answer.map(renderEntry)}
     {showError && <NativeTurnError turn={timing} />}

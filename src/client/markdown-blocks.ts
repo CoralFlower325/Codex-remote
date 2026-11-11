@@ -65,16 +65,135 @@ function assistantFileLinks(source: string, tree: Root): string {
   });
 }
 
-export function markdownBlocks(text: string): Array<{ offset: number; text: string }> {
-  text = normalizeMathDelimiters(text);
-  const tree = parser.parse(text);
-  // Footnote numbering and backreferences span the whole document.
-  if (tree.children.some(node => node.type === 'footnoteDefinition')) return [{ offset: 0, text }];
-  const definitions = tree.children.filter(node => node.type === 'definition' || node.type === 'footnoteDefinition')
-    .map(node => text.slice(node.position!.start.offset, node.position!.end.offset)).join('\n\n');
-  return tree.children.filter(node => node.type !== 'definition' && node.type !== 'footnoteDefinition').map(node => ({
-    offset: node.position!.start.offset!,
-    text: text.slice(node.position!.start.offset, node.position!.end.offset) +
-      (definitions ? `\n\n${definitions}` : '')
+export interface MarkdownBlock {
+  offset: number;
+  text: string;
+}
+
+interface MarkdownChildSpan {
+  start: number;
+  end: number;
+  definition: boolean;
+}
+
+interface ParsedMarkdownDocument {
+  /** The normalized source this parse belongs to. */
+  source: string;
+  /** Top-level node spans in document order (definitions included). */
+  children: MarkdownChildSpan[];
+  /** Definition source slices in document order. */
+  definitions: string[];
+  /** A footnote definition anywhere collapses the document to one block. */
+  footnote: boolean;
+  blocks: MarkdownBlock[];
+}
+
+function renderBlocks(source: string, children: MarkdownChildSpan[], definitions: string[]): MarkdownBlock[] {
+  const suffix = definitions.length ? `\n\n${definitions.join('\n\n')}` : '';
+  return children.filter(child => !child.definition).map(child => ({
+    offset: child.start,
+    text: source.slice(child.start, child.end) + suffix
   }));
+}
+
+function parseMarkdownDocument(source: string): ParsedMarkdownDocument {
+  const tree = parser.parse(source);
+  const children: MarkdownChildSpan[] = tree.children.map(node => ({
+    start: node.position!.start.offset!,
+    end: node.position!.end.offset!,
+    definition: node.type === 'definition' || node.type === 'footnoteDefinition'
+  }));
+  const definitions = tree.children
+    .filter(node => node.type === 'definition' || node.type === 'footnoteDefinition')
+    .map(node => source.slice(node.position!.start.offset, node.position!.end.offset));
+  // Footnote numbering and backreferences span the whole document.
+  const footnote = tree.children.some(node => node.type === 'footnoteDefinition');
+  return {
+    source, children, definitions, footnote,
+    blocks: footnote ? [{ offset: 0, text: source }] : renderBlocks(source, children, definitions)
+  };
+}
+
+function commonPrefixLength(a: string, b: string): number {
+  const limit = Math.min(a.length, b.length);
+  let index = 0;
+  while (index < limit && a.charCodeAt(index) === b.charCodeAt(index)) index++;
+  return index;
+}
+
+/**
+ * Caller-owned incremental parse state for one growing document. The
+ * owner (MarkdownText) keeps one cache per rendered message in a ref;
+ * there is deliberately no module-level cache, so unrelated documents
+ * can never pollute each other.
+ */
+export interface MarkdownBlocksCache {
+  document: ParsedMarkdownDocument | null;
+}
+
+export function createMarkdownBlocksCache(): MarkdownBlocksCache {
+  return { document: null };
+}
+
+/**
+ * Split a document into top-level blocks. Without a cache this is the
+ * full parse. With a cache, a document that only grew reuses the stable
+ * prefix: only the tail starting at the previous document's last
+ * top-level node is re-parsed. Three document-wide channels can rewrite
+ * the prefix after the fact and are guarded explicitly:
+ *
+ * - Link definitions are appended to every block, so any change to the
+ *   definition set invalidates the cached blocks (full re-parse).
+ * - A footnote definition anywhere collapses the document into a single
+ *   block, whether it was already in the prefix or arrives in the tail.
+ * - Math delimiter normalization is not prefix-stable (an unclosed \[
+ *   is rewritten once its closer arrives), so the cache key is the
+ *   normalized text and the longest common prefix of the old and new
+ *   normalized texts bounds how much of the prefix may be trusted; the
+ *   re-parse always restarts at or before that point, at a node start.
+ */
+export function markdownBlocks(text: string, cache?: MarkdownBlocksCache): MarkdownBlock[] {
+  const source = normalizeMathDelimiters(text);
+  const previous = cache?.document;
+  if (!cache || !previous || previous.footnote || previous.children.length === 0) {
+    const document = parseMarkdownDocument(source);
+    if (cache) cache.document = document;
+    return document.blocks;
+  }
+  if (source === previous.source) return previous.blocks;
+  const prefix = commonPrefixLength(previous.source, source);
+  // The last node whose start is not past the trusted prefix: re-parsing
+  // restarts at its start, so a change inside it — or in the whitespace
+  // right after it — can never leave a stale boundary behind.
+  let restartIndex = 0;
+  for (let index = 0; index < previous.children.length; index++) {
+    if (previous.children[index]!.start <= prefix) restartIndex = index;
+    else break;
+  }
+  const restart = previous.children[restartIndex]!.start;
+  const stable = previous.children.slice(0, restartIndex);
+  const tail = parseMarkdownDocument(source.slice(restart));
+  if (tail.footnote) {
+    const document = parseMarkdownDocument(source);
+    cache.document = document;
+    return document.blocks;
+  }
+  const stableDefinitions = stable.filter(child => child.definition)
+    .map(child => previous.source.slice(child.start, child.end));
+  const definitions = [...stableDefinitions, ...tail.definitions];
+  const definitionsChanged = definitions.length !== previous.definitions.length ||
+    definitions.some((definition, index) => definition !== previous.definitions[index]);
+  if (definitionsChanged) {
+    const document = parseMarkdownDocument(source);
+    cache.document = document;
+    return document.blocks;
+  }
+  const children = [...stable, ...tail.children.map(child => ({
+    start: child.start + restart, end: child.end + restart, definition: child.definition
+  }))];
+  const stableBlockCount = stable.filter(child => !child.definition).length;
+  const tailBlocks = renderBlocks(source, children.slice(stable.length), definitions);
+  const blocks = [...previous.blocks.slice(0, stableBlockCount), ...tailBlocks];
+  cache.document = { source, children, definitions, footnote: false, blocks };
+  return blocks;
 }

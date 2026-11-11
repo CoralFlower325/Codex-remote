@@ -45,6 +45,28 @@ describe('history insertion during scrolling', async () => {
     expect(scroll.hasTouchIntent).toBe(false);
   });
 
+  it('reports idle only after the full quiet window, mirroring waitForIdle', async () => {
+    vi.useFakeTimers();
+    const scroll = new HistoryScroll(() => {});
+    expect(scroll.isIdle).toBe(true);
+    scroll.activity();
+    expect(scroll.isIdle).toBe(false);
+    await vi.advanceTimersByTimeAsync(159);
+    expect(scroll.isIdle).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(scroll.isIdle).toBe(true);
+    scroll.startTouch(10);
+    expect(scroll.isIdle).toBe(false);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(scroll.isIdle).toBe(false);
+    scroll.endTouch();
+    await vi.advanceTimersByTimeAsync(160);
+    expect(scroll.isIdle).toBe(true);
+    scroll.activity();
+    scroll.cancel();
+    expect(scroll.isIdle).toBe(true);
+  });
+
   it('waits while a finger remains down, including when it pauses', async () => {
     vi.useFakeTimers();
     const ready = vi.fn();
