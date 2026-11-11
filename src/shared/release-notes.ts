@@ -2,6 +2,13 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.37', changes: [
+    '流式增量改为按阅读状态自适应刷新：贴底保持 60ms 跟手，离开底部阅读历史时降到 300ms，返回最新立即补刷；后台和受限网络档位继续保留。',
+    'Markdown 改为单消息增量切块：复用稳定块，只重解析尾部未稳定内容，并对引用定义、脚注和数学定界符等全局变化回退完整解析。',
+    '时间线 entries/sections 改为带检查点的增量链，流式尾部增长只重算受影响部分，任意头变更、重排或收缩自动回退全量语义。',
+    '流式尾部增长触发的锚点恢复并入静默期结算，触摸与惯性期间冻结虚拟器尺寸补偿；触摸接管优先于历史 settle，避免恢复与手势互相争夺滚动位置。',
+    '仍在流式输出的超长活动轨迹只挂载尾部 200 条，可按 200 条向前展开；完成轮次仍保留完整过程。管理器 0.2.9 无变更。'
+  ] },
   { version: '0.2.36', changes: [
     '修复 Windows 终端 Job helper 已先退出时，清理路径仍向关闭的 stdin 写入 `STOP` 并触发未处理 `EPIPE` 的问题；终端的正常关闭与异常回收不再污染 Remote 进程。',
     '停止 Windows Job helper 前检查输入流是否已销毁或结束，并持续吸收迟到的 stdin 错误；新增 helper 先退出后再次停止的回归覆盖。',
