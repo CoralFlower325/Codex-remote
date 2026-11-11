@@ -9,8 +9,10 @@ import type { OutlineTurn } from '../../shared/thread-outline';
 import { ThreadNavigation, type NavigationTarget } from './ThreadNavigation';
 import { captureBlockAnchor, captureReadingAnchor, releaseReadingTail, restoreReadingAnchor, settleBlockAnchor, type BlockAnchor, type ReadingAnchor } from '../reading-anchor';
 import { HistoryScroll, historyScrollDelta, laterHistoryLoadReady, type BeforeHistoryCommit } from '../history-scroll';
-import { estimateSectionHeight, expandRangeByPixels, resolveSizeChangeAdjustment,
+import { expandRangeByPixels, resolveSizeChangeAdjustment,
   shouldAdjustForSizeChange, virtualizeTimelineEnabled, type KeyAnchor } from '../timeline-virtual';
+import { createTimelineLayoutCache, estimateLayoutRowHeight, projectLayoutRows, turnIsCompleted,
+  type TimelineLayoutCache, type TimelineLayoutContext } from '../timeline-layout';
 import { defaultRangeExtractor, useVirtualizer, type VirtualItem, type Virtualizer } from '@tanstack/react-virtual';
 import { isReadableHistoryItem } from '../history-prefetch';
 import { NativeTurnError } from './NativeTurnError';
@@ -181,26 +183,40 @@ export function ThreadTimeline({
       return next;
     });
   }, []);
-  // --- Section virtualization (timeline-virtual.ts holds the pure logic) ---
-  // Rows are the existing sections, plus the standalone turn-error notice
-  // and the in-progress turn placeholder as tail rows, so the virtual list
-  // owns every block the legacy flow render placed inside the stream.
-  interface TimelineRow { key: string; section: TimelineSection | null; tail?: boolean; notice?: boolean }
+  // --- Layout projection & virtualization (timeline-layout.ts holds the
+  // projection, timeline-virtual.ts the pure geometry logic) ---
+  // Rows are the layout projection of the sections — a completed, folded
+  // turn contributes only its content-bearing sections, so trace-only
+  // mid-turn sections (the empty slices a steering message cuts into a
+  // turn) never become virtual rows — plus the standalone turn-error
+  // notice and the in-progress turn placeholder as tail rows, so the
+  // virtual list owns every block the legacy flow render placed inside
+  // the stream. The projection is cached per turn: a history prepend
+  // re-projects only the new turns and the boundary turn.
+  interface TimelineRow { key: string; section: TimelineSection | null; sectionIndex: number; tail?: boolean; notice?: boolean }
   const virtualWanted = useMemo(() => virtualizeTimelineEnabled(), []);
   const [virtualActive, setVirtualActive] = useState(false);
   const [virtualTailPx, setVirtualTailPx] = useState(0);
   const virtualActiveRef = useRef(false);
   virtualActiveRef.current = virtualActive;
   const keyAnchorRef = useRef<KeyAnchor | null>(null);
+  const layoutCacheRef = useRef<TimelineLayoutCache | null>(null);
+  if (!layoutCacheRef.current) layoutCacheRef.current = createTimelineLayoutCache();
+  useEffect(() => () => { layoutCacheRef.current = createTimelineLayoutCache(); }, [threadId]);
+  const layoutContext: TimelineLayoutContext = { expandedTurns, activeTurnId, threadIdle, turnTimings, responses };
+  const layout = useMemo(() => projectLayoutRows(sections, layoutContext, layoutCacheRef.current!),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sections, expandedTurns, activeTurnId, threadIdle, turnTimings, responses]);
+  layoutCacheRef.current = layout.cache;
   const rows = useMemo<TimelineRow[]>(() => {
-    const list: TimelineRow[] = sections.map(section => ({ key: section.key, section }));
-    if (emptyError?.error) list.push({ key: '__turn-error', section: null, notice: true });
+    const list: TimelineRow[] = layout.rows.map(row => ({ key: row.key, section: row.section, sectionIndex: row.sectionIndex }));
+    if (emptyError?.error) list.push({ key: '__turn-error', section: null, sectionIndex: -1, notice: true });
     if (!viewingHistory && activeTurnId &&
         !sections.some(section => !section.user && section.turnId === activeTurnId)) {
-      list.push({ key: '__active-turn', section: null, tail: true });
+      list.push({ key: '__active-turn', section: null, sectionIndex: -1, tail: true });
     }
     return list;
-  }, [sections, emptyError, viewingHistory, activeTurnId]);
+  }, [layout.rows, emptyError, viewingHistory, activeTurnId, sections]);
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const hasMoreHistoryRef = useRef(hasMoreHistory);
@@ -211,7 +227,27 @@ export function ThreadTimeline({
     if (!row) return 240;
     if (row.tail || row.notice) return 48;
     const section = row.section!;
-    return estimateSectionHeight(section, section.turnId ? expandedTurns.has(section.turnId) : false);
+    const turnId = section.turnId;
+    return estimateLayoutRowHeight(section, {
+      expanded: turnId ? expandedTurns.has(turnId) : false,
+      completed: turnId ? turnIsCompleted(turnId, layoutContext) : false,
+      showError: turnId ? responses.get(turnId)?.lastResponseKey === section.key &&
+        turnTimings[turnId]?.error != null : false
+    });
+  };
+  const estimateRowSizeRef = useRef(estimateRowSize);
+  estimateRowSizeRef.current = estimateRowSize;
+  // A row's measured size is only valid for the layout state that
+  // produced it: when a turn folds or unfolds (toggle, or its timing
+  // landing), the same section key renders a different height class, so
+  // a cached measurement from the other state must not feed the anchor
+  // geometry. Measurements are keyed by row key + layout signature.
+  const rowLayoutSigRef = useRef(new Map<string, string>());
+  useEffect(() => { rowLayoutSigRef.current.clear(); }, [threadId]);
+  const rowLayoutSignature = (row: TimelineRow): string => {
+    const turnId = row.section?.turnId;
+    if (!turnId) return 'x';
+    return `${expandedTurns.has(turnId) ? 'o' : 's'}${turnIsCompleted(turnId, layoutContext) ? 'd' : 'l'}`;
   };
   // Full row geometry rebuilt from the virtualizer's measured-size
   // snapshot plus our own estimates for unmeasured rows — the same inputs
@@ -222,12 +258,52 @@ export function ThreadTimeline({
     const measured = new Map(instance.takeSnapshot().map(item => [String(item.key), item.size]));
     let start = hasMoreHistoryRef.current ? 52 : 0;
     return rowsRef.current.map((row, index) => {
-      const size = measured.get(row.key) ?? estimateRowSize(index);
+      const signature = rowLayoutSignature(row);
+      let size: number;
+      if (rowLayoutSigRef.current.get(row.key) !== signature) {
+        // First sight of this row in this layout state: any cached
+        // measurement belongs to the other fold state — seed instead.
+        rowLayoutSigRef.current.set(row.key, signature);
+        size = estimateRowSize(index);
+      } else {
+        size = measured.get(row.key) ?? estimateRowSize(index);
+      }
       const measurement = { key: row.key, start, size };
       start += size;
       return measurement;
     });
   };
+  // Folding or unfolding a turn changes its rows' height class; refresh
+  // the virtualizer's cached sizes for exactly those rows — measured
+  // where the row is mounted, structurally estimated where it is not —
+  // so an unmounted row of the toggled turn is not laid out with its
+  // other-state measurement when it scrolls back in.
+  const previousExpandedRef = useRef(expandedTurns);
+  useLayoutEffect(() => {
+    const previous = previousExpandedRef.current;
+    previousExpandedRef.current = expandedTurns;
+    const instance = virtualizerRef.current;
+    if (!instance || previous === expandedTurns) return;
+    const changed = new Set<string>();
+    for (const turnId of expandedTurns) if (!previous.has(turnId)) changed.add(turnId);
+    for (const turnId of previous) if (!expandedTurns.has(turnId)) changed.add(turnId);
+    if (changed.size === 0) return;
+    rowsRef.current.forEach((row, index) => {
+      if (row.section?.turnId && changed.has(row.section.turnId)) {
+        // A mounted row of the toggled turn has just rendered in its
+        // new fold state in this very commit: seed from its real
+        // height — the same offsetHeight measureElement reports — so
+        // no estimate→measure correction lands a beat later and
+        // shifts every row below it (the structural estimate misses
+        // by the trace pricing's slack). Rows outside the mounted
+        // window keep the structural estimate.
+        const element = innerRef.current?.querySelector<HTMLElement>(
+          `.timeline-row[data-index="${index}"]`);
+        const measured = element?.offsetHeight ?? 0;
+        instance.resizeItem(index, measured > 0 ? measured : estimateRowSizeRef.current(index));
+      }
+    });
+  }, [expandedTurns]);
   const currentMeasurementsRef = useRef(currentMeasurements);
   currentMeasurementsRef.current = currentMeasurements;
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
@@ -622,6 +698,22 @@ export function ThreadTimeline({
           if (Math.abs(delta) > .5) {
             const before = stream.scrollTop;
             virtualRestoreGuardUntilRef.current = performance.now() + 250;
+            // A window whose whole geometry fits the viewport has
+            // exactly one position that shows it all: the top. A
+            // remembered in-row offset captured against a taller
+            // geometry (a thread's first page at open, priced from a
+            // stale anchor measurement) cannot apply here — chasing
+            // it manufactures tail space and parks the reader in
+            // empty space below the content. Scrollable windows keep
+            // the bridging behaviour below untouched.
+            if ((virtualizerRef.current?.getTotalSize() ?? 0) <= stream.clientHeight) {
+              if (inner) releaseReadingTail(inner);
+              setVirtualTailPx(0);
+              stream.scrollTop = 0;
+              restoredScrollTopRef.current = stream.scrollTop;
+              virtualRestoreAttemptsRef.current = 0;
+              return;
+            }
             const target = Math.round(stream.scrollTop + delta);
             const maximum = Math.max(0, stream.scrollHeight - stream.clientHeight);
             const missingSpace = target - maximum;
@@ -1113,7 +1205,7 @@ export function ThreadTimeline({
         return (
           <div className="timeline-row" key={item.key} data-index={item.index} ref={virtualizer.measureElement}
             style={{ transform: `translateY(${item.start}px)` }}>
-            {row.section ? renderSection(row.section, item.index)
+            {row.section ? renderSection(row.section, row.sectionIndex)
               : row.notice ? <NativeTurnError turn={emptyError!} />
               : renderTailRow(activeTurnId!)}
           </div>
