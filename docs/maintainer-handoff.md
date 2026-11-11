@@ -41,13 +41,13 @@ mobile command menus; and manager 0.2.8 recognition of versioned Node runtime
 executables. An actual 0.2.29 to 0.2.30 upgrade then showed that the old selected
 control could leave the versioned Node process alive; the transaction rolled back
 safely, and 0.2.31 adds the manager-owned stop fallback before retrying.
-The four `v0.2.35` runtime assets, refreshed download snapshot, `codexwin` static
-edge and local Remote 0.2.35 installation are verified. Manager 0.2.9 is
+The four `v0.2.36` runtime assets, refreshed download snapshot, `codexwin` static
+edge and local Remote 0.2.36 installation are verified. Manager 0.2.9 is
 unchanged and remains on `v0.2.31`. Local and public `/version.json` identify
-`assets/index-9Agbdvm-.js`; `/health` is `ready / desktop`. Publication, Remote
+`assets/index-DYP7FSvW.js`; `/health` is `ready / desktop`. Publication, Remote
 installation and edge deployment remain separate states. The release tag points
-to `597579945ad3f10ce31b56a3ac2c48d5675e1cf2`; main CI `42933985604`, Runtime
-Packages `42934907008` and the manager plan `42934907041` passed.
+to `66b393dab8e3feefd22948a8604eb276ef58a2a7`; main CI `42938969194`, Runtime
+Packages `42939852642` and the manager plan `42939852816` passed.
 The live installation, manager selection and both Windows tasks now use
 `F:\AAAAcodexremote\codex-remote-main`; the old version-named directory and
 private experimental residue were removed after the runtime data migration was
@@ -55,7 +55,12 @@ verified.
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.
 
-Remote **0.2.34** caps whole-turn retreat so a giant turn crossing the retained
+Remote **0.2.36** closes the Windows terminal Job shutdown race: once the helper
+has exited, cleanup no longer writes `STOP` into a destroyed stdin, and late
+stream errors are absorbed instead of surfacing as an unhandled `EPIPE`.
+Windows test files now run sequentially because PTY, PowerShell Job and updater
+transactions contend for native process and pipe resources. Remote **0.2.34**
+caps whole-turn retreat so a giant turn crossing the retained
 window boundary is cut by item anchor instead of unloading its loaded section
 in one commit. Settled turn anchors are remembered for the viewing session,
 and later paging additionally requires travel toward the window end or a
