@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-11-10.
+Last reconciled: 2026-11-11.
 
 ## Authority
 
@@ -41,11 +41,13 @@ mobile command menus; and manager 0.2.8 recognition of versioned Node runtime
 executables. An actual 0.2.29 to 0.2.30 upgrade then showed that the old selected
 control could leave the versioned Node process alive; the transaction rolled back
 safely, and 0.2.31 adds the manager-owned stop fallback before retrying.
-The four `v0.2.34` runtime assets, refreshed download snapshot, `codexwin` static
-edge and local Remote 0.2.34 installation are verified. Manager 0.2.9 is
+The four `v0.2.35` runtime assets, refreshed download snapshot, `codexwin` static
+edge and local Remote 0.2.35 installation are verified. Manager 0.2.9 is
 unchanged and remains on `v0.2.31`. Local and public `/version.json` identify
-`assets/index-C3CJbpCT.js`; `/health` is `ready / desktop`. Publication, Remote
-installation and edge deployment remain separate states.
+`assets/index-9Agbdvm-.js`; `/health` is `ready / desktop`. Publication, Remote
+installation and edge deployment remain separate states. The release tag points
+to `597579945ad3f10ce31b56a3ac2c48d5675e1cf2`; main CI `42933985604`, Runtime
+Packages `42934907008` and the manager plan `42934907041` passed.
 The live installation, manager selection and both Windows tasks now use
 `F:\AAAAcodexremote\codex-remote-main`; the old version-named directory and
 private experimental residue were removed after the runtime data migration was
@@ -57,7 +59,11 @@ Remote **0.2.34** caps whole-turn retreat so a giant turn crossing the retained
 window boundary is cut by item anchor instead of unloading its loaded section
 in one commit. Settled turn anchors are remembered for the viewing session,
 and later paging additionally requires travel toward the window end or a
-recent explicit downward gesture. Remote **0.2.33** fixes repeated later-page
+recent explicit downward gesture. Remote **0.2.35** replaces the retained
+window's full DOM rendering with section virtualization, raises the history
+window to 5,000 entries and restores paging anchors through a virtual-index plus
+real-DOM measurement path; eight viewport checks measured `0px` drift with at
+most 18 mounted user rows. Remote **0.2.33** fixes repeated later-page
 loads dragging a long-history window
 back toward the latest items while the reader is moving upward. Later paging now
 requires the reader to be near the retained window end without upward intent,

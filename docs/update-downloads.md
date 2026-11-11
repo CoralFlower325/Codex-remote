@@ -82,6 +82,23 @@ Remote 0.2.16 与管理器 0.2.2 不再将已等于目标版本的文件误判�
 
 ## 维护分发服务
 
+2026-11-11 已完成 Remote **0.2.35** 的分发与 `codexwin` 部署收尾。正式标签为
+`v0.2.35`，发布提交 `597579945ad3f10ce31b56a3ac2c48d5675e1cf2`。main CI
+`42933985604`、Runtime Packages `42934907008` 和 Desktop Manager
+`42934907041` 通过；管理器未改版，package job 按门禁跳过。
+
+下载 Worker 版本 `584cad2d-fcd6-4d4b-b11c-68b19212818d` 已刷新四附件快照，
+`/releases/latest` 返回 `v0.2.35`。四个运行包/清单的项目分发 HEAD 均为 `200`，
+大小与 Release 元数据一致；Windows x64 运行包为 `11959519` 字节，SHA-256
+`797ad79cc5fc59a4d68768ecdf683e9822b070f9604adbab18b79d17eaa9a102`。
+
+本机 Remote 已从 0.2.34 通过预构建运行包升级到 0.2.35，事务备份为
+`output\manager-backup-01739dc9-0c86-4362-a8ac-c85fbcaff3fa`；本地与
+`codexwin` 的 `/version.json` 均为 0.2.35，构建标识
+`assets/index-9Agbdvm-.js`，`/health` 为 ready / desktop。静态边缘 Worker 版本为
+`77e027c7-48c7-48e6-a475-38a063371ed9`。服务与隧道继续由隐藏计划任务运行
+`node-22.19.0-127.exe`，未弹出命令行窗口，Desktop 保持运行。
+
 2026-11-10 已完成 Remote **0.2.34** 的分发与 `codexwin` 部署收尾。正式标签为
 `v0.2.34`，发布提交 `736067de4194871cda7dd33b19c5e6de04648678`。main CI
 `42832498455`、Runtime Packages `42834522094` 和 Desktop Manager
