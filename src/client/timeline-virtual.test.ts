@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   captureKeyAnchor, captureKeyAnchorBelow, estimateSectionHeight, expandRangeByPixels, resolveKeyAnchor,
-  shouldAdjustForSizeChange, virtualizeTimelineEnabled, type RowMeasurement, type SizeChangeAdjustment
+  resolveSizeChangeAdjustment, shouldAdjustForSizeChange, virtualizeTimelineEnabled,
+  type RowMeasurement, type SizeChangeAdjustment
 } from './timeline-virtual';
 import type { TimelineSection } from './timeline-model';
 
@@ -60,6 +61,29 @@ describe('shouldAdjustForSizeChange', () => {
     expect(shouldAdjustForSizeChange({ ...base, firstMeasure: true, itemStart: 500 })).toBe(false);
     // The backward-scroll protection does not apply to first measurements.
     expect(shouldAdjustForSizeChange({ ...base, firstMeasure: true, scrollDirection: 'backward' })).toBe(true);
+  });
+});
+
+describe('resolveSizeChangeAdjustment', () => {
+  it('keeps library compensation during an idle history settle', () => {
+    expect(resolveSizeChangeAdjustment({
+      historySettle: true, touchIntent: false, libraryDefault: true, readingAdjustment: false
+    })).toBe(true);
+  });
+
+  it('lets directed touch override a stale history settle', () => {
+    expect(resolveSizeChangeAdjustment({
+      historySettle: true, touchIntent: true, libraryDefault: true, readingAdjustment: false
+    })).toBe(false);
+  });
+
+  it('uses the reader-aware adjustment outside history settlement', () => {
+    expect(resolveSizeChangeAdjustment({
+      historySettle: false, touchIntent: false, libraryDefault: true, readingAdjustment: false
+    })).toBe(false);
+    expect(resolveSizeChangeAdjustment({
+      historySettle: false, touchIntent: false, libraryDefault: false, readingAdjustment: true
+    })).toBe(true);
   });
 });
 

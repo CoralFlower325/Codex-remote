@@ -9,7 +9,8 @@ import type { OutlineTurn } from '../../shared/thread-outline';
 import { ThreadNavigation, type NavigationTarget } from './ThreadNavigation';
 import { captureBlockAnchor, captureReadingAnchor, releaseReadingTail, restoreReadingAnchor, settleBlockAnchor, type BlockAnchor, type ReadingAnchor } from '../reading-anchor';
 import { HistoryScroll, historyScrollDelta, laterHistoryLoadReady, type BeforeHistoryCommit } from '../history-scroll';
-import { estimateSectionHeight, expandRangeByPixels, shouldAdjustForSizeChange, virtualizeTimelineEnabled, type KeyAnchor } from '../timeline-virtual';
+import { estimateSectionHeight, expandRangeByPixels, resolveSizeChangeAdjustment,
+  shouldAdjustForSizeChange, virtualizeTimelineEnabled, type KeyAnchor } from '../timeline-virtual';
 import { defaultRangeExtractor, useVirtualizer, type VirtualItem, type Virtualizer } from '@tanstack/react-virtual';
 import { isReadableHistoryItem } from '../history-prefetch';
 import { NativeTurnError } from './NativeTurnError';
@@ -273,7 +274,6 @@ export function ThreadTimeline({
         // History commits keep the library's synchronous compensation
         // until the settle completes at the next idle point (see
         // historySettleRef); the freeze below is for streaming growth.
-        if (historySettleRef.current) return libraryDefault;
         const allowed = shouldAdjustForSizeChange({
           hasKeyAnchor: Boolean(keyAnchorRef.current),
           // The freeze gates on directed touch only, deliberately not
@@ -291,8 +291,14 @@ export function ThreadTimeline({
           itemStart: item.start, itemSize: item.size,
           scrollOffset: instance.scrollOffset ?? 0, scrollDirection: instance.scrollDirection
         });
-        if (libraryDefault && !allowed) sizeCompensationDeferredRef.current = true;
-        return allowed;
+        const resolved = resolveSizeChangeAdjustment({
+          historySettle: historySettleRef.current,
+          touchIntent: activity.hasTouchIntent,
+          libraryDefault,
+          readingAdjustment: allowed
+        });
+        if (libraryDefault && !resolved) sizeCompensationDeferredRef.current = true;
+        return resolved;
       }
     } as { shouldAdjustScrollPositionOnItemSizeChange:
       (item: VirtualItem, delta: number, instance: Virtualizer<HTMLDivElement, HTMLDivElement>) => boolean }),
@@ -385,6 +391,7 @@ export function ThreadTimeline({
     blockAnchorRef.current = null;
     blockSettleVersionRef.current += 1;
     anchorSettleVersionRef.current += 1;
+    historySettleRef.current = false;
     const key = itemKey({ turnId: target.turnId, id: target.itemId });
     navigationAnchorRef.current = key;
     const find = () => [...(innerRef.current?.querySelectorAll<HTMLElement>('[data-user-key]') ?? [])]
@@ -551,6 +558,7 @@ export function ThreadTimeline({
     blockAnchorRef.current = null;
     blockSettleVersionRef.current += 1;
     anchorSettleVersionRef.current += 1;
+    historySettleRef.current = false;
     stream.scrollTop = stream.scrollHeight;
     previousScrollTopRef.current = stream.scrollTop;
     onHistoryReading?.(threadId, false);
@@ -656,6 +664,7 @@ export function ThreadTimeline({
       anchorSettlePendingRef.current = false;
       if (!ready || version !== anchorSettleVersionRef.current || !mountedRef.current) return;
       if (navigatingRef.current || navigationAnchorRef.current) return;
+      historySettleRef.current = false;
       restoreReadingPositionRef.current();
     });
   }, []);
@@ -804,6 +813,7 @@ export function ThreadTimeline({
     navigationAnchorRef.current = null;
     blockSettleVersionRef.current += 1;
     anchorSettleVersionRef.current += 1;
+    historySettleRef.current = false;
     blockAnchorRef.current = null;
   }, [threadId]);
 
@@ -979,6 +989,7 @@ export function ThreadTimeline({
     // exists to prevent.
     anchorSettleVersionRef.current += 1;
     anchorSettlePendingRef.current = false;
+    historySettleRef.current = false;
   };
 
   return (

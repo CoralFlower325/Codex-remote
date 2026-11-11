@@ -104,6 +104,24 @@ export function shouldAdjustForSizeChange(context: SizeChangeAdjustment): boolea
     context.scrollDirection !== 'backward';
 }
 
+export interface HistorySizeAdjustment {
+  historySettle: boolean;
+  touchIntent: boolean;
+  libraryDefault: boolean;
+  readingAdjustment: boolean;
+}
+
+/**
+ * A history commit may keep virtual-core's synchronous compensation until
+ * its before-paint anchor restore has landed. Reader takeover always wins:
+ * once a directed touch starts, a stale history-settle flag must not bypass
+ * the gesture freeze and write scrollTop under the reader's finger.
+ */
+export function resolveSizeChangeAdjustment(context: HistorySizeAdjustment): boolean {
+  if (context.historySettle && !context.touchIntent) return context.libraryDefault;
+  return context.readingAdjustment;
+}
+
 export interface KeyAnchor {
   key: string;
   offsetWithin: number;
