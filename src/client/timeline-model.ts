@@ -294,6 +294,10 @@ export function buildTimelineSections(entries: TimelineEntry[], previous: Timeli
  *   first divergent item.
  * - Section checkpoints snapshot at every section start (when all prior
  *   sections are closed), so sections resume the same way.
+ * - A history prepend (an older page in front of the window, with or
+ *   without a tail trim at the retention cap) is spliced symmetrically
+ *   at the head: only the page and the boundary turn are rescanned,
+ *   the remaining turns keep their entries, sections and identities.
  * - ANY other shape — a changed head, a shrink, a divergence before the
  *   last usable checkpoint — falls back to the full builders above,
  *   whose output the chain's full path shares verbatim. The public
@@ -468,6 +472,307 @@ function buildChainFull(
   };
 }
 
+// --- Repair the registries to describe the new output ---
+// Pair each discarded unit with the rebuilt unit of the same key:
+// unchanged pairs need no writes at all, and changed pairs only
+// touch the items that actually moved (compared by reference), so a
+// streaming tail update costs proportionally to the change rather
+// than to the size of the trailing group. The map is copied lazily,
+// only when a write actually happens.
+function repairRegistry(
+  source: Map<string, string>,
+  discarded: Array<{ key: string; items: ThreadItem[] }>,
+  rebuilt: Array<{ key: string; items: ThreadItem[] }>
+): { map: Map<string, string>; changedKeys: Set<string> } {
+  let result = source;
+  const writable = () => {
+    if (result === source) result = new Map(source);
+    return result;
+  };
+  const rebuiltByKey = new Map(rebuilt.map(unit => [unit.key, unit]));
+  const consumed = new Set<string>();
+  const changedKeys = new Set<string>();
+  for (const unit of discarded) {
+    const pair = rebuiltByKey.get(unit.key);
+    if (pair && !consumed.has(pair.key)) {
+      consumed.add(pair.key);
+      if (pair.items.length === unit.items.length &&
+          pair.items.every((item, index) => item === unit.items[index])) continue;
+      const pairItems = new Set(pair.items);
+      const unitItems = new Set(unit.items);
+      for (const item of unit.items) {
+        const key = itemKey(item);
+        if (!pairItems.has(item) && result.get(key) === unit.key) { writable().delete(key); changedKeys.add(key); }
+      }
+      for (const item of pair.items) {
+        const key = itemKey(item);
+        if (!unitItems.has(item) && result.get(key) !== pair.key) { writable().set(key, pair.key); changedKeys.add(key); }
+      }
+    } else {
+      for (const item of unit.items) {
+        const key = itemKey(item);
+        if (result.get(key) === unit.key) { writable().delete(key); changedKeys.add(key); }
+      }
+    }
+  }
+  for (const unit of rebuilt) {
+    if (consumed.has(unit.key)) continue;
+    for (const item of unit.items) {
+      const key = itemKey(item);
+      if (result.get(key) !== unit.key) { writable().set(key, unit.key); changedKeys.add(key); }
+    }
+  }
+  return { map: result, changedKeys };
+}
+function activityUnits(list: TimelineEntry[]): Array<{ key: string; items: ThreadItem[] }> {
+  return list.flatMap(entry =>
+    entry.type === 'activity' ? [{ key: entry.key, items: entry.items }] : []);
+}
+function sectionUnits(list: TimelineSection[]): Array<{ key: string; items: ThreadItem[] }> {
+  return list.map(section => ({
+    key: section.key,
+    items: section.entries.flatMap(entry => entry.type === 'activity' ? entry.items : [entry.item])
+  }));
+}
+// Stability of the new output under the registries it was produced
+// with: only items the repair actually rewrote can disagree, and
+// every rewritten item lives in a rebuilt unit — or, when the same
+// item also appears in a kept prefix unit, in that unit. So the
+// boundary is the first prefix unit holding a rewritten item, else
+// the resume point itself; no rewrites means full agreement.
+function stabilityBoundary<T>(
+  units: T[], changedKeys: Set<string>, resumePoint: number,
+  itemsOf: (unit: T) => ThreadItem[] | null
+): number {
+  if (changedKeys.size === 0) return units.length;
+  const prefixLimit = Math.min(resumePoint, units.length);
+  for (let index = 0; index < prefixLimit; index++) {
+    const unitItems = itemsOf(units[index]!);
+    if (!unitItems) continue;
+    for (const item of unitItems) if (changedKeys.has(itemKey(item))) return index;
+  }
+  return prefixLimit;
+}
+
+
+/**
+ * Detect the history-prepend shape: the new snapshot is an older page
+ * in front of (a prefix of) the cached window. Returns the page size
+ * (`prefix`) and how many leading cached items survive (`aligned`); a
+ * tail trim at the retention cap makes aligned < cache length.
+ * Detection is reference-based and rejects the streaming shapes in
+ * O(1): an append's first probe compares a mid-window item against
+ * the cached head and misses immediately.
+ */
+function detectPrepend(
+  items: ThreadItem[], cache: TimelineChainCache
+): { prefix: number; aligned: number } | null {
+  const old = cache.items;
+  const run = (offset: number): number => {
+    let count = 0;
+    const limit = Math.min(old.length, items.length - offset);
+    while (count < limit && items[offset + count] === old[count]) count++;
+    return count;
+  };
+  const delta = items.length - old.length;
+  if (delta >= 1) {
+    // The window grew, so no tail trim is possible: the page is exact.
+    return run(delta) === old.length ? { prefix: delta, aligned: old.length } : null;
+  }
+  // Tail-trimmed prepend: the window sat at its retention cap, so the
+  // page pushed an equal number of newest items out the other side.
+  // Page sizes are bounded (a few hundred items); require a
+  // substantial aligned remainder so the scan stays worthwhile and
+  // the search stays a handful of reference compares per call.
+  const maxPrefix = Math.min(1024, items.length - 1024);
+  for (let prefix = 1; prefix <= maxPrefix; prefix++) {
+    if (items[prefix] !== old[0]) continue;
+    if (run(prefix) === items.length - prefix) return { prefix, aligned: items.length - prefix };
+  }
+  return null;
+}
+
+/**
+ * The prepend counterpart of the tail resume in projectTimeline: a
+ * history page lands in front of the window, so the scan is redone
+ * only over the page plus the old items up to the first clean entry
+ * checkpoint whose scan state the rescan reproduces exactly; every
+ * entry and section after the splice is reused verbatim (object
+ * identity included), with a single showTiming repair for the one
+ * turn that can span the section splice. The boundary turn a page
+ * cuts through is rebuilt; all other turns keep their entries,
+ * sections, keys and measurements. Soundness conditions, each
+ * verified before splicing:
+ *
+ * - the splice checkpoint sits inside the registry-stable prefix, so
+ *   the rescan region reproduces under the current registries;
+ * - the kept suffix reproduces under the current registries because
+ *   the chain's registries are self-referential: activityKeys is
+ *   always exactly the registry of the cache's own entries, so a
+ *   full build scanning with it finds every kept group's own key as
+ *   the first unretained candidate and re-derives it verbatim (the
+ *   retained-key namespaces of page and window are disjoint — keys
+ *   embed their first item's key — so the page's retentions can
+ *   never shadow a kept group's candidate);
+ * - a tail trim must land exactly on an entry checkpoint and the
+ *   matching section checkpoint, so kept units end on boundaries.
+ *
+ * Returns null when any condition fails; the caller falls back to
+ * the full build, whose output this path is pinned to by the chain
+ * equivalence tests (prepend steps included).
+ */
+function buildChainPrepend(
+  items: ThreadItem[], activeTurnId: string | null, cache: TimelineChainCache,
+  prefix: number, aligned: number
+): TimelineChainCache | null {
+  // Ends of the kept region in old coordinates.
+  let alignedEntryEnd = cache.entries.length;
+  let alignedSectionEnd = cache.sections.length;
+  let alignedFirstResponseCount = cache.firstResponseLog.length;
+  let alignedRetainedCount = cache.retainedKeyLog.length;
+  if (aligned < cache.items.length) {
+    const entryCp = cache.entryCheckpoints.find(cp => cp.itemIndex === aligned);
+    if (!entryCp) return null;
+    alignedEntryEnd = entryCp.entriesLength;
+    alignedRetainedCount = entryCp.retainedCount;
+    const sectionCp = cache.sectionCheckpoints.find(cp => cp.entryIndex === alignedEntryEnd);
+    if (!sectionCp) return null;
+    alignedSectionEnd = sectionCp.sectionsLength;
+    alignedFirstResponseCount = sectionCp.firstResponseCount;
+  }
+  const candidates = cache.entryCheckpoints.filter(cp =>
+    cp.activityItems.length === 0 && cp.itemIndex >= 1 && cp.itemIndex <= aligned &&
+    cp.entriesLength <= cache.stableEntries && cp.entriesLength <= alignedEntryEnd);
+  // --- Rescan the page plus old items up to a splice checkpoint ---
+  const state = createEntryScanState();
+  const headEntries: TimelineEntry[] = [];
+  const headEntryStarts: number[] = [];
+  const headCheckpoints: EntryCheckpoint[] = [];
+  let lastCheckpointAt = 0;
+  let scannedTo = 0;
+  let chosen: EntryCheckpoint | null = null;
+  const recordCheckpoint = (processed: number) => {
+    const next = processed + 1;
+    if (next - lastCheckpointAt >= TIMELINE_CHECKPOINT_ITEMS ||
+        (state.activityItems.length === 0 && next - lastCheckpointAt >= TIMELINE_CHECKPOINT_CLEAN_ITEMS)) {
+      headCheckpoints.push(snapshotEntryCheckpoint(state, next, headEntries.length));
+      lastCheckpointAt = next;
+    }
+  };
+  for (const candidate of candidates) {
+    const target = prefix + candidate.itemIndex;
+    if (target > scannedTo) {
+      scanTimelineEntries(items.slice(scannedTo, target), scannedTo, activeTurnId,
+        cache.activityKeys, state, headEntries, headEntryStarts, recordCheckpoint);
+      scannedTo = target;
+    }
+    if (state.activityItems.length === 0 &&
+        state.responseTurnId === candidate.responseTurnId &&
+        state.hasSubagentEntrance === candidate.hasSubagentEntrance) {
+      chosen = candidate;
+      break;
+    }
+  }
+  if (!chosen) return null;
+
+  // --- Entries: rescanned head + verbatim kept suffix ---
+  const headFinal = reuseEntryIdentity(headEntries, cache.entries.slice(0, chosen.entriesLength));
+  const keptEntries = cache.entries.slice(chosen.entriesLength, alignedEntryEnd);
+  const finalEntries = [...headFinal, ...keptEntries];
+  const entryItemStarts = [...headEntryStarts,
+    ...cache.entryItemStarts.slice(chosen.entriesLength, alignedEntryEnd).map(start => start + prefix)];
+
+  // --- Sections: rescan up to a section splice, keep the rest ---
+  const sectionSplice = cache.sectionCheckpoints.find(cp =>
+    cp.entryIndex >= chosen.entriesLength && cp.entryIndex <= alignedEntryEnd);
+  if (!sectionSplice) return null;
+  const finalEntrySplice = headFinal.length + (sectionSplice.entryIndex - chosen.entriesLength);
+  const scannedSections: TimelineSection[] = [];
+  const firstResponse = new Map<string, TimelineSection>();
+  const scannedLog: Array<readonly [string, TimelineSection]> = [];
+  const scannedCheckpoints: SectionCheckpoint[] = [];
+  scanTimelineSections(finalEntries.slice(0, finalEntrySplice), 0, scannedSections, firstResponse,
+    entryIndex => {
+      scannedCheckpoints.push({ entryIndex, sectionsLength: scannedSections.length,
+        firstResponseCount: scannedLog.length });
+    }, scannedLog);
+  for (const section of firstResponse.values()) section.showTiming = true;
+  retainSectionKeys(scannedSections, cache.previousByItem, new Set());
+  const scannedFinal = reuseSectionIdentity(scannedSections,
+    cache.sections.slice(0, sectionSplice.sectionsLength));
+  const finalLogHead = remapFirstResponseLog(scannedLog, scannedSections, scannedFinal);
+  // Kept sections keep their flags, except the one turn that can span
+  // the splice: if the rescan registered its first response earlier
+  // than the kept copy the old build crowned, the crown moves.
+  const keptRaw = cache.sections.slice(sectionSplice.sectionsLength, alignedSectionEnd);
+  const finalFirstResponse = new Map<string, TimelineSection>([...finalLogHead,
+    ...cache.firstResponseLog.slice(sectionSplice.firstResponseCount, alignedFirstResponseCount)]);
+  const keptSubstitutions = new Map<TimelineSection, TimelineSection>();
+  const keptSections = keptRaw.map(section => {
+    const desired = section.turnId !== undefined && finalFirstResponse.get(section.turnId) === section;
+    if (section.showTiming === desired) return section;
+    const clone = { ...section, showTiming: desired };
+    keptSubstitutions.set(section, clone);
+    return clone;
+  });
+  const finalLog = [...finalLogHead,
+    ...cache.firstResponseLog.slice(sectionSplice.firstResponseCount, alignedFirstResponseCount)
+      .map(([turnId, section]) => [turnId, keptSubstitutions.get(section) ?? section] as const)];
+  const finalSections = [...scannedFinal, ...keptSections];
+
+  // --- Translate the surviving checkpoints into new coordinates ---
+  const entryCheckpoints = [...headCheckpoints];
+  for (const cp of cache.entryCheckpoints) {
+    if (cp.itemIndex <= chosen.itemIndex || cp.itemIndex > aligned) continue;
+    entryCheckpoints.push({
+      itemIndex: cp.itemIndex + prefix,
+      entriesLength: headFinal.length + (cp.entriesLength - chosen.entriesLength),
+      activityItems: cp.activityItems,
+      activityStart: cp.activityStart + prefix,
+      responseTurnId: cp.responseTurnId,
+      hasSubagentEntrance: cp.hasSubagentEntrance,
+      retainedCount: state.retainedKeyLog.length + (cp.retainedCount - chosen.retainedCount)
+    });
+  }
+  const sectionCheckpoints = [...scannedCheckpoints, {
+    entryIndex: finalEntrySplice, sectionsLength: scannedFinal.length,
+    firstResponseCount: finalLogHead.length
+  }];
+  for (const cp of cache.sectionCheckpoints) {
+    if (cp.entryIndex <= sectionSplice.entryIndex || cp.entryIndex > alignedEntryEnd) continue;
+    sectionCheckpoints.push({
+      entryIndex: finalEntrySplice + (cp.entryIndex - sectionSplice.entryIndex),
+      sectionsLength: scannedFinal.length + (cp.sectionsLength - sectionSplice.sectionsLength),
+      firstResponseCount: finalLogHead.length + (cp.firstResponseCount - sectionSplice.firstResponseCount)
+    });
+  }
+  const retainedKeyLog = [...state.retainedKeyLog,
+    ...cache.retainedKeyLog.slice(chosen.retainedCount, alignedRetainedCount)];
+
+  // --- Repair the registries over the rebuilt head units only ---
+  const entryRepair = repairRegistry(cache.activityKeys,
+    [...activityUnits(cache.entries.slice(0, chosen.entriesLength)),
+      ...activityUnits(cache.entries.slice(alignedEntryEnd))],
+    activityUnits(headFinal));
+  const sectionRepair = repairRegistry(cache.previousByItem,
+    [...sectionUnits(cache.sections.slice(0, sectionSplice.sectionsLength)),
+      ...sectionUnits(cache.sections.slice(alignedSectionEnd))],
+    sectionUnits(scannedFinal));
+
+  return {
+    items, activeTurnId, entries: finalEntries, sections: finalSections, entryItemStarts,
+    entryCheckpoints, sectionCheckpoints,
+    firstResponseLog: finalLog,
+    retainedKeyLog,
+    activityKeys: entryRepair.map, previousByItem: sectionRepair.map,
+    producedActivityKeys: cache.activityKeys, producedPreviousByItem: cache.previousByItem,
+    stableEntries: stabilityBoundary(finalEntries, entryRepair.changedKeys, headFinal.length,
+      entry => entry.type === 'activity' ? entry.items : null),
+    stableSections: stabilityBoundary(finalSections, sectionRepair.changedKeys, scannedFinal.length,
+      section => section.entries.flatMap(entry => entry.type === 'activity' ? entry.items : [entry.item]))
+  };
+}
+
 export function projectTimeline(
   items: ThreadItem[], activeTurnId: string | null, cache: TimelineChainCache | null
 ): TimelineProjection {
@@ -476,10 +781,22 @@ export function projectTimeline(
       cache ? { entries: cache.entries, sections: cache.sections } : null);
     return { entries: built.entries, sections: built.sections, cache: built };
   };
-  if (!cache || items.length < cache.items.length) return full();
+  if (!cache) return full();
   if (items === cache.items && activeTurnId === cache.activeTurnId) {
     return { entries: cache.entries, sections: cache.sections, cache };
   }
+  // History prepends diverge at index 0 by construction, so they must
+  // be detected before the divergence logic sends them to the full
+  // build: the prepend path rescans only the page and the boundary
+  // turn and reuses the whole remaining window verbatim.
+  if (activeTurnId === cache.activeTurnId) {
+    const prepend = detectPrepend(items, cache);
+    if (prepend) {
+      const built = buildChainPrepend(items, activeTurnId, cache, prepend.prefix, prepend.aligned);
+      if (built) return { entries: built.entries, sections: built.sections, cache: built };
+    }
+  }
+  if (items.length < cache.items.length) return full();
   let divergence = 0;
   const limit = Math.min(cache.items.length, items.length);
   while (divergence < limit && cache.items[divergence] === items[divergence]) divergence++;
@@ -567,64 +884,6 @@ export function projectTimeline(
   const finalSections = [...sections.slice(0, retentionStart),
     ...reuseSectionIdentity(suffixSections, cache.sections)];
 
-  // --- Repair the registries to describe the new output ---
-  // Pair each discarded unit with the rebuilt unit of the same key:
-  // unchanged pairs need no writes at all, and changed pairs only
-  // touch the items that actually moved (compared by reference), so a
-  // streaming tail update costs proportionally to the change rather
-  // than to the size of the trailing group. The map is copied lazily,
-  // only when a write actually happens.
-  const repairRegistry = (
-    source: Map<string, string>,
-    discarded: Array<{ key: string; items: ThreadItem[] }>,
-    rebuilt: Array<{ key: string; items: ThreadItem[] }>
-  ): { map: Map<string, string>; changedKeys: Set<string> } => {
-    let result = source;
-    const writable = () => {
-      if (result === source) result = new Map(source);
-      return result;
-    };
-    const rebuiltByKey = new Map(rebuilt.map(unit => [unit.key, unit]));
-    const consumed = new Set<string>();
-    const changedKeys = new Set<string>();
-    for (const unit of discarded) {
-      const pair = rebuiltByKey.get(unit.key);
-      if (pair && !consumed.has(pair.key)) {
-        consumed.add(pair.key);
-        if (pair.items.length === unit.items.length &&
-            pair.items.every((item, index) => item === unit.items[index])) continue;
-        const pairItems = new Set(pair.items);
-        const unitItems = new Set(unit.items);
-        for (const item of unit.items) {
-          const key = itemKey(item);
-          if (!pairItems.has(item) && result.get(key) === unit.key) { writable().delete(key); changedKeys.add(key); }
-        }
-        for (const item of pair.items) {
-          const key = itemKey(item);
-          if (!unitItems.has(item) && result.get(key) !== pair.key) { writable().set(key, pair.key); changedKeys.add(key); }
-        }
-      } else {
-        for (const item of unit.items) {
-          const key = itemKey(item);
-          if (result.get(key) === unit.key) { writable().delete(key); changedKeys.add(key); }
-        }
-      }
-    }
-    for (const unit of rebuilt) {
-      if (consumed.has(unit.key)) continue;
-      for (const item of unit.items) {
-        const key = itemKey(item);
-        if (result.get(key) !== unit.key) { writable().set(key, unit.key); changedKeys.add(key); }
-      }
-    }
-    return { map: result, changedKeys };
-  };
-  const activityUnits = (list: TimelineEntry[]) => list.flatMap(entry =>
-    entry.type === 'activity' ? [{ key: entry.key, items: entry.items }] : []);
-  const sectionUnits = (list: TimelineSection[]) => list.map(section => ({
-    key: section.key,
-    items: section.entries.flatMap(entry => entry.type === 'activity' ? entry.items : [entry.item])
-  }));
   const entryRepair = repairRegistry(cache.activityKeys,
     activityUnits(cache.entries.slice(entryCheckpoint.entriesLength)),
     activityUnits(finalEntries.slice(entryCheckpoint.entriesLength)));
@@ -633,26 +892,6 @@ export function projectTimeline(
     sectionUnits(finalSections.slice(retentionStart)));
   const activityKeys = entryRepair.map;
   const previousByItem = sectionRepair.map;
-  // Stability of the new output under the registries it was produced
-  // with: only items the repair actually rewrote can disagree, and
-  // every rewritten item lives in a rebuilt unit — or, when the same
-  // item also appears in a kept prefix unit, in that unit. So the
-  // boundary is the first prefix unit holding a rewritten item, else
-  // the resume point itself; no rewrites means full agreement.
-  const stabilityBoundary = <T,>(
-    units: T[], changedKeys: Set<string>, resumePoint: number,
-    itemsOf: (unit: T) => ThreadItem[] | null
-  ): number => {
-    if (changedKeys.size === 0) return units.length;
-    const prefixLimit = Math.min(resumePoint, units.length);
-    for (let index = 0; index < prefixLimit; index++) {
-      const unitItems = itemsOf(units[index]!);
-      if (!unitItems) continue;
-      for (const item of unitItems) if (changedKeys.has(itemKey(item))) return index;
-    }
-    return prefixLimit;
-  };
-
   const built: TimelineChainCache = {
     items, activeTurnId, entries: finalEntries, sections: finalSections, entryItemStarts,
     entryCheckpoints,

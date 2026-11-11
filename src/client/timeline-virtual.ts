@@ -1,4 +1,5 @@
 import type { TimelineSection } from './timeline-model';
+import { estimateLayoutRowHeight } from './timeline-layout';
 
 /**
  * Master switch for the section-virtualized timeline. The renderer keeps
@@ -181,8 +182,15 @@ export function captureKeyAnchorBelow(
  * geometry before the first real measurement lands; the virtualizer
  * replaces them with measured heights and corrects the scroll position
  * for items above the fold, so they should be plausible, not precise.
+ * The seed follows the section's structure (text length, attachments,
+ * answer and trace composition) via the layout projection's estimator
+ * instead of the old flat constants: a flat 150px for every folded
+ * response section over-reported trace-only mid-turn sections — which
+ * the projection no longer turns into rows at all — by ~150px each.
+ * This wrapper keeps the historical two-argument shape for callers
+ * that only know the expansion state; the renderer itself passes the
+ * full row context to estimateLayoutRowHeight.
  */
 export function estimateSectionHeight(section: TimelineSection, expanded: boolean): number {
-  if (section.user) return 120;
-  return expanded ? 680 : 150;
+  return estimateLayoutRowHeight(section, { expanded, completed: true, showError: false });
 }
