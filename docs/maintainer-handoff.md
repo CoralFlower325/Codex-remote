@@ -41,13 +41,13 @@ mobile command menus; and manager 0.2.8 recognition of versioned Node runtime
 executables. An actual 0.2.29 to 0.2.30 upgrade then showed that the old selected
 control could leave the versioned Node process alive; the transaction rolled back
 safely, and 0.2.31 adds the manager-owned stop fallback before retrying.
-The four `v0.2.36` runtime assets, refreshed download snapshot, `codexwin` static
-edge and local Remote 0.2.36 installation are verified. Manager 0.2.9 is
+The four `v0.2.37` runtime assets, refreshed download snapshot, `codexwin` static
+edge and local Remote 0.2.37 installation are verified. Manager 0.2.9 is
 unchanged and remains on `v0.2.31`. Local and public `/version.json` identify
-`assets/index-DYP7FSvW.js`; `/health` is `ready / desktop`. Publication, Remote
+`assets/index-CqXL-FeZ.js`; `/health` is `ready / desktop`. Publication, Remote
 installation and edge deployment remain separate states. The release tag points
-to `66b393dab8e3feefd22948a8604eb276ef58a2a7`; main CI `42938969194`, Runtime
-Packages `42939852642` and the manager plan `42939852816` passed.
+to `78cbc862b257d20dd6747576317195c13a789820`; main CI `42962195229`, Runtime
+Packages `42962870805` and the manager plan `42962870818` passed.
 The live installation, manager selection and both Windows tasks now use
 `F:\AAAAcodexremote\codex-remote-main`; the old version-named directory and
 private experimental residue were removed after the runtime data migration was
@@ -55,6 +55,11 @@ verified.
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.
 
+Remote **0.2.37** adapts streaming flushes to the reader's position, incrementally
+reuses Markdown blocks and timeline-chain checkpoints, and settles virtual anchor
+restoration only after gestures and momentum go idle. A review follow-up makes
+directed touch override any lingering history-size compensation window. Active
+streaming traces retain only the newest 200 entries per page.
 Remote **0.2.36** closes the Windows terminal Job shutdown race: once the helper
 has exited, cleanup no longer writes `STOP` into a destroyed stdin, and late
 stream errors are absorbed instead of surfacing as an unhandled `EPIPE`.
