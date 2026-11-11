@@ -71,6 +71,11 @@ class WindowsTerminalJob implements TerminalJobBoundary {
 
     this.child.stdout?.setEncoding('utf8');
     this.child.stderr?.setEncoding('utf8');
+    this.child.stdin?.on('error', (error) => {
+      // A worker can close first while shutdown is already in progress. Keep
+      // the late stream error from escaping as an unhandled process fault.
+      this.stderr = boundedDiagnostic(`${this.stderr}${error.message}`);
+    });
     this.child.stdout?.on('data', (chunk: string) => this.receiveStdout(chunk, resolveReady));
     this.child.stderr?.on('data', (chunk: string) => {
       this.stderr = boundedDiagnostic(`${this.stderr}${chunk}`);
@@ -90,7 +95,8 @@ class WindowsTerminalJob implements TerminalJobBoundary {
   stop(): void {
     if (this.stopping) return;
     this.stopping = true;
-    this.child.stdin?.end('STOP\n');
+    const input = this.child.stdin;
+    if (input && !input.destroyed && !input.writableEnded) input.end('STOP\n');
     this.stopTimer = setTimeout(() => this.child.kill(), STOP_TIMEOUT_MS);
     this.stopTimer.unref();
   }

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { createWindowsTerminalJob } from './terminal-job.js';
 
 const windowsOnly = process.platform === 'win32' ? it : it.skip;
 const helper = fileURLToPath(new URL('../../scripts/terminal-job-windows.ps1', import.meta.url));
@@ -69,5 +70,13 @@ describe('Windows terminal Job Object helper', () => {
     }
     expect(jobError).toBe('');
     expect(stderr).not.toContain('sensitive');
+  }, 30_000);
+
+  windowsOnly('ignores a stop request after the helper has already exited', async () => {
+    const job = createWindowsTerminalJob(99_999_999);
+    await expect(job.ready).rejects.toThrow();
+    await job.exited;
+    expect(() => job.stop()).not.toThrow();
+    await new Promise(resolve => setTimeout(resolve, 100));
   }, 30_000);
 });
