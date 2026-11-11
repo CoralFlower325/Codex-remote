@@ -67,6 +67,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
+| [Remote 0.2.38 发布与部署验收](remote-0.2.38-release-acceptance.md) | 0.2.38 / manager 0.2.9：折叠轮次布局投影、历史补页检查点拼接、section 下标修复、签名运行包、分发与本机部署；真机边界保留 |
 | [Remote 0.2.37 发布与部署验收](remote-0.2.37-release-acceptance.md) | 0.2.37 / manager 0.2.9：流式自适应刷新、Markdown/时间线增量化、锚点静默结算、active trace 窗口化、审查补丁与完整部署；真机边界保留 |
 | [Remote 0.2.36 发布与部署验收](remote-0.2.36-release-acceptance.md) | 0.2.36 / manager 0.2.9：Windows 终端 Job 清理竞态、稳定 Windows 测试门禁、签名分发与本机部署；真机边界保留 |
 | [Remote 0.2.35 发布与部署验收](remote-0.2.35-release-acceptance.md) | 0.2.35 / manager 0.2.9：section 虚拟化、5,000 条历史窗口、稳定补页锚点、签名分发与本机部署；真机边界保留 |

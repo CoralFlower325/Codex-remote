@@ -1,6 +1,6 @@
 # 发布签名运维
 
-Remote 0.2.23 / manager 0.2.4 开始要求 Ed25519 发布者签名；Remote 0.2.37
+Remote 0.2.23 / manager 0.2.4 开始要求 Ed25519 发布者签名；Remote 0.2.38
 已于 2026-11-11 使用同一固定公钥完成正式发布与部署收尾。
 这是运行包及源码更新的真实性校验，与暂停中的 manager AU 自更新、
 macOS 应用代码签名和公证分别管理。
@@ -25,9 +25,9 @@ macOS 应用代码签名和公证分别管理。
 私钥是 PEM 格式，通过 GitHub Actions 的 `RELEASE_SIGNING_KEY` secret 注入
 runtime 工作流。不要将其放入 `.env`、仓库、工作流文本、日志或公开附件。
 初始化脚本不会上传 secret。2026-11-08 经发布授权已配置 GitHub secret。
-正式 runtime 工作流 `42962870805` 在 Windows/macOS 均通过。
+正式 runtime 工作流 `43016530341` 在 Windows/macOS 均通过。
 两个正式清单已用固定公钥独立验签，签名提交均为
-`78cbc862b257d20dd6747576317195c13a789820`，完整源码树与标签一致。
+`817e20e8abeb404ae8569acf82d4286a075b4bfb`，完整源码树与标签一致。
 
 正式发布顺序：
 
