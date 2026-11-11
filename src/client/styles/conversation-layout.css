@@ -598,6 +598,32 @@
   color: var(--muted);
 }
 
+.message-stream-inner--virtual {
+  position: relative;
+}
+
+.message-stream-inner--virtual::after {
+  height: 0;
+}
+
+.timeline-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  display: flow-root;
+}
+
+.history-sentinel--virtual-top,
+.history-sentinel--virtual-bottom {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin-bottom: 0;
+  pointer-events: none;
+}
+
 .history-snapshot-status {
   display: flex;
   min-width: 0;

@@ -1,6 +1,6 @@
 {
   "name": "codex-remote",
-  "version": "0.2.34",
+  "version": "0.2.35",
   "private": true,
   "type": "module",
   "description": "Responsive remote control UI for the Codex desktop app.",
@@ -51,6 +51,7 @@
     "node": ">=22.19.0"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.26",
     "@xterm/addon-serialize": "^0.14.0",
     "@xterm/headless": "^6.0.0",
     "compression": "^1.8.2",

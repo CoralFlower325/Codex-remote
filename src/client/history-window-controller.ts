@@ -1,4 +1,4 @@
-import { boundHistoryItems, type HistoryBoundary } from './history-window';
+import { boundHistoryItems, HISTORY_WINDOW_LIMIT, type HistoryBoundary } from './history-window';
 import type { ThreadItem } from './types';
 
 const anchorPrefix = 'remote-item:';
@@ -21,7 +21,7 @@ export function historyPageQuery(threadId: string, cursor: string | null, direct
 }
 
 export function applyHistoryWindow(items: ThreadItem[], direction: 'older' | 'newer',
-  cursors: { older: string | null; newer: string | null }, maxItems = 800, wholeTurns = true) {
+  cursors: { older: string | null; newer: string | null }, maxItems = HISTORY_WINDOW_LIMIT, wholeTurns = true) {
   const bounded = boundHistoryItems(items, direction, maxItems, wholeTurns);
   return {
     items: bounded.items,

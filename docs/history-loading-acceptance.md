@@ -37,6 +37,50 @@ Updated: 2026-10-28. Earlier verification below retains its dated scope.
 
 ## Verification
 
+### 2026-11-11 Retained Window 5,000 and Virtualized Timeline (Phase 2)
+
+- The retained-history cap rose from 800 to 5,000 records, taken from the
+  single `HISTORY_WINDOW_LIMIT` constant in `src/client/history-window.ts`
+  by the window function, the history-window controller and the trim
+  effect in `useRemote` — no local literals remain. The whole-turn retreat
+  and its 200-record span cap are unchanged. Below the cap nothing already
+  loaded is discarded. This follows the section-level virtualized timeline
+  (phase 1, local branch only so far): mounting stays bounded by viewport
+  plus overscan, so the higher cap costs state memory, not DOM.
+- Same synthetic protocol as the phase 0/1 measurements (desktop simulated
+  viewport 1456x900, history delay 250ms, elementFromPoint blank
+  sampling), two runs of the virtualized build plus one run of the same
+  build's legacy render as a side reference. Full tables and caveats live
+  in the local phase-2 report (output/vs-baseline/phase2.md, not shipped).
+- Folded giant-turn dataset (2,431 records): slow-scroll blank samples
+  fell from 276/1,581 (17.5%, both phase 0 and phase 1) to 0/1,582 in both
+  runs; a new cold-start fling measurement (fresh page, burst protocol
+  from the latest end) fell from 341/380 (89.7%) to 0/378. Delivering the
+  whole dataset still takes the arithmetic minimum of history reads
+  (open page 40 + 23 pages of 100); what disappeared is the re-fetching —
+  both return-to-latest trips now complete with 0 additional history
+  reads, and a full session's total history reads dropped from 71–83
+  (phase 0/1) to 30 (excluding the extra cold-fling context).
+- Retention proof at end of the slow scroll: oldest and final answers are
+  present in the same window state (no edge discarded), while the stream
+  holds 8 mounted rows / 106 DOM nodes for the 2,431 retained records.
+- Long-content dataset (60 turns, content ≈24.5 viewports tall after
+  traversal): virtualized mounting stayed at 13 rows / 155 DOM nodes at
+  the oldest end while the same build's legacy render mounted all 120
+  sections / 1,381 DOM nodes. Inter-row expansion drift stayed 0px
+  (legacy: +48px); outline navigation landed at 24px with max deviation 0.
+- Settled-height sampling (new): after full traversal, parked mid-stream
+  for 16.5s (161 samples, zero interaction, zero history reads), the
+  virtual total height never stepped — 0 changes, max step 0px, scrollTop
+  drift 0px. Measurement correction leaves no idle tail in this geometry.
+- Still open, unchanged from phase 1: expansion INSIDE the giant turn's
+  own row above its final answer is not compensated (the row itself does
+  not move; measured +683.25px with the full turn retained — the legacy
+  render of the same build shows the identical +683.25px, so this is not
+  a virtualization regression). Long-task sampling remains
+  non-discriminating (0 in every mode). Physical iPhone re-verification
+  of the feel criteria is still outstanding.
+
 ### 2026-11-10 Giant-Turn Boundary and Anchor Memory
 
 - Located on the deployed 0.2.33 station: upward paging across the head of

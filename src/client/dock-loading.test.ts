@@ -84,6 +84,7 @@ import type { ThreadItem } from './types';
 import { QuestionDock, QuestionCard } from './components/QuestionDock';
 import { parseQuestionReplies, questionItemId } from '../shared/async-user-input';
 import { historyConfig } from './history-config';
+import { HISTORY_WINDOW_LIMIT } from './history-window';
 import { QueuedMessages } from './components/QueuedMessages';
 import type { Thread, ThreadHistoryPage, WorkspaceBootstrap } from './types';
 
@@ -136,8 +137,12 @@ const json = (body: unknown) => Promise.resolve({ ok: true, text: async () => JS
 
 describe('thread dock load ordering', () => {
   it.each([true, false])('bounds live growth while preserving a reading window (reading: %s)', async reading => {
-    const records = Array.from({ length: 800 }, (_, index) => ({
-      turnId: index < 400 ? 'previous' : 'running', item: {
+    // Fixture size tracks the retained-window cap (HISTORY_WINDOW_LIMIT,
+    // 5,000 since virtualization; this fixture was 800 under the old cap):
+    // the live addition must push the total past the cap for the trim
+    // effect under test to fire at all.
+    const records = Array.from({ length: HISTORY_WINDOW_LIMIT }, (_, index) => ({
+      turnId: index < HISTORY_WINDOW_LIMIT / 2 ? 'previous' : 'running', item: {
         type: 'agentMessage', id: `record-${index}`, text: `Record ${index}`
       }
     }));
@@ -150,7 +155,7 @@ describe('thread dock load ordering', () => {
       threadId: thread.id, turnId: 'running', item: { type: 'agentMessage', id: 'record-new', text: 'Live addition' }
     } });
     await settle();
-    expect(f.remote.items.length).toBeLessThanOrEqual(800);
+    expect(f.remote.items.length).toBeLessThanOrEqual(HISTORY_WINDOW_LIMIT);
     if (reading) {
       expect(f.remote.items.map(item => item.id)).toEqual(records.map(record => record.item.id));
       expect(f.remote.viewingHistory).toBe(true);
@@ -894,10 +899,14 @@ describe('cached history verification', () => {
     expect(f.remote.turnTimings['new-live']?.status).toBe('inProgress');
   });
   it('discards a delayed latest-page refresh after history reading starts', async () => {
-    const initialItems = Array.from({ length: 800 }, (_, index) => ({
+    // The initial page fills the retained window exactly (HISTORY_WINDOW_LIMIT,
+    // 5,000 since virtualization; 800 under the old cap), so prepending the
+    // 100 older records trims the newest 100 from the retained window.
+    const initialItems = Array.from({ length: HISTORY_WINDOW_LIMIT }, (_, index) => ({
       turnId: `old-${Math.floor(index / 2)}`,
       item: { type: 'agentMessage' as const, id: `old-${index}`, text: `Old ${index}` }
     }));
+    const lastRetainedId = `old-${HISTORY_WINDOW_LIMIT - 100 - 1}`;
     const olderItems = Array.from({ length: 100 }, (_, index) => ({
       turnId: `older-${index}`,
       item: { type: 'agentMessage' as const, id: `older-${index}`, text: `Older ${index}` }
@@ -941,11 +950,11 @@ describe('cached history verification', () => {
     await settle();
     const mountedHistory = f.remote.items;
     expect(f.remote.items[0]?.id).toBe('older-0');
-    expect(f.remote.items.at(-1)?.id).toBe('old-699');
+    expect(f.remote.items.at(-1)?.id).toBe(lastRetainedId);
     finishSilent!(await json(latestPage));
     await settle();
     expect(f.remote.items).toBe(mountedHistory);
-    expect(f.remote.items.at(-1)?.id).toBe('old-699');
+    expect(f.remote.items.at(-1)?.id).toBe(lastRetainedId);
     expect(f.remote.viewingHistory).toBe(true);
   });
   it('does not start a tail refresh while an upward history gesture is active', async () => {

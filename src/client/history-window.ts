@@ -15,6 +15,16 @@ const boundary = (item: ThreadItem | undefined): HistoryBoundary | null =>
   item?.turnId ? { turnId: item.turnId, itemId: item.id } : null;
 
 /**
+ * Single source for the retained-history window cap, shared by the window
+ * function, its controller and the trim effect in useRemote. The timeline
+ * is virtualized by section, so retained records no longer imply mounted
+ * DOM; the cap is a memory/state bound, not a render bound, and can sit far
+ * above the old 800 — sessions keep their full loaded history instead of
+ * sliding the window and discarding the opposite edge.
+ */
+export const HISTORY_WINDOW_LIMIT = 5000;
+
+/**
  * Whole-turn retreat avoids splitting an ordinary turn at the cut. It is
  * capped by span: a turn already occupying hundreds of retained items is
  * not ordinary, and retreating past it would evict the section the reader
@@ -30,7 +40,7 @@ const MAX_WHOLE_TURN_SPAN = 200;
 export function boundHistoryItems(
   items: ThreadItem[],
   direction: 'older' | 'newer',
-  maxItems = 800,
+  maxItems = HISTORY_WINDOW_LIMIT,
   wholeTurns = true
 ): BoundedHistoryWindow {
   const limit = Math.max(1, Math.floor(maxItems));

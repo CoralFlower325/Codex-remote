@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyHistoryWindow, historyBoundaryCursor, historyPageQuery } from './history-window-controller';
+import { HISTORY_WINDOW_LIMIT } from './history-window';
 import type { ThreadItem } from './types';
 
 describe('rolling history recovery cursors', () => {
@@ -21,15 +22,21 @@ describe('rolling history recovery cursors', () => {
     expect(() => historyPageQuery('thread', 'remote-item:%', 'after')).toThrow();
   });
   it('retains the opposite cursor and introduces recovery only for the discarded edge', () => {
-    const items = Array.from({ length: 1000 }, (_, i): ThreadItem =>
+    // Item count must exceed the default window cap (HISTORY_WINDOW_LIMIT,
+    // 5,000 since virtualization; previously 800) for a discarded edge to
+    // exist at all.
+    const total = HISTORY_WINDOW_LIMIT + 1000;
+    const items = Array.from({ length: total }, (_, i): ThreadItem =>
       ({ type: 'agentMessage', turnId: `turn-${Math.floor(i / 2)}`, id: String(i), text: String(i) }));
     const older = applyHistoryWindow(items, 'older', { older: 'native:older', newer: null });
-    expect(older.items).toHaveLength(800);
+    expect(older.items).toHaveLength(HISTORY_WINDOW_LIMIT);
     expect(older.older).toBe('native:older');
-    expect(historyPageQuery('thread', older.newer, 'after').get('afterItem')).toBe('799');
+    expect(historyPageQuery('thread', older.newer, 'after').get('afterItem'))
+      .toBe(String(HISTORY_WINDOW_LIMIT - 1));
     const newer = applyHistoryWindow(items, 'newer', { older: null, newer: 'native:newer' });
-    expect(newer.items).toHaveLength(800);
+    expect(newer.items).toHaveLength(HISTORY_WINDOW_LIMIT);
     expect(newer.newer).toBe('native:newer');
-    expect(historyPageQuery('thread', newer.older, 'before').get('beforeItem')).toBe('200');
+    expect(historyPageQuery('thread', newer.older, 'before').get('beforeItem'))
+      .toBe(String(total - HISTORY_WINDOW_LIMIT));
   });
 });

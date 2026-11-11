@@ -39,6 +39,7 @@ import { useErrorNotices } from './error-notices';
 import { clearActionIntents } from './action-intents';
 import { clearComposerDraftContext } from './composer-drafts';
 import { applyHistoryWindow, historyPageQuery } from './history-window-controller';
+import { HISTORY_WINDOW_LIMIT } from './history-window';
 import type { CreateThreadOptions, RemoteController, ThreadSettingsPatch } from './remote-contracts';
 import { RemoteRequestRegistry } from './remote-request-registry';
 
@@ -810,10 +811,10 @@ export function useRemote({
   }, []);
 
   useEffect(() => {
-    if (items.length <= 800 || viewingHistoryRef.current) return;
+    if (items.length <= HISTORY_WINDOW_LIMIT || viewingHistoryRef.current) return;
     const reading = historyReadingRef.current.threadId === activeThreadRef.current && historyReadingRef.current.reading;
     const window = applyHistoryWindow(items, reading ? 'older' : 'newer',
-      { older: olderHistoryCursorRef.current, newer: newerHistoryCursorRef.current }, 800, !reading);
+      { older: olderHistoryCursorRef.current, newer: newerHistoryCursorRef.current }, HISTORY_WINDOW_LIMIT, !reading);
     if (!window.trimmed) return;
     historyRevisionRef.current += 1;
     olderHistoryCursorRef.current = window.older;
