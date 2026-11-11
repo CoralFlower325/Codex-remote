@@ -17,6 +17,9 @@ their original scope and do not establish current physical-device performance.
 
 The current published release is Remote **0.2.38** / manager **0.2.9**, tag
 `v0.2.38`.
+The [0.2.38 release acceptance](remote-0.2.38-release-acceptance.md) records the
+reviewed history-layout and prepend fix, signed runtime packages, distribution,
+edge and Windows installation.
 The [native queued-guide acceptance](native-queued-guide-0.2.27.md) records the
 single primary action, immediate queued-submission strip and history-trigger
 placement, plus the 0.2.28 follow-up record for optimistic send/Guide display,
@@ -41,13 +44,13 @@ mobile command menus; and manager 0.2.8 recognition of versioned Node runtime
 executables. An actual 0.2.29 to 0.2.30 upgrade then showed that the old selected
 control could leave the versioned Node process alive; the transaction rolled back
 safely, and 0.2.31 adds the manager-owned stop fallback before retrying.
-The four `v0.2.37` runtime assets, refreshed download snapshot, `codexwin` static
-edge and local Remote 0.2.37 installation are verified. Manager 0.2.9 is
+The four `v0.2.38` runtime assets, refreshed download snapshot, `codexwin` static
+edge and local Remote 0.2.38 installation are verified. Manager 0.2.9 is
 unchanged and remains on `v0.2.31`. Local and public `/version.json` identify
-`assets/index-CqXL-FeZ.js`; `/health` is `ready / desktop`. Publication, Remote
+`assets/index-06-44Qre.js`; `/health` is `ready / desktop`. Publication, Remote
 installation and edge deployment remain separate states. The release tag points
-to `78cbc862b257d20dd6747576317195c13a789820`; main CI `42962195229`, Runtime
-Packages `42962870805` and the manager plan `42962870818` passed.
+to `817e20e8abeb404ae8569acf82d4286a075b4bfb`; main CI `43016354483`, Runtime
+Packages `43016530341` and the manager plan `43016530255` passed.
 The live installation, manager selection and both Windows tasks now use
 `F:\AAAAcodexremote\codex-remote-main`; the old version-named directory and
 private experimental residue were removed after the runtime data migration was
@@ -55,6 +58,11 @@ verified.
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.
 
+Remote **0.2.38** projects completed folded turns by turn semantics so steering
+messages remain visible without creating empty virtual rows for folded process
+slices. History prepends splice timeline checkpoints and reuse the untouched
+window while a section-identity rebase keeps cached global indices current;
+failed-turn errors therefore remain visible after older pages arrive.
 Remote **0.2.37** adapts streaming flushes to the reader's position, incrementally
 reuses Markdown blocks and timeline-chain checkpoints, and settles virtual anchor
 restoration only after gestures and momentum go idle. A review follow-up makes
@@ -109,7 +117,7 @@ and real PTY lifecycle tests pass. Platform output uses bounded rotating logs;
 macOS controls use the same-PID background wrapper and retain ownership checks.
 Local synthetic checks do not establish signed-in macOS service behavior.
 
-The current implementation through `v0.2.28` adds complete cursor-following
+The current implementation through `v0.2.38` adds complete cursor-following
 model/project catalogs, explicit reasoning inherit/default semantics, ordered
 settings acknowledgements, isolated Office conversion workers, bounded SSE
 backpressure, a supervisor-owned dynamic tunnel metrics port, explicit client
@@ -117,7 +125,8 @@ view/action contracts and split Home/Thread screens. It also requires prebuilt
 runtime packages to match the tested Node 22.19.x ABI. These changes are not a
 claim that every platform has physical-device acceptance. The released batch
 includes catalog completion, terminal isolation, live previews, automations,
-subagent history, signed runtime updates and Windows manager repair. Physical-device acceptance is tracked in
+subagent history, signed runtime updates, Windows manager repair, folded-turn
+layout projection and checkpoint-spliced history prepends. Physical-device acceptance is tracked in
 [physical-device-acceptance.md](physical-device-acceptance.md).
 
 The following paragraphs retain historical 0.2.23 and earlier observations:
