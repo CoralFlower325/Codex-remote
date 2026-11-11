@@ -127,7 +127,7 @@ export interface ConversationActions {
     settings?: ThreadSettingsPatch): Promise<void>;
   openThread(threadId: string, options?: ThreadOpenOptions): Promise<void>;
   loadEarlierHistory(beforeCommit?: BeforeHistoryCommit): Promise<void>;
-  prefetchEarlierHistory(): Promise<void>;
+  prefetchEarlierHistory(travellingUp?: boolean): Promise<void>;
   loadLaterHistory(beforeCommit?: BeforeHistoryCommit): Promise<void>;
   revealHistory(turnId: string, itemId: string): Promise<boolean>;
   cancelHistoryReveal(): void;

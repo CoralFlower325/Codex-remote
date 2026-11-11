@@ -27,6 +27,7 @@ import { config } from './config.js';
 import { desktopBridge } from './desktop-bridge.js';
 import { MetadataReader, readWorkspaceBootstrap } from './bootstrap.js';
 import { WorkspaceSnapshots } from './workspace-snapshots.js';
+import { ThreadHistoryCache } from './thread-history-cache.js';
 import { TerminalManager } from './terminal-manager.js';
 import { handleTerminalSocket } from './terminal-socket.js';
 import { Automations } from './automations.js';
@@ -82,6 +83,7 @@ const questionTracker = new QuestionTracker();
 const localImages = new LocalImages(path.join(config.dataDir, 'image-attachments'));
 const metadataReader = new MetadataReader((method, params) => codexBridge.request(method, params));
 const workspaceSnapshots = new WorkspaceSnapshots((method, params) => codexBridge.request(method, params));
+const historyCache = new ThreadHistoryCache();
 const pushNotifications = new PushNotifications(
   config.dataDir,
   config.publicOrigin ?? 'https://example.com',
@@ -101,7 +103,7 @@ const terminalWss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024
 const terminals = new TerminalManager(config.codexWorkdir);
 const sessionConnections = new SessionConnections();
 const { clients, connectClient, disconnectClient, handleClientMessage, broadcast } = createPeerHub({
-  codexBridge, eventJournal, questionTracker, metadataReader, workspaceSnapshots,
+  codexBridge, eventJournal, questionTracker, metadataReader, workspaceSnapshots, historyCache,
   ephemeralChats, pushNotifications, queueDispatcher, sessionConnections,
   actionLedger: new ActionLedger(path.join(config.dataDir, 'action-ledger'))
 });
@@ -333,7 +335,7 @@ app.get(
 );
 
 app.use(threadRouter({ requireAuth, codexBridge, workspaceSnapshots, pushNotifications,
-  localImages, recordQuestions, reportImageFailure, config }));
+  localImages, recordQuestions, reportImageFailure, config, historyCache }));
 
 app.use('/api/file-preview', filePreviewRouter(requireAuth, undefined, isAuthenticated));
 app.use('/api/attachments', documentAttachmentRouter(requireAuth, (req, res, next) => {
@@ -427,6 +429,7 @@ codexBridge.on('event', ({ method, params }) => {
     if (added.length) void pushNotifications.notifyQuestions(params ?? {}, added);
   }
   workspaceSnapshots.event(method, params ?? {});
+  historyCache.event(method, params ?? {});
   if (method === 'item/started' || method === 'item/completed') {
     void localImages.remember(params?.item).catch(reportImageFailure);
   }
@@ -453,6 +456,7 @@ codexBridge.on('status', (status) => {
     eventJournal.reset();
     metadataReader.clear();
     workspaceSnapshots.clear();
+    historyCache.clear();
   }
   bridgeWasReady = status === 'ready';
   broadcast({ type: 'bridge.status', status });

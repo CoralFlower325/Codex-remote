@@ -33,7 +33,7 @@ interface ThreadTimelineProps {
   hasMoreHistory: boolean;
   loadingHistory: boolean;
   onLoadEarlier: (beforeCommit?: BeforeHistoryCommit) => Promise<void>;
-  onPrefetchEarlier?: () => Promise<void>;
+  onPrefetchEarlier?: (travellingUp: boolean) => Promise<void>;
   outlineTurns?: OutlineTurn[];
   outlineError?: string | null;
   viewingHistory?: boolean;
@@ -844,7 +844,7 @@ export function ThreadTimeline({
     const attempt = JSON.stringify([threadId, items[0] ? itemKey(items[0]) : '', items.length]);
     if (prefetchAttemptRef.current === attempt) return;
     prefetchAttemptRef.current = attempt;
-    void onPrefetchEarlier();
+    void onPrefetchEarlier(wantsEarlierRef.current);
   }, [hasMoreHistory, onPrefetchEarlier, revealingHistory, threadId, items]);
   loadWhenIdleRef.current = () => {
     const stream = streamRef.current;

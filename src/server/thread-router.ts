@@ -9,6 +9,7 @@ import { readConversationHistoryPage, readThreadHistoryAround, readThreadHistory
   readThreadHistoryFromItem } from './thread-history.js';
 import { readThreadTimings } from './thread-open.js';
 import { readThreadSummaryPage } from './thread-summary.js';
+import type { ThreadHistoryCache } from './thread-history-cache.js';
 import { withReadDeadline } from './bootstrap.js';
 import { asyncRoute } from './http-route.js';
 
@@ -21,10 +22,15 @@ interface ThreadServices {
   recordQuestions(threadId: string, items: unknown[]): void;
   reportImageFailure(): void;
   config: { codexWorkdir: string };
+  historyCache?: Pick<ThreadHistoryCache, 'historyPage' | 'timingsPage' | 'prewarm' | 'trackForeground'>;
 }
 
 export function threadRouter({ requireAuth, codexBridge, workspaceSnapshots,
-  pushNotifications, localImages, recordQuestions, reportImageFailure, config }: ThreadServices) {
+  pushNotifications, localImages, recordQuestions, reportImageFailure, config, historyCache }: ThreadServices) {
+  const bridgeRequest = (method: import('../shared/protocol.js').ClientRpcMethod, params: unknown) =>
+    codexBridge.request(method, params);
+  const foreground = <T>(work: () => Promise<T>): Promise<T> =>
+    historyCache ? historyCache.trackForeground(work) : work();
   const app = Router();
   app.get(
     '/api/thread/open',
@@ -37,7 +43,10 @@ export function threadRouter({ requireAuth, codexBridge, workspaceSnapshots,
       }
       const mode = req.query.mode === 'new' || req.query.mode === 'read' ? req.query.mode : 'resume';
       res.setHeader('Cache-Control', 'no-store');
-      const result = await workspaceSnapshots.open(threadId, mode, req.query.fresh === '1');
+      const result = await foreground(() => workspaceSnapshots.open(threadId, mode, req.query.fresh === '1'));
+      // Fill completed history behind the reader; foreground reads keep
+      // priority and the walk stops at the retained-window bound.
+      if (historyCache && mode !== 'new') historyCache.prewarm(bridgeRequest, threadId, result.nextCursor);
       const thread = (result.result as { thread?: { id: string; source?: unknown; ephemeral?: boolean } }).thread;
       if (thread && isTaskThread(thread)) pushNotifications.watch(thread.id);
       recordQuestions(threadId, result.items.map(entry => entry.item));
@@ -61,9 +70,10 @@ export function threadRouter({ requireAuth, codexBridge, workspaceSnapshots,
     const threadId = typeof req.query.threadId === 'string' ? req.query.threadId.trim() : '';
     if (!threadId) { res.status(400).json({ error: 'threadId is required.' }); return; }
     const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : null;
-    res.json(await (cursor ? withReadDeadline(readThreadTimings(
-      (method, params) => codexBridge.request(method, params), threadId, cursor
-    )) : workspaceSnapshots.readTimings(threadId, req.query.fresh === '1')));
+    res.json(await (cursor ? withReadDeadline(historyCache
+      ? foreground(() => historyCache.timingsPage(bridgeRequest, threadId, cursor))
+      : readThreadTimings(bridgeRequest, threadId, cursor)
+    ) : workspaceSnapshots.readTimings(threadId, req.query.fresh === '1')));
   }));
 
   app.get(
@@ -88,9 +98,13 @@ export function threadRouter({ requireAuth, codexBridge, workspaceSnapshots,
           req.query.afterItem !== undefined && req.query.beforeItem !== undefined)) {
         res.status(400).json({ error: 'A single item anchor and turnId are required.' }); return;
       }
+      const conversation = cursor !== null && direction === 'desc' && req.query.conversation === '1';
       const result = await withReadDeadline(typeof item === 'string'
         ? readThreadHistoryFromItem(request, threadId, req.query.turnId as string, item, limit, direction)
-        : cursor && direction === 'desc' && req.query.conversation === '1'
+        : historyCache && cursor && direction === 'desc'
+        ? foreground(() => historyCache.historyPage(request, threadId, cursor,
+            conversation ? Math.min(limit, 100) : limit, conversation))
+        : conversation
         ? readConversationHistoryPage(request, threadId, cursor, Math.min(limit, 100))
         : readThreadHistoryPage(request, threadId, cursor, limit, direction));
       recordQuestions(threadId, result.items.map(entry => entry.item));

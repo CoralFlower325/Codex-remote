@@ -155,6 +155,15 @@ export function useRemote({
   const historyRequestsRef = useRef(new ReadRequests());
   const permissionRequestsRef = useRef(new ReadRequests());
   const earlierPageRef = useRef(new HistoryPrefetch());
+  // Successor pages prepared while upward travel lasts, keyed like the
+  // immediate speculative page. Commits never consume them speculatively;
+  // selection changes abort and drop the whole chain.
+  const earlierChainRef = useRef(new Map<string, { controller: AbortController; promise: Promise<ThreadHistoryPage> }>());
+  const clearEarlierPages = useCallback(() => {
+    earlierPageRef.current.clear();
+    for (const entry of earlierChainRef.current.values()) entry.controller.abort();
+    earlierChainRef.current.clear();
+  }, []);
 
   const directory = useWorkspaceDirectory({ bootstrap, disposedRef, authExpiredRef, setLastError });
   const { threads, threadsLoading, models, projects, showArchived } = directory.state;
@@ -369,7 +378,7 @@ export function useRemote({
       if (!options.silent) {
         editSelectionRef.current += 1;
         prioritizeInteraction();
-        earlierPageRef.current.clear();
+        clearEarlierPages();
         selectionVersionRef.current += 1;
         setSelectionRevision(selectionVersionRef.current);
         historyRefreshNextRef.current = null;
@@ -675,61 +684,98 @@ export function useRemote({
     return () => { stopped = true; window.clearTimeout(retryTimer); };
   }, [authenticated, bridgeStatus.status, connected, activeThreadId, selectionRevision, showArchived, rpc, openThread]);
 
+  const loadEarlierPage = useCallback(async (
+    threadId: string, cursor: string, version: number, signal: AbortSignal, withInitialTimings: boolean
+  ): Promise<ThreadHistoryPage> => {
+    const historyRevision = historyRevisionRef.current;
+    const turnRevision = turnRevisionRef.current;
+    const [page, initialTimings] = await Promise.all([
+      fetchHistoryPage(threadId, cursor),
+      !withInitialTimings || timedThreadRef.current === threadId ? Promise.resolve(null)
+        : historyRequestsRef.current.get<Pick<ThreadHistoryPage, 'turns' | 'turnsCursor' | 'activeTurnId'>>(
+          `/api/thread/timings?${new URLSearchParams({ threadId, fresh: '1' })}`, historyConfig.readTimeoutMs, 3)
+    ]);
+    signal.throwIfAborted();
+    if (page.continuationError) throw new Error(page.continuationError);
+    if (initialTimings && timedThreadRef.current !== threadId &&
+        version === selectionVersionRef.current && historyRevision === historyRevisionRef.current &&
+        activeThreadRef.current === threadId) {
+      setTurnTimings(current => {
+        const next = mergeOlderTurnTimings(current, initialTimings.turns);
+        turnTimingsRef.current = next;
+        return next;
+      });
+      if (turnRevisionRef.current === turnRevision) {
+        const active = reconcileActiveTurnId(activeTurnIdRef.current, turnTimingsRef.current, initialTimings);
+        activeTurnIdRef.current = active;
+        setActiveTurnId(active);
+      }
+      turnsCursorRef.current = initialTimings.turnsCursor;
+      timedThreadRef.current = threadId;
+      setTimedThreadId(threadId);
+      const previousError = timingErrorRef.current;
+      timingErrorRef.current = null;
+      if (previousError) setLastError(current => current === previousError ? null : current);
+    }
+    const prepared = await prepareHistoryPage(
+      async () => page,
+      async turnsCursor => {
+        const result = await historyRequestsRef.current.get<Pick<ThreadHistoryPage, 'turns' | 'turnsCursor'>>(
+          `/api/thread/timings?${new URLSearchParams({ threadId, cursor: turnsCursor })}`, historyConfig.readTimeoutMs, 3);
+        return { data: result.turns, nextCursor: result.turnsCursor };
+      },
+      { ...turnTimingsRef.current, ...Object.fromEntries(initialTimings?.turns.map(turn => [turn.id, turn]) ?? []) },
+      initialTimings ? initialTimings.turnsCursor : turnsCursorRef.current, signal
+    );
+    return initialTimings ? { ...prepared, turns: [...initialTimings.turns, ...prepared.turns] } : prepared;
+  }, [fetchHistoryPage]);
+
   const prepareEarlierHistory = useCallback(() => {
     const threadId = activeThreadRef.current;
     const cursor = olderHistoryCursorRef.current;
     const version = selectionVersionRef.current;
-    const historyRevision = historyRevisionRef.current;
     if (!threadId || cursor === null) return null;
-    return earlierPageRef.current.read(JSON.stringify([version, threadId, cursor]), async signal => {
-      const turnRevision = turnRevisionRef.current;
-      const [page, initialTimings] = await Promise.all([
-        fetchHistoryPage(threadId, cursor),
-        timedThreadRef.current === threadId ? Promise.resolve(null)
-          : historyRequestsRef.current.get<Pick<ThreadHistoryPage, 'turns' | 'turnsCursor' | 'activeTurnId'>>(
-            `/api/thread/timings?${new URLSearchParams({ threadId, fresh: '1' })}`, historyConfig.readTimeoutMs, 3)
-      ]);
-      signal.throwIfAborted();
-      if (page.continuationError) throw new Error(page.continuationError);
-      if (initialTimings && timedThreadRef.current !== threadId &&
-          version === selectionVersionRef.current && historyRevision === historyRevisionRef.current &&
-          activeThreadRef.current === threadId) {
-        setTurnTimings(current => {
-          const next = mergeOlderTurnTimings(current, initialTimings.turns);
-          turnTimingsRef.current = next;
-          return next;
-        });
-        if (turnRevisionRef.current === turnRevision) {
-          const active = reconcileActiveTurnId(activeTurnIdRef.current, turnTimingsRef.current, initialTimings);
-          activeTurnIdRef.current = active;
-          setActiveTurnId(active);
-        }
-        turnsCursorRef.current = initialTimings.turnsCursor;
-        timedThreadRef.current = threadId;
-        setTimedThreadId(threadId);
-        const previousError = timingErrorRef.current;
-        timingErrorRef.current = null;
-        if (previousError) setLastError(current => current === previousError ? null : current);
-      }
-      const prepared = await prepareHistoryPage(
-        async () => page,
-        async turnsCursor => {
-          const result = await historyRequestsRef.current.get<Pick<ThreadHistoryPage, 'turns' | 'turnsCursor'>>(
-            `/api/thread/timings?${new URLSearchParams({ threadId, cursor: turnsCursor })}`, historyConfig.readTimeoutMs, 3);
-          return { data: result.turns, nextCursor: result.turnsCursor };
-        },
-        { ...turnTimingsRef.current, ...Object.fromEntries(initialTimings?.turns.map(turn => [turn.id, turn]) ?? []) },
-        initialTimings ? initialTimings.turnsCursor : turnsCursorRef.current, signal
-      );
-      return initialTimings ? { ...prepared, turns: [...initialTimings.turns, ...prepared.turns] } : prepared;
-    });
-  }, [fetchHistoryPage]);
+    const key = JSON.stringify([version, threadId, cursor]);
+    const chained = earlierChainRef.current.get(key);
+    if (chained) {
+      earlierChainRef.current.delete(key);
+      // A failed speculation never surfaces here; the foreground retries fresh.
+      return chained.promise.catch(() => earlierPageRef.current.read(key,
+        signal => loadEarlierPage(threadId, cursor, version, signal, true)));
+    }
+    return earlierPageRef.current.read(key, signal => loadEarlierPage(threadId, cursor, version, signal, true));
+  }, [loadEarlierPage]);
 
-  const prefetchEarlierHistory = useCallback(async () => {
+  const prefetchEarlierHistory = useCallback(async (travellingUp = false) => {
     if (loadingHistoryRef.current) return;
     // Speculation never changes loading/error state; a foreground read can retry.
-    try { await prepareEarlierHistory(); } catch { /* Retain the visible conversation. */ }
-  }, [prepareEarlierHistory]);
+    let page: ThreadHistoryPage | null = null;
+    try { page = await prepareEarlierHistory(); } catch { /* Retain the visible conversation. */ }
+    if (!travellingUp || !page) return;
+    const threadId = activeThreadRef.current;
+    const version = selectionVersionRef.current;
+    let cursor = page.nextCursor;
+    // Upward travel only: hold up to two successor pages ready so following
+    // gestures land from memory. Settled or underfilled reading keeps the
+    // single speculative page above.
+    for (let depth = 1; depth < 3 && cursor !== null && threadId &&
+        version === selectionVersionRef.current && activeThreadRef.current === threadId; depth++) {
+      const key = JSON.stringify([version, threadId, cursor]);
+      let entry = earlierChainRef.current.get(key);
+      if (!entry) {
+        const controller = new AbortController();
+        const promise = loadEarlierPage(threadId, cursor, version, controller.signal, false);
+        entry = { controller, promise };
+        earlierChainRef.current.set(key, entry);
+        promise.catch(() => {
+          if (earlierChainRef.current.get(key) === entry) earlierChainRef.current.delete(key);
+        });
+      }
+      const chainedPage = await entry.promise.catch(() => null);
+      if (!chainedPage) break;
+      cursor = chainedPage.nextCursor;
+    }
+  }, [prepareEarlierHistory, loadEarlierPage]);
 
   const loadEarlierHistory = useCallback(async (beforeCommit?: BeforeHistoryCommit) => {
     const threadId = activeThreadRef.current;
@@ -850,7 +896,7 @@ export function useRemote({
     if (!threadId) return false;
     const wasViewing = viewingHistoryRef.current;
     const version = ++selectionVersionRef.current;
-    earlierPageRef.current.clear();
+    clearEarlierPages();
     historyRequestsRef.current.cancel();
     pendingRevealRef.current = { version, wasViewing };
     clearStreamingDeltas();
@@ -909,7 +955,7 @@ export function useRemote({
     editSelectionRef.current += 1;
     selectionVersionRef.current += 1;
     historyRequestsRef.current.cancel();
-    earlierPageRef.current.clear();
+    clearEarlierPages();
     pendingRevealRef.current = null;
     viewingHistoryRef.current = pending.wasViewing;
     setViewingHistory(pending.wasViewing);
@@ -1036,7 +1082,7 @@ export function useRemote({
     editSelectionRef.current += 1;
     selectionVersionRef.current += 1;
     historyRevisionRef.current += 1;
-    earlierPageRef.current.clear();
+    clearEarlierPages();
     historyRequestsRef.current.cancel();
     activeThreadRef.current = null;
     watchThread(null);
@@ -1103,7 +1149,7 @@ export function useRemote({
       editSelectionRef.current += 1;
       selectionVersionRef.current += 1;
       historyRevisionRef.current += 1;
-      earlierPageRef.current.clear();
+      clearEarlierPages();
       historyRequestsRef.current.cancel();
       activeThreadRef.current = thread.id;
       watchThread(thread.id);
@@ -1311,7 +1357,7 @@ export function useRemote({
     historyRevisionRef.current += 1;
     turnRevisionRef.current += 1;
     historyRequestsRef.current.cancel();
-    earlierPageRef.current.clear();
+    clearEarlierPages();
     navigationCacheRef.current.clear();
     clearStreamingDeltas();
     setItems([]);
@@ -1692,7 +1738,7 @@ export function useRemote({
       document.removeEventListener('visibilitychange', recoverTasks);
       disposedRef.current = true;
       editSelectionRef.current += 1;
-      earlierPageRef.current.clear();
+      clearEarlierPages();
       selectionVersionRef.current += 1;
       permissionRequestVersionRef.current += 1;
       historyRequestsRef.current.cancel();
