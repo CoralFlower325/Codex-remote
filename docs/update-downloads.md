@@ -24,8 +24,9 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 本次不恢复 AU 功能；签名、公证和真实 Mac 登录环境验收仍是独立断点。
 未签名安装包可能需要按系统下载信誉或 Gatekeeper 流程确认。
 
-Remote 0.2.35 将时间线改为按 section 虚拟化并把历史保留窗口提高到 5,000 条，
-同时保持长历史上滑锚点稳定；运行包位于 `v0.2.35`。管理器 0.2.9 未变更，安装包继续位于
+Remote 0.2.36 修复 Windows 终端 Job helper 退出后的 `EPIPE` 清理竞态，并保留
+0.2.35 的 section 时间线虚拟化、5,000 条历史窗口与稳定补页锚点；运行包位于
+`v0.2.36`。管理器 0.2.9 未变更，安装包继续位于
 `v0.2.31`。
 运行包 Ed25519 清单签名已启用，与仍暂停的 AU 和 macOS 应用签名分别管理。
 
@@ -81,6 +82,23 @@ Remote 0.2.16 与管理器 0.2.2 不再将已等于目标版本的文件误判�
 详见[管理器](desktop-manager.zh-CN.md)与[网页后端更新](web-backend-update.md)。
 
 ## 维护分发服务
+
+2026-11-11 已完成 Remote **0.2.36** 的分发与 `codexwin` 部署收尾。正式标签为
+`v0.2.36`，发布提交 `66b393dab8e3feefd22948a8604eb276ef58a2a7`。main CI
+`42938969194`、Runtime Packages `42939852642` 和 Desktop Manager
+`42939852816` 通过；管理器未改版，package job 按门禁跳过。
+
+下载 Worker 版本 `b7e5377f-2717-4cf2-b9a5-48c5d7a65663` 已刷新四附件快照，
+`/releases/latest` 返回 `v0.2.36`。四个运行包/清单的项目分发 HEAD 均为 `200`，
+大小与 Release 元数据一致；Windows x64 运行包为 `11962225` 字节，SHA-256
+`a242a844ad63d8cf415bd93e4d522e413424cf5ac3b5de11f07915918d491257`。
+
+本机 Remote 已从 0.2.35 通过预构建运行包升级到 0.2.36，事务备份为
+`output\manager-backup-5026e3d4-2fb3-428b-8b9a-866f4e979108`；本地与
+`codexwin` 的 `/version.json` 均为 0.2.36，构建标识
+`assets/index-DYP7FSvW.js`，`/health` 为 ready / desktop。静态边缘 Worker 版本为
+`b2e42fba-b8c0-40b4-8d0b-cf87b9239c12`。服务与隧道继续由隐藏计划任务运行
+`node-22.19.0-127.exe`，未弹出命令行窗口，Desktop 保持运行。
 
 2026-11-11 已完成 Remote **0.2.35** 的分发与 `codexwin` 部署收尾。正式标签为
 `v0.2.35`，发布提交 `597579945ad3f10ce31b56a3ac2c48d5675e1cf2`。main CI
