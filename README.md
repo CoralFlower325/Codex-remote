@@ -119,7 +119,7 @@ keeps it in the tray. Releases provide unsigned installers. Live macOS GUI accep
 remains pending. Manager 0.2.9 also uses a bundled windowless stop helper when an
 older installation cannot confirm its versioned Node service has stopped.
 
-Remote **0.2.35** pairs with manager **0.2.9**.
+Remote **0.2.36** pairs with manager **0.2.9**.
 Actual installed versions remain separately recorded in each deployment's acceptance. Install the manager
 manually over 0.2.0, select the same host directory and retry; updating Remote
 cannot replace the old manager's bundled updater. [Manager downloads](docs/update-downloads.md)

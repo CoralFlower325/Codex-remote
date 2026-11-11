@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.36', changes: [
+    '修复 Windows 终端 Job helper 已先退出时，清理路径仍向关闭的 stdin 写入 `STOP` 并触发未处理 `EPIPE` 的问题；终端的正常关闭与异常回收不再污染 Remote 进程。',
+    '停止 Windows Job helper 前检查输入流是否已销毁或结束，并持续吸收迟到的 stdin 错误；新增 helper 先退出后再次停止的回归覆盖。',
+    'Windows 测试文件改为顺序执行，避免并发 PTY、PowerShell Job 与更新事务争用管道和文件系统造成发布门禁误报。',
+    '延续 0.2.35 的 section 时间线虚拟化、5,000 条历史窗口与稳定补页锚点。管理器 0.2.9 无变更。'
+  ] },
   { version: '0.2.35', changes: [
     '会话时间线改为按 section 虚拟化：只挂载视口和约 1.5 视口预取范围内的行；同时保留短页面所需的合成尾部空间，长会话不再随 DOM 行数增长而卡顿。',
     '历史保留窗口由 800 条提高到 5,000 条，并由单一常量统一窗口、控制器和裁剪逻辑；在保留范围内回到最新端不再重新读取已加载历史。',
