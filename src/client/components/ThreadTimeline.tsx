@@ -9,7 +9,7 @@ import type { OutlineTurn } from '../../shared/thread-outline';
 import { ThreadNavigation, type NavigationTarget } from './ThreadNavigation';
 import { captureBlockAnchor, captureReadingAnchor, releaseReadingTail, restoreReadingAnchor, settleBlockAnchor, type BlockAnchor, type ReadingAnchor } from '../reading-anchor';
 import { HistoryScroll, historyScrollDelta, laterHistoryLoadReady, type BeforeHistoryCommit } from '../history-scroll';
-import { captureKeyAnchor, captureKeyAnchorBelow, estimateSectionHeight, expandRangeByPixels, resolveKeyAnchor, virtualizeTimelineEnabled, type KeyAnchor } from '../timeline-virtual';
+import { estimateSectionHeight, expandRangeByPixels, virtualizeTimelineEnabled, type KeyAnchor } from '../timeline-virtual';
 import { defaultRangeExtractor, useVirtualizer, type Virtualizer } from '@tanstack/react-virtual';
 import { isReadableHistoryItem } from '../history-prefetch';
 import { NativeTurnError } from './NativeTurnError';
@@ -93,6 +93,10 @@ export function ThreadTimeline({
   const blockAnchorRef = useRef<BlockAnchor | null>(null);
   const blockSettlePendingRef = useRef(false);
   const blockSettleVersionRef = useRef(0);
+  const virtualRestoreFrameRef = useRef(0);
+  const virtualRestoreAttemptsRef = useRef(0);
+  const virtualRestoreGuardUntilRef = useRef(0);
+  const restoreReadingPositionRef = useRef<() => void>(() => {});
   // Scroll compensation other layers wrote since the block anchor was
   // captured, credited in the scroll handler from registered restore
   // echoes. The in-row settle pays growth minus this credit, so a shift
@@ -161,6 +165,7 @@ export function ThreadTimeline({
   interface TimelineRow { key: string; section: TimelineSection | null; tail?: boolean; notice?: boolean }
   const virtualWanted = useMemo(() => virtualizeTimelineEnabled(), []);
   const [virtualActive, setVirtualActive] = useState(false);
+  const [virtualTailPx, setVirtualTailPx] = useState(0);
   const virtualActiveRef = useRef(false);
   virtualActiveRef.current = virtualActive;
   const keyAnchorRef = useRef<KeyAnchor | null>(null);
@@ -226,6 +231,10 @@ export function ThreadTimeline({
     // a restored offset so the scroll handler ignores its echo, exactly
     // like DOM-anchor restores. Without this, an adjustment's downward
     // echo reads as a downward gesture and reopens the later-page gate.
+    ...({
+      // Supported by virtual-core but omitted from the React wrapper's type.
+      shouldAdjustScrollPositionOnItemSizeChange: () => !keyAnchorRef.current
+    } as { shouldAdjustScrollPositionOnItemSizeChange: () => boolean }),
     scrollToFn: (offset, { adjustments, behavior }) => {
       const stream = streamRef.current;
       if (!stream) return;
@@ -250,6 +259,16 @@ export function ThreadTimeline({
     enabled: virtualWanted
   });
   virtualizerRef.current = virtualizer;
+  const captureVirtualKeyAnchor = (stream: HTMLDivElement, below = false): KeyAnchor | null => {
+    const instance = virtualizerRef.current;
+    const items = instance?.getVirtualItems() ?? [];
+    if (!instance || items.length === 0) return null;
+    const scrollTop = stream.scrollTop;
+    const item = below
+      ? items.find(candidate => candidate.start >= scrollTop) ?? items[items.length - 1]!
+      : items.find(candidate => candidate.end > scrollTop) ?? items[0]!;
+    return { key: String(item.key), offsetWithin: scrollTop - item.start };
+  };
   const virtualItems = virtualActive ? virtualizer.getVirtualItems() : [];
   // The scroll container only exists after the first content commit, and
   // the virtualizer needs one passive pass to observe its rect. Engage
@@ -418,15 +437,24 @@ export function ThreadTimeline({
     // be compensated once scrolling settles. While a settle is pending
     // the anchor belongs to that settle: recapturing here would baseline
     // it onto already-shifted geometry and erase the drift it must fix.
-    if (!blockSettlePendingRef.current) {
+    if (!blockSettlePendingRef.current && !virtualActiveRef.current) {
       blockAnchorRef.current = stream && inner && !stickToBottomRef.current
         ? captureBlockAnchor(stream, inner) : null;
+      blockCompensatedRef.current = 0;
+    } else if (!blockSettlePendingRef.current && virtualActiveRef.current) {
+      // The keyed row anchor owns history prepends in virtual mode. Capturing
+      // a DOM block here would let its idle settle race the retained-row
+      // compensation and subtract the browser's own scroll adjustment again.
+      // Activity expansion still captures its block anchor explicitly in
+      // preserveActivityPosition.
+      blockAnchorRef.current = null;
       blockCompensatedRef.current = 0;
     }
     // The keyed anchor mirrors the DOM anchor but survives the anchored
     // row being unmounted by the virtual window or shifted by a prepend.
     keyAnchorRef.current = virtualActiveRef.current && stream && !stickToBottomRef.current
-      ? captureKeyAnchor(currentMeasurementsRef.current(), stream.scrollTop) : null;
+      ? captureVirtualKeyAnchor(stream) : null;
+    virtualRestoreAttemptsRef.current = 0;
   }, []);
   // In-row compensation is submitted only at the HistoryScroll idle
   // point: during a drag or its momentum the block's displacement is left
@@ -456,6 +484,7 @@ export function ThreadTimeline({
     const inner = innerRef.current;
     if (!stream || !inner) return;
     releaseReadingTail(inner);
+    setVirtualTailPx(0);
     readingAnchorRef.current = null;
     blockAnchorRef.current = null;
     blockSettleVersionRef.current += 1;
@@ -466,7 +495,10 @@ export function ThreadTimeline({
   const releaseTailAfterReading = useCallback(() => {
     const stream = streamRef.current;
     const inner = innerRef.current;
-    if (!stream || !inner || !releaseReadingTail(inner)) return;
+    if (!stream || !inner) return;
+    const released = releaseReadingTail(inner);
+    if (virtualActiveRef.current) setVirtualTailPx(0);
+    if (!released && !virtualActiveRef.current) return;
     // Removing obsolete space may clamp scrollTop. It is not an upward gesture.
     previousScrollTopRef.current = stream.scrollTop;
     restoredScrollTopRef.current = stream.scrollTop;
@@ -483,22 +515,56 @@ export function ThreadTimeline({
       // keyed anchor replaces the DOM restore entirely in this mode: it
       // resolves even while the anchored row is unmounted, and lands the
       // scroll offset on the measured row start plus the in-row offset.
-      if (inner) releaseReadingTail(inner);
+      if (inner && (stickToBottomRef.current || !keyAnchorRef.current)) releaseReadingTail(inner);
       if (keyAnchorRef.current && !stickToBottomRef.current && !navigationAnchorRef.current) {
-        const target = resolveKeyAnchor(currentMeasurementsRef.current(), keyAnchorRef.current);
-        // An anchor target past the scrollable maximum belongs to a
-        // prepend that pushed the anchored row below the reachable range
-        // (the retained window is barely taller than the viewport). The
-        // browser would clamp the write to the window's end, teleporting
-        // the reader there and masquerading as end-of-window travel to
-        // the later-page gate. The legacy render simply has no anchor to
-        // restore in that situation and stays put — do the same.
-        const maximum = Math.max(0, stream.scrollHeight - stream.clientHeight);
-        if (target !== null && target <= maximum + 1 && Math.abs(target - stream.scrollTop) > .5) {
-          const before = stream.scrollTop;
-          stream.scrollTop = Math.round(target);
-          restoredScrollTopRef.current = stream.scrollTop;
-          blockCompensatedRef.current += stream.scrollTop - before;
+        const anchor = keyAnchorRef.current;
+        // A keyed history-prepend restore owns this layout change. Detach the
+        // interaction block anchor so its later resize settle cannot subtract
+        // the row compensation a second time or invalidate the kept row.
+        blockAnchorRef.current = null;
+        blockSettleVersionRef.current += 1;
+        const anchorIndex = rowsRef.current.findIndex(row => row.key === anchor.key);
+        const retry = () => {
+          if (virtualRestoreFrameRef.current || virtualRestoreAttemptsRef.current >= 6) return;
+          virtualRestoreAttemptsRef.current += 1;
+          virtualRestoreGuardUntilRef.current = performance.now() + 250;
+          virtualRestoreFrameRef.current = requestAnimationFrame(() => {
+            virtualRestoreFrameRef.current = 0;
+            restoreReadingPositionRef.current();
+          });
+        };
+        if (anchorIndex < 0) {
+          virtualRestoreAttemptsRef.current = 0;
+        } else {
+          const row = inner?.querySelector<HTMLElement>(`.timeline-row[data-index="${anchorIndex}"]`);
+          if (!row) {
+            // The retained row may be outside the mounted range after a
+            // prepend. Bring it back first, then settle its exact offset from
+            // the rendered wrapper instead of trusting stale virtual offsets.
+            virtualizerRef.current?.scrollToIndex(anchorIndex, { align: 'start' });
+            retry();
+            return;
+          }
+          const paddingTop = parseFloat(getComputedStyle(stream).paddingTop) || 0;
+          const desiredTop = stream.getBoundingClientRect().top + paddingTop - anchor.offsetWithin;
+          const delta = row.getBoundingClientRect().top - desiredTop;
+          if (Math.abs(delta) > .5) {
+            const before = stream.scrollTop;
+            virtualRestoreGuardUntilRef.current = performance.now() + 250;
+            const target = Math.round(stream.scrollTop + delta);
+            const maximum = Math.max(0, stream.scrollHeight - stream.clientHeight);
+            const missingSpace = target - maximum;
+            if (inner && missingSpace > .5) {
+              const tail = parseFloat(inner.style.getPropertyValue('--reading-tail')) || 0;
+              inner.style.setProperty('--reading-tail', `${tail + missingSpace}px`);
+              setVirtualTailPx(previous => previous + missingSpace);
+            }
+            stream.scrollTop = target;
+            restoredScrollTopRef.current = stream.scrollTop;
+            blockCompensatedRef.current += stream.scrollTop - before;
+          }
+          if (Math.abs(delta) > .5) retry();
+          else virtualRestoreAttemptsRef.current = 0;
         }
       }
       return;
@@ -512,6 +578,7 @@ export function ThreadTimeline({
       }
     }
   }, []);
+  restoreReadingPositionRef.current = restoreReadingPosition;
   const preserveActivityPosition = useCallback(() => {
     earlierBoundaryRef.current = null;
     continuationTopRef.current = null;
@@ -529,7 +596,7 @@ export function ThreadTimeline({
       rememberReadingPosition();
       const stream = streamRef.current;
       if (stream && !stickToBottomRef.current) {
-        keyAnchorRef.current = captureKeyAnchorBelow(currentMeasurementsRef.current(), stream.scrollTop)
+        keyAnchorRef.current = captureVirtualKeyAnchor(stream, true)
           ?? keyAnchorRef.current;
       }
     }
@@ -600,7 +667,10 @@ export function ThreadTimeline({
   }, [hasMoreHistory, onPrefetchEarlier, revealingHistory, threadId, items]);
   loadWhenIdleRef.current = () => {
     const stream = streamRef.current;
-    if (!wantsEarlierRef.current && !loadingEarlierRef.current && !navigationAnchorRef.current) releaseTailAfterReading();
+    if (!wantsEarlierRef.current && !loadingEarlierRef.current && !navigationAnchorRef.current &&
+        (!virtualActiveRef.current || performance.now() - forwardIntentRef.current < 1500)) {
+      releaseTailAfterReading();
+    }
     if (stream && !wantsEarlierRef.current && !viewingHistory && !loadingEarlierRef.current &&
       stream.scrollHeight - stream.scrollTop - stream.clientHeight <= 4) {
       stickToBottomRef.current = true;
@@ -620,6 +690,9 @@ export function ThreadTimeline({
       earlierBoundaryRef.current = null;
       continuationTopRef.current = null;
       scrollActivityRef.current!.cancel();
+      cancelAnimationFrame(virtualRestoreFrameRef.current);
+      virtualRestoreFrameRef.current = 0;
+      virtualRestoreAttemptsRef.current = 0;
       onHistoryReading?.(threadId, false);
     };
   }, [threadId]);
@@ -760,6 +833,12 @@ export function ThreadTimeline({
       <TurnDuration timing={turnTimings[turnId]} active />
     </div></div>
   );
+  const cancelVirtualRestore = () => {
+    cancelAnimationFrame(virtualRestoreFrameRef.current);
+    virtualRestoreFrameRef.current = 0;
+    virtualRestoreAttemptsRef.current = 0;
+    virtualRestoreGuardUntilRef.current = 0;
+  };
 
   return (
     <HistoryThreadContext.Provider value={threadId}>
@@ -772,6 +851,7 @@ export function ThreadTimeline({
       className="message-stream"
       aria-label="会话记录"
       onWheel={event => {
+        cancelVirtualRestore();
         if (!laterPendingRef.current) laterAttemptRef.current = null;
         navigationAnchorRef.current = null;
         wantsEarlierRef.current = event.deltaY < 0;
@@ -785,6 +865,7 @@ export function ThreadTimeline({
         scrollActivityRef.current!.activity();
       }}
       onTouchStart={event => {
+        cancelVirtualRestore();
         if (!laterPendingRef.current) laterAttemptRef.current = null;
         loadLaterRef.current();
         navigationAnchorRef.current = null;
@@ -804,10 +885,11 @@ export function ThreadTimeline({
       }}
       onTouchEnd={() => { scrollActivityRef.current!.endTouch(); }}
       onTouchCancel={() => { scrollActivityRef.current!.endTouch(); }}
-      onPointerDownCapture={() => { navigationAnchorRef.current = null; }}
+      onPointerDownCapture={() => { cancelVirtualRestore(); navigationAnchorRef.current = null; }}
       onKeyDownCapture={event => {
         navigationAnchorRef.current = null;
         if (['Home', 'PageUp', 'ArrowUp', 'End', 'PageDown', 'ArrowDown'].includes(event.key)) {
+          cancelVirtualRestore();
           if (!laterPendingRef.current) laterAttemptRef.current = null;
           wantsEarlierRef.current = ['Home', 'PageUp', 'ArrowUp'].includes(event.key);
           if (!wantsEarlierRef.current) forwardIntentRef.current = performance.now();
@@ -826,6 +908,7 @@ export function ThreadTimeline({
       onScroll={(event) => {
         if (!initialScrollReadyRef.current || navigatingRef.current) return;
         const stream = event.currentTarget;
+        if (stream.scrollTop <= 1) cancelVirtualRestore();
         // Layout compensation emits scroll too; it must not replace the reader's anchor.
         const restored = restoredScrollTopRef.current;
         restoredScrollTopRef.current = null;
@@ -839,6 +922,8 @@ export function ThreadTimeline({
         // amounts were already credited synchronously at the write sites.
         if (restored !== null && Math.abs(stream.scrollTop - restored) < 1) return;
         if (blockEcho !== null && Math.abs(stream.scrollTop - blockEcho) < 1) return;
+        if (performance.now() < virtualRestoreGuardUntilRef.current &&
+            keyAnchorRef.current && Math.abs(delta) > .5) return;
         // A genuine scroll means the reader took over: a pending block
         // settle anchored before the gesture must not pay out afterwards
         // and drag them back to a block they scrolled away from.
@@ -864,7 +949,7 @@ export function ThreadTimeline({
     >
       {virtualActive ? (
       <div className="message-stream-inner message-stream-inner--virtual" ref={innerRef}
-        style={{ height: virtualizer.getTotalSize() }}>
+        style={{ height: virtualizer.getTotalSize() + virtualTailPx }}>
       {hasMoreHistory && (
         <div className="history-sentinel history-sentinel--virtual-top" data-history-sentinel aria-busy={loadingHistory}>
           {loadingHistory && <LoaderCircle size={15} className="spin" role="status" aria-label="正在加载更早记录" />}

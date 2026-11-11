@@ -602,6 +602,10 @@
   position: relative;
 }
 
+.message-stream-inner--virtual::after {
+  height: 0;
+}
+
 .timeline-row {
   position: absolute;
   top: 0;

@@ -7,7 +7,7 @@ Remote 保留切换会话时的待发图片与技能草稿，输入框上方提�
 详见[输入草稿与布局验收](composer-layout-acceptance.md)。
 Remote 将晚到的原生事件留在所属轮次，随后原生读取校准不重复条目，
 保留消息内容和原生时间锚点。
-详见[原生聊天顺序](native-history-order.md)。Remote 0.2.34 配套正式管理器 0.2.9，
+详见[原生聊天顺序](native-history-order.md)。Remote 0.2.35 配套正式管理器 0.2.9，
 通过安装包手动覆盖旧管理器，选择原主机目录后重试更新。单独更新 Remote
 不能修改旧管理器内置的更新器。管理器自更新保存为暂停的 0.2.0AU 开发线，
 详见[开发断点](manager-self-update-checkpoints.md)。

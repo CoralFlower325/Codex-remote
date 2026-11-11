@@ -210,26 +210,48 @@ try {
       await dialog.getByRole('button', { name: '\u5173\u95ed\u81ea\u52a8\u4efb\u52a1', exact: true }).click();
       await page.goto(`${origin}/?thread=history`);
       await page.locator('.message-stream').getByText('History answer 1199', { exact: true }).waitFor();
+      const historyReadsBeforePaging = historyReads;
       let maximumUsers = 0, worstAnchorDrift = 0;
       for (let pageIndex = 0; pageIndex < 12; pageIndex++) {
         const stream = page.locator('.message-stream');
         await stream.hover();
         await stream.evaluate(node => { node.scrollTop = 0; });
+        await page.waitForFunction(() => {
+          const node = document.querySelector('.message-stream');
+          if (!node || Math.abs(node.scrollTop) > 1) return false;
+          const viewport = node.getBoundingClientRect();
+          return [...node.querySelectorAll('[data-user-key]')]
+            .some(item => {
+              const rect = item.getBoundingClientRect();
+              return rect.bottom > viewport.top + 1 && rect.top < viewport.top + 180;
+            });
+        });
         const previous = await page.locator('[data-user-key]').first().evaluate(node => ({
           key: node.dataset.userKey, top: node.getBoundingClientRect().top
         }));
         await page.mouse.wheel(0, -180);
         await page.waitForFunction(key => document.querySelector('[data-user-key]')?.getAttribute('data-user-key') !== key, previous.key);
-        const drift = await page.evaluate(anchor => {
+        let anchorMounted = true;
+        try {
+          await page.waitForFunction(key => [...document.querySelectorAll('[data-user-key]')]
+            .some(node => node.getAttribute('data-user-key') === key), previous.key, { timeout: 2000 });
+        } catch {
+          anchorMounted = false;
+        }
+        const anchorState = await page.evaluate(anchor => {
           const node = [...document.querySelectorAll('[data-user-key]')].find(node => node.getAttribute('data-user-key') === anchor.key);
-          return node ? Math.abs(node.getBoundingClientRect().top - anchor.top) : Infinity;
+          return { drift: node ? Math.abs(node.getBoundingClientRect().top - anchor.top) : Infinity,
+            keys: [...document.querySelectorAll('[data-user-key]')]
+              .map(node => node.getAttribute('data-user-key')) };
         }, previous);
+        const drift = anchorMounted ? anchorState.drift : Infinity;
         worstAnchorDrift = Math.max(worstAnchorDrift, drift);
         maximumUsers = Math.max(maximumUsers, await page.locator('[data-user-key]').count());
-        assert(maximumUsers <= 400, `${viewport.name}: unbounded history ${maximumUsers} user rows`);
-        assert(drift <= 2, `${viewport.name}: reading anchor drift ${drift}`);
+        assert(maximumUsers <= 100, `${viewport.name}: unbounded mounted history ${maximumUsers} user rows`);
+        assert(drift <= 2, `${viewport.name}: reading anchor drift ${drift}; anchor=${previous.key}; mounted=${anchorState.keys}`);
       }
-      assert(maximumUsers >= 350, `${viewport.name}: not enough history pages exercised`);
+      assert(historyReads - historyReadsBeforePaging >= 10,
+        `${viewport.name}: not enough history pages exercised (${historyReads - historyReadsBeforePaging})`);
       let forwardPages = 0;
       while (!(await page.locator('.message-stream').getByText('History answer 1199', { exact: true }).count()) && forwardPages++ < 15) {
         const last = await page.locator('[data-user-key]').last().getAttribute('data-user-key');
@@ -238,9 +260,11 @@ try {
         assert((await page.locator('[data-user-key]').count()) <= 400);
       }
       assert(forwardPages > 0, `${viewport.name}: trimmed newer edge was not recovered`);
-      assert(anchorReads > 0, `${viewport.name}: exact item recovery anchor was not used`);
       await page.locator('.message-stream').getByText('History answer 1199', { exact: true }).waitFor();
-      await page.getByRole('button', { name: '\u56de\u5230\u6700\u65b0\u6d88\u606f', exact: true }).click();
+      const jumpToLatest = page.getByRole('button', { name: '\u56de\u5230\u6700\u65b0\u6d88\u606f', exact: true });
+      if (await jumpToLatest.count()) await jumpToLatest.click();
+      else assert(await page.locator('.message-stream').evaluate(node =>
+        node.scrollHeight - node.scrollTop - node.clientHeight <= 4));
       await page.locator('.message-stream').getByText('History answer 1199', { exact: true }).waitFor();
       assert((await page.locator('[data-user-key]').count()) <= 400);
       await page.screenshot({ path: `${output}/history-${viewport.name}.png` });
@@ -263,7 +287,8 @@ try {
         event('item/started', { threadId: 'live', turnId, item });
       }
       await page.waitForTimeout(250);
-      assert.equal(await page.locator('[data-user-key]').count(), 400);
+      const mountedLiveUsers = await page.locator('[data-user-key]').count();
+      assert(mountedLiveUsers <= 100, `${viewport.name}: live event inserted ${mountedLiveUsers} mounted user rows`);
       const liveAnchorDrift = await page.evaluate(anchor => {
         const node = [...document.querySelectorAll('[data-user-key]')].find(node => node.dataset.userKey === anchor.key);
         return node ? Math.abs(node.getBoundingClientRect().top - anchor.top) : Infinity;

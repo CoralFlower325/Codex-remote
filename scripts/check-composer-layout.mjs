@@ -322,7 +322,26 @@ try {
     const stream = page.locator('.message-stream');
     await stream.hover();
     await stream.evaluate(e => { e.scrollTop = 0; });
-    const anchorBefore = await page.locator('[data-user-key]').last().evaluate(e => e.getBoundingClientRect().top);
+    await page.waitForFunction(() => {
+      const node = document.querySelector('.message-stream');
+      if (!node || Math.abs(node.scrollTop) > 1) return false;
+      const viewport = node.getBoundingClientRect();
+      return [...node.querySelectorAll('[data-user-key]')].some(item => {
+        const rect = item.getBoundingClientRect();
+        return rect.bottom > viewport.top + 1 && rect.top < viewport.top + 180;
+      });
+    });
+    const anchorNode = await page.evaluate(() => {
+      const stream = document.querySelector('.message-stream');
+      const viewport = stream.getBoundingClientRect();
+      const node = [...stream.querySelectorAll('[data-user-key]')].find(item => {
+        const rect = item.getBoundingClientRect();
+        return rect.bottom > viewport.top + 1 && rect.top < viewport.bottom;
+      });
+      const row = node.closest('.timeline-row');
+      return { key: node.dataset.userKey, top: node.getBoundingClientRect().top,
+        rowTop: row?.getBoundingClientRect().top ?? null, scrollTop: stream.scrollTop };
+    });
     await page.mouse.wheel(0, -180);
     try {
       await page.locator('.message-stream').getByText('Earlier answer paragraph 1.', { exact: true }).waitFor({ state: 'attached', timeout: 5000 });
@@ -332,11 +351,32 @@ try {
       await page.screenshot({ path: `${directory}/history-diagnostic.png` });
       throw error;
     }
+    await page.waitForFunction(key => [...document.querySelectorAll('[data-user-key]')]
+      .some(node => node.getAttribute('data-user-key') === key), anchorNode.key);
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(100);
+    let anchorSettled = true;
+    try {
+      await page.waitForFunction(anchor => {
+        const node = [...document.querySelectorAll('[data-user-key]')]
+          .find(item => item.getAttribute('data-user-key') === anchor.key);
+        return node && Math.abs(node.getBoundingClientRect().top - anchor.top) < 2;
+      }, anchorNode, { timeout: 2000 });
+    } catch {
+      anchorSettled = false;
+    }
     const tailBefore = await page.locator('.message-stream-inner').evaluate(e => parseFloat(e.style.getPropertyValue('--reading-tail')) || 0);
-    const anchorAfter = await page.locator('[data-user-key]').last().evaluate(e => e.getBoundingClientRect().top);
-    assert(Math.abs(anchorAfter - anchorBefore) < 2, `History anchor moved: ${anchorBefore} -> ${anchorAfter}`);
+    const anchorAfter = await page.evaluate(key => {
+      const node = [...document.querySelectorAll('[data-user-key]')]
+        .find(item => item.getAttribute('data-user-key') === key);
+      const row = node.closest('.timeline-row');
+      const stream = document.querySelector('.message-stream');
+      return { top: node.getBoundingClientRect().top,
+        rowTop: row?.getBoundingClientRect().top ?? null, scrollTop: stream.scrollTop };
+    }, anchorNode.key);
+    assert(anchorSettled && Math.abs(anchorAfter.top - anchorNode.top) < 2,
+      `History anchor moved: ${anchorNode.top} -> ${anchorAfter.top}; key=${anchorNode.key}; ` +
+      `before=${JSON.stringify(anchorNode)}; after=${JSON.stringify(anchorAfter)}`);
     await page.mouse.wheel(0, 200);
     await page.waitForFunction(() => !document.querySelector('.message-stream-inner').style.getPropertyValue('--reading-tail'));
     await stream.evaluate(e => { e.scrollTop = e.scrollHeight; });
@@ -526,7 +566,7 @@ try {
     assert.equal(await sideComposer.locator('.composer-image').count(), 1);
     assert.equal(await sideComposer.locator('.composer-context-chip').count(), 1);
     assert.deepEqual(errors, []);
-    results.push({ viewport: size.name, tailBefore, anchorDrift: anchorAfter - anchorBefore, ...layout, pasteSwitch: true, imagePreview: true,
+    results.push({ viewport: size.name, tailBefore, anchorDrift: anchorAfter.top - anchorNode.top, ...layout, pasteSwitch: true, imagePreview: true,
       fileSelection: true, sendWhileSwitching: true, failedSendRetained: true, removalRetained: true,
       nativeRetry: true, nativeFailure: true, errorStyle, bannerStyle, manualReconnect: true, noActionReplay: true,
       nativeAddMenu: true, planGoalCommands: true, goalMutation: true,
