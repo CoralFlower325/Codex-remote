@@ -208,7 +208,7 @@ describe('visible-text equivalence between projection and full section list', ()
 });
 
 describe('per-turn projection cache', () => {
-  it('reuses row objects for untouched turns across a prepend and a foreign toggle', () => {
+  it('re-bases untouched turns across a prepend and reuses row objects across a foreign toggle', () => {
     const older: ThreadItem[] = [user('t0', 'u0'), cmd('t0', 'c0'), agent('t0', 'a0', '结论', 'final_answer')];
     const base = sectionsOf([...steeredTurn(2), user('t2', 'u9'), agent('t2', 'a9', '结论', 'final_answer')]);
     const cache = createTimelineLayoutCache();
@@ -223,9 +223,15 @@ describe('per-turn projection cache', () => {
     const firstByKey = new Map(first.rows.map(row => [row.key, row]));
     for (const row of second.rows) {
       if (row.section.turnId === 't0') continue; // the new turn: fresh rows
-      expect(row).toBe(firstByKey.get(row.key));
+      // Same section object and key — but the row's global index moved
+      // with the prepend, so the wrapper is re-based, not blindly
+      // reused: its sectionIndex must point at the section's slot in
+      // the grown list.
+      expect(row.section).toBe(firstByKey.get(row.key)!.section);
+      expect(remapped[row.sectionIndex]).toBe(row.section);
     }
-    // Toggling a different turn leaves this turn's rows identical.
+    // Toggling a different turn moves no index: this turn's row
+    // objects are reused identically.
     const toggled = projectLayoutRows(remapped,
       contextOf(remapped, { expandedTurns: new Set(['t2']) }), second.cache);
     const secondByKey = new Map(second.rows.map(row => [row.key, row]));
@@ -233,6 +239,61 @@ describe('per-turn projection cache', () => {
       if (row.section.turnId === 't2') continue;
       expect(row).toBe(secondByKey.get(row.key));
     }
+  });
+});
+
+describe('regression: cached sectionIndex after a history prepend', () => {
+  /** The exact predicate ThreadTimeline's user branch applies to the
+   * row's sectionIndex: a failed turn's native error renders under its
+   * user message only when the turn has no response section anywhere
+   * and no later section of the same turn follows the user section in
+   * the full section list. */
+  function errorVisible(sections: TimelineSection[], sectionIndex: number, turnId: string): boolean {
+    return !sections.some(other => !other.user && other.turnId === turnId) &&
+      !sections.slice(sectionIndex + 1).some(other => other.turnId === turnId);
+  }
+
+  function errorContext(sections: TimelineSection[]): TimelineLayoutContext {
+    const base = contextOf(sections);
+    return { ...base, turnTimings: { ...base.turnTimings, tfail: timing('tfail', true) } };
+  }
+
+  it('keeps a failed turn’s error visible after an earlier turn is prepended', () => {
+    // Minimal counterexample from the PR #33 review: a turn with only
+    // a user message and a native turn.error, no reply at all.
+    const failedItems: ThreadItem[] = [user('tfail', 'uf', '会失败的问题')];
+    const base = sectionsOf(failedItems);
+    const first = projectLayoutRows(base, errorContext(base), createTimelineLayoutCache());
+    const failedRow = first.rows.find(row => row.section.turnId === 'tfail')!;
+    expect(failedRow.sectionIndex).toBe(0);
+    expect(errorVisible(base, failedRow.sectionIndex, 'tfail')).toBe(true);
+
+    // Prepend one earlier turn (user + response = two sections). The
+    // incremental chain keeps retained section objects identical, so
+    // mirror that here and the per-turn layout cache legitimately hits.
+    const older: ThreadItem[] = [user('t0', 'u0'), cmd('t0', 'c0'),
+      agent('t0', 'a0', '较早的结论', 'final_answer')];
+    const grown = sectionsOf([...older, ...failedItems]).map(section =>
+      base.find(candidate => candidate.key === section.key) ?? section);
+    const second = projectLayoutRows(grown, errorContext(grown), first.cache);
+    const movedRow = second.rows.find(row => row.section.turnId === 'tfail')!;
+    // The row must carry the section's CURRENT global index (2). The
+    // stale cached 0 makes the slice check swallow the user section
+    // itself, and the error silently disappears.
+    expect(movedRow.sectionIndex).toBe(2);
+    expect(grown[movedRow.sectionIndex]).toBe(movedRow.section);
+    expect(errorVisible(grown, movedRow.sectionIndex, 'tfail')).toBe(true);
+  });
+
+  it('re-bases every cached row index on prepend, not just the failed turn’s', () => {
+    const base = sectionsOf([...steeredTurn(2), user('t2', 'u9'), agent('t2', 'a9', '结论', 'final_answer')]);
+    const first = projectLayoutRows(base, contextOf(base), createTimelineLayoutCache());
+    const older: ThreadItem[] = [user('t0', 'u0'), cmd('t0', 'c0'), agent('t0', 'a0', '结论', 'final_answer')];
+    const grown = sectionsOf([...older, ...steeredTurn(2),
+      user('t2', 'u9'), agent('t2', 'a9', '结论', 'final_answer')]).map(section =>
+      base.find(candidate => candidate.key === section.key) ?? section);
+    const second = projectLayoutRows(grown, contextOf(grown), first.cache);
+    for (const row of second.rows) expect(grown[row.sectionIndex]).toBe(row.section);
   });
 });
 

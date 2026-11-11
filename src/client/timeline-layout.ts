@@ -40,8 +40,12 @@ import type { ThreadItem } from './types';
  *
  * The projection is cached per turn: a history prepend re-projects only
  * the new turns and the one boundary turn a page can cut through; every
- * other turn keeps its row objects, keys and measurements. Expanding or
- * folding a turn re-projects that turn alone.
+ * other turn keeps its sections, keys and measurements. Its rows are
+ * re-based on the shifted global indices by section identity (a row
+ * wrapper is re-minted only where its index actually moved) — a global
+ * section index is a coordinate of the current list, never a cacheable
+ * property of the row. Expanding or folding a turn re-projects that
+ * turn alone.
  */
 
 export interface TimelineLayoutContext {
@@ -183,8 +187,31 @@ export function projectLayoutRows(
     if (cached && cached.contextSignature === signature &&
         cached.sections.length === group.sections.length &&
         cached.sections.every((section, index) => section === group.sections[index])) {
-      nextCache.groups.set(group.cacheKey, cached);
-      rows.push(...cached.rows);
+      // The cached rows were minted with the global section indices of
+      // their time. A history prepend shifts every later section's
+      // index, and a stale index is not a cosmetic error: consumers
+      // (ThreadTimeline's failed-turn error check) slice the section
+      // list at it. Re-base each row on the group's CURRENT indices,
+      // resolved by section identity — rows whose index did not move
+      // keep their object identity; only shifted rows are re-minted,
+      // and the re-based rows replace the cache entry so the next hit
+      // reuses them instead of re-minting forever. The work is bounded
+      // by this group's own size, exactly like the identity check
+      // above, so a prepend still never re-scans the retained window.
+      const currentIndex = new Map(group.sections.map((section, index) =>
+        [section, group.sectionIndices[index]!] as const));
+      const emitted: LayoutRow[] = [];
+      let reminted = false;
+      for (const row of cached.rows) {
+        const current = currentIndex.get(row.section)!;
+        if (row.sectionIndex === current) emitted.push(row);
+        else {
+          emitted.push({ ...row, sectionIndex: current });
+          reminted = true;
+        }
+      }
+      nextCache.groups.set(group.cacheKey, reminted ? { ...cached, rows: emitted } : cached);
+      rows.push(...emitted);
       continue;
     }
     const projected = projectGroup(group, context);
