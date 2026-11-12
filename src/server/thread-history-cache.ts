@@ -50,21 +50,63 @@ interface CoverageState {
  * Cached history pages carry turn timings for every turn they reference, so
  * the client never has to chase the timings cursor chain per page.
  * Background prewarming walks the same fills at low priority after a thread
- * is opened; foreground reads always win the bridge.
+ * is opened; foreground reads always win the bridge. The entry, byte and
+ * thread caps bound every per-thread state (pages, coverage frontiers,
+ * prewarm states and fill stamps) under one LRU: a thread dropped by the
+ * cap or by invalidation loses all of them together, and a completed
+ * prewarm whose pages later expire or are evicted is marked not-done so it
+ * can run again.
  */
 export class ThreadHistoryCache {
   private entries = new Map<string, Entry>();
   private threadAccess = new Map<string, number>();
   private prewarms = new Map<string, PrewarmState>();
   private coverages = new Map<string, CoverageState>();
-  private generations = new Map<string, number>();
-  private epoch = 0;
+  // Fill-invalidation stamps, one token object per thread. A fill captures
+  // its token and stores only if the map still holds that same object, so
+  // deleting a dropped thread's token is itself the invalidation — the map
+  // stays bounded by the thread cap like every other per-thread state.
+  private stamps = new Map<string, object>();
   private foregroundInFlight = 0;
   private lastForegroundAt = 0;
 
-  /** Stamp bumped by dropThread/clear; fills store only under their start stamp. */
-  private stampOf(threadId: string): string {
-    return `${this.epoch}:${this.generations.get(threadId) ?? 0}`;
+  /** Stamp captured by fills; they store only while it is still current. */
+  private stampOf(threadId: string): object {
+    let token = this.stamps.get(threadId);
+    if (!token) {
+      token = {};
+      this.stamps.set(threadId, token);
+      this.touchThread(threadId);
+    }
+    return token;
+  }
+
+  /**
+   * Register a thread in the shared LRU and enforce the thread cap over ALL
+   * per-thread state (entries, coverages, prewarms, stamps): the coldest
+   * threads beyond the cap are dropped whole, ancillary state included.
+   */
+  private touchThread(threadId: string): void {
+    this.threadAccess.delete(threadId);
+    this.threadAccess.set(threadId, Date.now());
+    while (this.threadAccess.size > MAX_THREADS) {
+      const coldest = this.threadAccess.keys().next().value as string | undefined;
+      if (coldest === undefined || coldest === threadId) break;
+      this.dropThread(coldest);
+    }
+  }
+
+  /**
+   * A cached page left the cache early (TTL expiry or LRU eviction), so a
+   * walk that once completed is no longer fully cached: forget its done
+   * flag so the next open can prewarm the thread again.
+   */
+  private notePageLost(threadId: string): void {
+    const state = this.prewarms.get(threadId);
+    if (state && state.done) {
+      state.done = false;
+      state.failedAt = 0;
+    }
   }
 
   /** Run foreground work with priority over any prewarm walk. */
@@ -102,7 +144,7 @@ export class ThreadHistoryCache {
     const covered = await this.coverTurns(request, threadId, page);
     // A history-rewriting event may have landed mid-fill: the caller keeps
     // its page (its own revision guards apply), but it must not be cached.
-    if (this.stampOf(threadId) === stamp &&
+    if (this.stamps.get(threadId) === stamp &&
         !('continuationError' in covered && covered.continuationError)) {
       this.store(key, threadId, covered);
     }
@@ -116,7 +158,7 @@ export class ThreadHistoryCache {
     if (cached) return cached as TimingsResult;
     const stamp = this.stampOf(threadId);
     const page = await readThreadTimings(request, threadId, cursor);
-    if (this.stampOf(threadId) === stamp) this.store(key, threadId, page);
+    if (this.stamps.get(threadId) === stamp) this.store(key, threadId, page);
     return page;
   }
 
@@ -125,6 +167,7 @@ export class ThreadHistoryCache {
     if (!state) {
       state = { turns: new Map(), cursor: null, started: false, exhausted: false, chain: Promise.resolve() };
       this.coverages.set(threadId, state);
+      this.touchThread(threadId);
     }
     return state;
   }
@@ -202,12 +245,26 @@ export class ThreadHistoryCache {
     if (!state) {
       state = { generation: 0, walking: false, done: false, failedAt: 0, idleWaiters: [] };
       this.prewarms.set(threadId, state);
+      this.touchThread(threadId);
+    }
+    // Entries may have expired in place since the walk completed; pruning
+    // them here makes the start decision follow the cache's actual state
+    // instead of a stale done flag.
+    if (state.done) {
+      let lost = false;
+      for (const [key, entry] of this.entries) {
+        if (entry.threadId === threadId && Date.now() - entry.savedAt >= ENTRY_TTL_MS) {
+          this.entries.delete(key);
+          lost = true;
+        }
+      }
+      if (lost) this.notePageLost(threadId);
     }
     if (state.walking || state.done) return;
     if (state.failedAt && Date.now() - state.failedAt < PREWARM_RETRY_BACKOFF_MS) return;
     const generation = state.generation;
     state.walking = true;
-    void this.walk(request, threadId, startCursor, generation)
+    void this.walk(request, threadId, startCursor, state, generation)
       .catch(() => {
         if (state.generation === generation) state.failedAt = Date.now();
       })
@@ -227,25 +284,28 @@ export class ThreadHistoryCache {
     return new Promise((resolve) => { state.idleWaiters.push(resolve); });
   }
 
-  private async walk(request: Request, threadId: string, startCursor: string, generation: number): Promise<void> {
-    const state = this.prewarms.get(threadId);
-    if (!state) return;
+  private async walk(request: Request, threadId: string, startCursor: string,
+    state: PrewarmState, generation: number): Promise<void> {
+    // The walk owns the state object it started with; if the thread was
+    // dropped and a fresh state took its place, this walk is orphaned and
+    // must not mark the new generation done or clear its flag.
+    const current = () => this.prewarms.get(threadId) === state && state.generation === generation;
     let cursor: string | null = startCursor;
     let items = 0;
     while (cursor !== null && items < PREWARM_ITEM_CAP) {
-      if (state.generation !== generation) return;
-      await this.waitForForegroundQuiet(state, generation);
-      if (state.generation !== generation) return;
+      if (!current()) return;
+      await this.waitForForegroundQuiet(current);
+      if (!current()) return;
       const page: AnyHistoryResult = await this.historyPage(request, threadId, cursor, 100, true);
       items += page.items.length;
       cursor = page.nextCursor;
       if (cursor !== null) await sleep(PREWARM_PAGE_DELAY_MS);
     }
-    if (state.generation === generation && cursor === null) state.done = true;
+    if (current() && cursor === null) state.done = true;
   }
 
-  private async waitForForegroundQuiet(state: PrewarmState, generation: number): Promise<void> {
-    while (state.generation === generation &&
+  private async waitForForegroundQuiet(current: () => boolean): Promise<void> {
+    while (current() &&
       (this.foregroundInFlight > 0 || Date.now() - this.lastForegroundAt < FOREGROUND_QUIET_MS)) {
       await sleep(50);
     }
@@ -256,11 +316,12 @@ export class ThreadHistoryCache {
     if (!entry) return null;
     if (Date.now() - entry.savedAt >= ENTRY_TTL_MS) {
       this.entries.delete(key);
+      this.notePageLost(entry.threadId);
       return null;
     }
     this.entries.delete(key);
     this.entries.set(key, entry);
-    this.threadAccess.set(entry.threadId, Date.now());
+    this.touchThread(entry.threadId);
     return entry.value;
   }
 
@@ -269,23 +330,22 @@ export class ThreadHistoryCache {
     if (bytes > MAX_BYTES) return;
     this.entries.delete(key);
     this.entries.set(key, { value, bytes, savedAt: Date.now(), threadId });
-    this.threadAccess.set(threadId, Date.now());
+    this.touchThread(threadId);
     this.trim(threadId);
   }
 
   private trim(protectedThread: string): void {
     let bytes = [...this.entries.values()].reduce((sum, entry) => sum + entry.bytes, 0);
+    const lostThreads = new Set<string>();
     for (const [key, entry] of this.entries) {
       if (this.entries.size <= MAX_ENTRIES && bytes <= MAX_BYTES) break;
       this.entries.delete(key);
       bytes -= entry.bytes;
+      lostThreads.add(entry.threadId);
     }
-    if (this.threadAccess.size > MAX_THREADS) {
-      const coldest = [...this.threadAccess.entries()]
-        .filter(([id]) => id !== protectedThread)
-        .sort((a, b) => a[1] - b[1])[0]?.[0];
-      if (coldest) this.dropThread(coldest);
-    }
+    // Evicted pages break any completed walk's coverage of their thread:
+    // its prewarm must be allowed to run again.
+    for (const threadId of lostThreads) this.notePageLost(threadId);
   }
 
   dropThread(threadId: string): void {
@@ -294,16 +354,19 @@ export class ThreadHistoryCache {
     }
     this.threadAccess.delete(threadId);
     this.coverages.delete(threadId);
-    this.generations.set(threadId, (this.generations.get(threadId) ?? 0) + 1);
+    this.stamps.delete(threadId);
     const state = this.prewarms.get(threadId);
     if (state) {
       state.generation += 1;
       state.done = false;
       state.failedAt = 0;
-      // The orphaned walk exits on its generation check; free the flag and
-      // any idle waiters so a later open can prewarm again immediately.
+      // The orphaned walk exits on its identity/generation check; free the
+      // flag and any idle waiters so a later open can prewarm again
+      // immediately, then remove the state itself: per-thread ancillary
+      // state shares the entries' thread cap and must not linger unbounded.
       state.walking = false;
       state.idleWaiters.splice(0).forEach((resolve) => resolve());
+      this.prewarms.delete(threadId);
     }
   }
 
@@ -327,7 +390,7 @@ export class ThreadHistoryCache {
     this.entries.clear();
     this.threadAccess.clear();
     this.coverages.clear();
-    this.epoch += 1;
+    this.stamps.clear();
     for (const state of this.prewarms.values()) {
       state.generation += 1;
       state.done = false;
@@ -335,14 +398,19 @@ export class ThreadHistoryCache {
       state.walking = false;
       state.idleWaiters.splice(0).forEach((resolve) => resolve());
     }
+    this.prewarms.clear();
   }
 
   /** Entry counts for tests and probes. */
-  stats(): { entries: number; threads: number; prewarming: number } {
+  stats(): { entries: number; threads: number; prewarming: number;
+    coverages: number; prewarms: number; generations: number } {
     return {
       entries: this.entries.size,
       threads: this.threadAccess.size,
-      prewarming: [...this.prewarms.values()].filter((state) => state.walking).length
+      prewarming: [...this.prewarms.values()].filter((state) => state.walking).length,
+      coverages: this.coverages.size,
+      prewarms: this.prewarms.size,
+      generations: this.stamps.size
     };
   }
 }

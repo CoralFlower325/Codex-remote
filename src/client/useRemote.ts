@@ -30,7 +30,7 @@ import type { QueuedSubmission } from './queued-messages';
 import { loadedOutline, mergeOutlineTurns } from './thread-navigation';
 import type { ChatEventListener, ChatTransport } from './chat-transport';
 import { isTaskThread } from '../shared/thread-source';
-import { HistoryPrefetch, prepareHistoryPage } from './history-prefetch';
+import { EarlierPageChain, HistoryPrefetch, invalidateAfterCompaction, prepareHistoryPage } from './history-prefetch';
 import { streamFlushDelayMs } from './streaming-refresh';
 import type { BeforeHistoryCommit } from './history-scroll';
 import { markStartup } from './startup';
@@ -158,10 +158,9 @@ export function useRemote({
   // Successor pages prepared while upward travel lasts, keyed like the
   // immediate speculative page. Commits never consume them speculatively;
   // selection changes abort and drop the whole chain.
-  const earlierChainRef = useRef(new Map<string, { controller: AbortController; promise: Promise<ThreadHistoryPage> }>());
+  const earlierChainRef = useRef(new EarlierPageChain());
   const clearEarlierPages = useCallback(() => {
     earlierPageRef.current.clear();
-    for (const entry of earlierChainRef.current.values()) entry.controller.abort();
     earlierChainRef.current.clear();
   }, []);
 
@@ -736,11 +735,10 @@ export function useRemote({
     const version = selectionVersionRef.current;
     if (!threadId || cursor === null) return null;
     const key = JSON.stringify([version, threadId, cursor]);
-    const chained = earlierChainRef.current.get(key);
+    const chained = earlierChainRef.current.take(key);
     if (chained) {
-      earlierChainRef.current.delete(key);
       // A failed speculation never surfaces here; the foreground retries fresh.
-      return chained.promise.catch(() => earlierPageRef.current.read(key,
+      return chained.catch(() => earlierPageRef.current.read(key,
         signal => loadEarlierPage(threadId, cursor, version, signal, true)));
     }
     return earlierPageRef.current.read(key, signal => loadEarlierPage(threadId, cursor, version, signal, true));
@@ -761,17 +759,10 @@ export function useRemote({
     for (let depth = 1; depth < 3 && cursor !== null && threadId &&
         version === selectionVersionRef.current && activeThreadRef.current === threadId; depth++) {
       const key = JSON.stringify([version, threadId, cursor]);
-      let entry = earlierChainRef.current.get(key);
-      if (!entry) {
-        const controller = new AbortController();
-        const promise = loadEarlierPage(threadId, cursor, version, controller.signal, false);
-        entry = { controller, promise };
-        earlierChainRef.current.set(key, entry);
-        promise.catch(() => {
-          if (earlierChainRef.current.get(key) === entry) earlierChainRef.current.delete(key);
-        });
-      }
-      const chainedPage = await entry.promise.catch(() => null);
+      const chainCursor = cursor;
+      const promise = earlierChainRef.current.prepare(key,
+        signal => loadEarlierPage(threadId, chainCursor, version, signal, false));
+      const chainedPage = await promise.catch(() => null);
       if (!chainedPage) break;
       cursor = chainedPage.nextCursor;
     }
@@ -1903,7 +1894,19 @@ export function useRemote({
       refreshActiveHistory();
       requestMetadataRecovery(true);
     }
-    if (method === 'thread/compacted' && params.threadId === activeThreadRef.current) refreshActiveHistory();
+    if (method === 'thread/compacted') {
+      // Compaction rewrote this thread's history: pages prepared or cached
+      // against the pre-compaction cursors must never be served again. The
+      // silent refresh below skips the selection-change cleanup, so drop
+      // them here, with the same joint clear as every other invalidation.
+      const threadId = String(params.threadId ?? '');
+      if (threadId) invalidateAfterCompaction(threadId, {
+        prefetch: earlierPageRef.current,
+        chain: earlierChainRef.current,
+        historyCache: historyCacheRef.current
+      });
+      if (threadId === activeThreadRef.current) refreshActiveHistory();
+    }
     if (method === 'thread/reverted') {
       resetRevertedHistory(eventThreadId);
       scheduleThreadRefresh();

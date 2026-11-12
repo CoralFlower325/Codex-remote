@@ -14,7 +14,7 @@ import { expandRangeByPixels, resolveSizeChangeAdjustment,
 import { createTimelineLayoutCache, estimateLayoutRowHeight, projectLayoutRows, turnIsCompleted,
   type TimelineLayoutCache, type TimelineLayoutContext } from '../timeline-layout';
 import { defaultRangeExtractor, useVirtualizer, type VirtualItem, type Virtualizer } from '@tanstack/react-virtual';
-import { isReadableHistoryItem } from '../history-prefetch';
+import { isReadableHistoryItem, prefetchAttemptKey } from '../history-prefetch';
 import { NativeTurnError } from './NativeTurnError';
 import { ResponseSection, MessageItem, TurnDuration } from './TurnResponse';
 import type { UserMessage } from '../message-edit';
@@ -841,10 +841,15 @@ export function ThreadTimeline({
   }, [hasMoreHistory, onLoadEarlier, revealingHistory, threadId, items, rememberReadingPosition]);
   const prefetchEarlier = useCallback(() => {
     if (!navigator.onLine || !hasMoreHistory || !onPrefetchEarlier || revealingHistory || navigatingRef.current) return;
-    const attempt = JSON.stringify([threadId, items[0] ? itemKey(items[0]) : '', items.length]);
+    // The dedup key carries the direction: a settled/underfilled first
+    // prefetch must not block the deeper prefetch upward intent asks for
+    // over the same head item.
+    const travellingUp = wantsEarlierRef.current;
+    const attempt = prefetchAttemptKey(threadId, items[0] ? itemKey(items[0]) : '', items.length,
+      travellingUp ? 'earlier' : 'settled');
     if (prefetchAttemptRef.current === attempt) return;
     prefetchAttemptRef.current = attempt;
-    void onPrefetchEarlier(wantsEarlierRef.current);
+    void onPrefetchEarlier(travellingUp);
   }, [hasMoreHistory, onPrefetchEarlier, revealingHistory, threadId, items]);
   loadWhenIdleRef.current = () => {
     const stream = streamRef.current;

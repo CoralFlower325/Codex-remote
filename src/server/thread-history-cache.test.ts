@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ThreadHistoryCache } from './thread-history-cache.js';
 
 interface Entry { turnId: string; item: unknown; startedAtMs: number | null; completedAtMs: number | null }
@@ -203,5 +203,96 @@ describe('ThreadHistoryCache', () => {
       await cache.historyPage(bridge.request, 'thread', `i${1000 + index}`, 100, true);
     }
     expect(cache.stats().entries).toBeLessThanOrEqual(600);
+  });
+
+  it('prewarms again after the walked pages expire under the TTL', async () => {
+    const dataset = buildThread(30);
+    const bridge = makeBridge(dataset);
+    const cache = new ThreadHistoryCache();
+    let now = Date.now();
+    const spy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      cache.prewarm(bridge.request, 'thread', 'i180');
+      await cache.prewarmIdle('thread');
+      const afterFirstWalk = rpc(bridge.counts);
+      expect(afterFirstWalk).toBeGreaterThan(0);
+      // Still fresh: a nudge does not re-walk.
+      cache.prewarm(bridge.request, 'thread', 'i180');
+      await cache.prewarmIdle('thread');
+      expect(rpc(bridge.counts)).toBe(afterFirstWalk);
+      // Every cached page expires; the next open must prewarm again rather
+      // than trusting the completed walk's stale done flag — and a second
+      // concurrent nudge must not start a duplicate walk.
+      now += 31 * 60_000;
+      cache.prewarm(bridge.request, 'thread', 'i180');
+      cache.prewarm(bridge.request, 'thread', 'i180');
+      expect(cache.stats().prewarming).toBe(1);
+      await cache.prewarmIdle('thread');
+      expect(rpc(bridge.counts)).toBeGreaterThan(afterFirstWalk);
+      const afterSecondWalk = rpc(bridge.counts);
+      await cache.historyPage(bridge.request, 'thread', 'i180', 100, true);
+      expect(rpc(bridge.counts)).toBe(afterSecondWalk);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('prewarms again after LRU eviction removes the walked pages', async () => {
+    const dataset = buildThread(30);
+    const bridge = makeBridge(dataset);
+    const cache = new ThreadHistoryCache();
+    cache.prewarm(bridge.request, 'victim', 'i180');
+    await cache.prewarmIdle('victim');
+    expect(cache.stats().entries).toBeGreaterThan(0);
+    // Flood the entry cap from another thread; the victim's pages are the
+    // oldest entries and are evicted first.
+    for (let index = 1; index <= 700; index++) {
+      await cache.timingsPage(bridge.request, 'flood', `t${index}`);
+    }
+    expect(cache.stats().entries).toBeLessThanOrEqual(600);
+    const afterFlood = rpc(bridge.counts);
+    cache.prewarm(bridge.request, 'victim', 'i180');
+    await cache.prewarmIdle('victim');
+    expect(rpc(bridge.counts)).toBeGreaterThan(afterFlood);
+    const afterWalk = rpc(bridge.counts);
+    await cache.historyPage(bridge.request, 'victim', 'i180', 100, true);
+    expect(rpc(bridge.counts)).toBe(afterWalk);
+  });
+
+  it('drops ancillary per-thread state together with the thread', async () => {
+    const dataset = buildThread(30);
+    const bridge = makeBridge(dataset);
+    const cache = new ThreadHistoryCache();
+    await cache.historyPage(bridge.request, 'thread', 'i120', 100, true);
+    cache.prewarm(bridge.request, 'thread', 'i120');
+    await cache.prewarmIdle('thread');
+    expect(cache.stats().coverages).toBe(1);
+    expect(cache.stats().prewarms).toBe(1);
+    expect(cache.stats().generations).toBeGreaterThan(0);
+    cache.event('thread/reverted', { threadId: 'thread' });
+    expect(cache.stats()).toMatchObject({ entries: 0, threads: 0, coverages: 0, prewarms: 0, generations: 0 });
+    // A whole-cache clear after refilling leaves no ancillary state either.
+    await cache.historyPage(bridge.request, 'thread', 'i120', 100, true);
+    expect(cache.stats().entries).toBeGreaterThan(0);
+    cache.clear();
+    expect(cache.stats()).toMatchObject({ entries: 0, threads: 0, coverages: 0, prewarms: 0, generations: 0 });
+  });
+
+  it('bounds ancillary per-thread state under the same thread cap as entries', async () => {
+    const dataset = buildThread(30);
+    const bridge = makeBridge(dataset);
+    const cache = new ThreadHistoryCache();
+    const ids = Array.from({ length: 24 }, (_, index) => `bulk${index}`);
+    for (const id of ids) {
+      await cache.historyPage(bridge.request, id, 'i120', 100, true);
+      cache.prewarm(bridge.request, id, 'i120');
+    }
+    await Promise.all(ids.map((id) => cache.prewarmIdle(id)));
+    const stats = cache.stats();
+    expect(stats.threads).toBeLessThanOrEqual(16);
+    expect(stats.coverages).toBeLessThanOrEqual(16);
+    expect(stats.prewarms).toBeLessThanOrEqual(16);
+    expect(stats.generations).toBeLessThanOrEqual(16);
+    expect(stats.entries).toBeLessThanOrEqual(600);
   });
 });
