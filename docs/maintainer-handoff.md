@@ -17,10 +17,10 @@ their original scope and do not establish current physical-device performance.
 
 The current published release is Remote **0.2.39** / manager **0.2.9**, tag
 `v0.2.39`.
-The 0.2.39 release batch adds host-side completed-history caching, low-priority
-background prewarm, deeper upward prefetch and server-side timing coverage.
-The [0.2.38 release acceptance](remote-0.2.38-release-acceptance.md) retains the
-preceding history-layout and prepend evidence.
+The [0.2.39 release acceptance](remote-0.2.39-release-acceptance.md) records the
+history cache, prewarm, prefetch, signed runtime, distribution, edge and Windows
+installation. The [0.2.38 release acceptance](remote-0.2.38-release-acceptance.md)
+retains the preceding history-layout and prepend evidence.
 The [native queued-guide acceptance](native-queued-guide-0.2.27.md) records the
 single primary action, immediate queued-submission strip and history-trigger
 placement, plus the 0.2.28 follow-up record for optimistic send/Guide display,
@@ -45,13 +45,13 @@ mobile command menus; and manager 0.2.8 recognition of versioned Node runtime
 executables. An actual 0.2.29 to 0.2.30 upgrade then showed that the old selected
 control could leave the versioned Node process alive; the transaction rolled back
 safely, and 0.2.31 adds the manager-owned stop fallback before retrying.
-The four `v0.2.38` runtime assets, refreshed download snapshot, `codexwin` static
-edge and local Remote 0.2.38 installation are verified. Manager 0.2.9 is
+The four `v0.2.39` runtime assets, refreshed download snapshot, `codexwin` static
+edge and local Remote 0.2.39 installation are verified. Manager 0.2.9 is
 unchanged and remains on `v0.2.31`. Local and public `/version.json` identify
-`assets/index-06-44Qre.js`; `/health` is `ready / desktop`. Publication, Remote
+`assets/index-CBVSN1lU.js`; `/health` is ready / desktop. Publication, Remote
 installation and edge deployment remain separate states. The release tag points
-to `817e20e8abeb404ae8569acf82d4286a075b4bfb`; main CI `43016354483`, Runtime
-Packages `43016530341` and the manager plan `43016530255` passed.
+to `80c82d576c47aadae08461310f4f212772c756ba`; main CI `43175971262`, Runtime
+Packages `43176056957` and the manager plan `43176056991` passed.
 The live installation, manager selection and both Windows tasks now use
 `F:\AAAAcodexremote\codex-remote-main`; the old version-named directory and
 private experimental residue were removed after the runtime data migration was
