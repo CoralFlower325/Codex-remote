@@ -6,13 +6,13 @@ import {
 import type { ThreadItem } from './types';
 
 /**
- * Prepend-path equivalence and cost. The chain's prepend splice is
+ * Prepend-path equivalence and path selection. The chain's prepend splice is
  * pinned to the same legacy two-builder oracle as the rest of the
  * chain; these tests drive the shapes a history pager actually
  * produces (whole-turn pages, pages cutting a turn mid-flight, pages
  * ending on a steering message, sequential pages, and a tail trim at
- * the retention cap) and then measure that a prepend's model cost
- * tracks the page, not the window.
+ * the retention cap) and then verify that a prepend takes the splice
+ * path, reusing the retained window instead of rebuilding it.
  */
 class Oracle {
   private legacySections: TimelineSection[] = [];
@@ -155,56 +155,71 @@ describe('prepend equivalence', () => {
   });
 });
 
-describe('prepend cost', () => {
+describe('prepend path', () => {
   function fixture(totalTurns: number, tag: string): ThreadItem[] {
     const items: ThreadItem[] = [];
     for (let t = 0; t < totalTurns; t++) items.push(...turnItems(`${tag}${t}`, 40, `${tag}${t}`));
     return items;
   }
-  function median(fn: () => void, runs: number): number {
-    const times: number[] = [];
-    for (let i = 0; i < runs; i++) {
-      const start = performance.now();
-      fn();
-      times.push(performance.now() - start);
-    }
-    return times.sort((a, b) => a - b)[Math.floor(times.length / 2)]!;
-  }
 
-  it('keeps the prepend path substantially cheaper than a full rebuild at the largest window', () => {
+  it('splices the largest retained window instead of falling back to a full rebuild', () => {
     const page: ThreadItem[] = [];
     for (let t = 0; t < 10; t++) page.push(...turnItems(`pg${t}`, 40, `pg${t}`));
-    const measure = (windowItems: ThreadItem[]) => {
-      // Warm the cache the way a live session does (an append step
-      // after the cold first build) so the registry-stable prefix is
-      // real; a cold cache legitimately falls back to the full build.
-      const cold = projectTimeline(windowItems.slice(0, -40), null, null).cache;
-      const base = projectTimeline(windowItems, null, cold).cache;
-      const grown = [...page, ...windowItems];
-      // One unmeasured warm-up call each: this VM's shared CPU makes
-      // cold-JIT medians meaningless.
-      projectTimeline(grown, null, base);
-      const prependMs = median(() => { projectTimeline(grown, null, base); }, 9);
-      // The status-quo cost of the same commit: clone the window's
-      // first item so the reference alignment breaks, detection
-      // misses, and the chain takes the full build it used before,
-      // with the same previous cache.
-      const broken = [...page, { ...windowItems[0] } as ThreadItem, ...windowItems.slice(1)];
-      projectTimeline(broken, null, base);
-      const fullMs = median(() => { projectTimeline(broken, null, base); }, 9);
-      return { prependMs, fullMs };
-    };
-    const large = measure(fixture(125, 'b'));  // ≈5,000 items
-    // The prepend path exists and is several times cheaper than the
-    // full rebuild it replaces at the largest window (measured ratio
-    // ~0.4 on this VM; the bound leaves room for its shared-CPU
-    // variance while still failing if the splice ever disengages and
-    // the call degenerates to the full build).
-    expect(large.prependMs).toBeLessThan(large.fullMs / 2);
-    // Wall-clock scaling against the smaller fixture is intentionally not
-    // asserted: shared macOS runners can make two nearby medians cross by a
-    // few milliseconds even when the adaptive path is active. The ratio above
-    // still fails if prepend detection disengages and falls back to a full
-    // rebuild at the largest retained window.
+    const windowItems = fixture(125, 'b');  // ≈5,000 items
+    // Warm the cache the way a live session does (an append step
+    // after the cold first build) so the registry-stable prefix is
+    // real; a cold cache legitimately falls back to the full build.
+    const cold = projectTimeline(windowItems.slice(0, -40), null, null).cache;
+    const base = projectTimeline(windowItems, null, cold).cache;
+    const grown = projectTimeline([...page, ...windowItems], null, base);
+
+    // The invariant is the path taken, not a wall-clock ratio. A
+    // tight prepend/full ratio is shared-runner noise: PR #36 removed
+    // a nearby scaling assertion after runners crossed it, and the
+    // remaining prependMs < fullMs / 2 assertion later crossed by
+    // ~3% (2.8129ms against a 2.7350ms bound) before Browser
+    // Acceptance reached the browser assertions. The splice has
+    // deterministic traces a full build does not reproduce:
+    //
+    // - the retained window's entries and sections survive as the
+    //   verbatim suffix after the rescanned page, object for object;
+    // - the output is produced under the base cache's own registries
+    //   (the splice carries those exact Map objects forward; a full
+    //   build scans under a freshly built registry even when its
+    //   identity-reuse pass makes the output objects look alike);
+    // - surviving entry checkpoints carry their snapshot arrays
+    //   forward into translated coordinates (a full build snapshots
+    //   fresh arrays everywhere).
+    const pageProjection = projectTimeline(page, null, null);
+    const entrySplice = grown.entries.indexOf(base.entries[0]!);
+    expect(entrySplice).toBe(pageProjection.entries.length);
+    expect(grown.entries).toHaveLength(entrySplice + base.entries.length);
+    grown.entries.slice(entrySplice)
+      .forEach((entry, index) => expect(entry).toBe(base.entries[index]));
+    const sectionSplice = grown.sections.indexOf(base.sections[0]!);
+    expect(sectionSplice).toBe(pageProjection.sections.length);
+    expect(grown.sections).toHaveLength(sectionSplice + base.sections.length);
+    grown.sections.slice(sectionSplice)
+      .forEach((section, index) => expect(section).toBe(base.sections[index]));
+
+    expect(grown.cache.producedActivityKeys).toBe(base.activityKeys);
+    expect(grown.cache.producedPreviousByItem).toBe(base.previousByItem);
+    const baseSnapshots = new Set(base.entryCheckpoints.map(cp => cp.activityItems));
+    const carriedSnapshots = (cache: TimelineChainCache) =>
+      cache.entryCheckpoints.filter(cp => baseSnapshots.has(cp.activityItems)).length;
+    // Every checkpoint past the splice point is carried forward; the
+    // splice checkpoint itself is consumed by the rescan.
+    expect(carriedSnapshots(grown.cache)).toBe(base.entryCheckpoints.length - 1);
+
+    // Negative control: clone the window's first item so reference
+    // alignment breaks, detection misses, and the same call takes
+    // the full build. None of the splice traces may appear there —
+    // if they ever do, the assertions above have stopped guarding
+    // the path and this control turns red instead.
+    const broken = [...page, { ...windowItems[0] } as ThreadItem, ...windowItems.slice(1)];
+    const fallback = projectTimeline(broken, null, base);
+    expect(fallback.cache.producedActivityKeys).not.toBe(base.activityKeys);
+    expect(fallback.cache.producedPreviousByItem).not.toBe(base.previousByItem);
+    expect(carriedSnapshots(fallback.cache)).toBe(0);
   });
 });
