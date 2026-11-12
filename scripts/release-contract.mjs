@@ -41,6 +41,8 @@ export function validateReleaseContract(state, expectedVersion) {
   check(state.trustedKeyCount > 0, 'No publisher trust root');
   check(state.runtimeWorkflow.includes('secrets.RELEASE_SIGNING_KEY'),
     'Runtime publishing does not require a signing secret');
+  check(state.indexCrLfTypeScript.length === 0,
+    `TypeScript files must use LF in the Git index: ${state.indexCrLfTypeScript.join(', ')}`);
   if (expectedVersion) {
     check(state.remoteVersion === expectedVersion.replace(/^v/, ''),
       `Release tag ${expectedVersion} does not match package version ${state.remoteVersion}`);
@@ -56,6 +58,8 @@ export async function loadReleaseContract(root = process.cwd()) {
   const docs = Object.fromEntries(await Promise.all(currentVersionDocs.map(async ([file]) =>
     [file, await read(file)])));
   const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+  const indexCrLfTypeScript = git(['ls-files', '--eol']).split('\n').filter(row =>
+    row.startsWith('i/crlf') && /\t[^\t]+\.tsx?$/.test(row)).map(row => row.split('\t').at(-1));
   const { trustedReleaseKeys } = await import('../desktop/release-keys.mjs');
   return {
     remoteVersion: remote.version,
@@ -68,6 +72,7 @@ export async function loadReleaseContract(root = process.cwd()) {
     docs,
     trustedKeyCount: Object.keys(trustedReleaseKeys).length,
     runtimeWorkflow: await read('.github/workflows/runtime.yml'),
+    indexCrLfTypeScript,
     source: git(['rev-parse', 'HEAD']),
     dirty: Boolean(git(['status', '--porcelain']))
   };
