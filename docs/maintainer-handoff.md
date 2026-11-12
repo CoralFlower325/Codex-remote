@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-11-11.
+Last reconciled: 2026-11-12.
 
 ## Authority
 
@@ -15,11 +15,12 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.38** / manager **0.2.9**, tag
-`v0.2.38`.
-The [0.2.38 release acceptance](remote-0.2.38-release-acceptance.md) records the
-reviewed history-layout and prepend fix, signed runtime packages, distribution,
-edge and Windows installation.
+The current published release is Remote **0.2.39** / manager **0.2.9**, tag
+`v0.2.39`.
+The 0.2.39 release batch adds host-side completed-history caching, low-priority
+background prewarm, deeper upward prefetch and server-side timing coverage.
+The [0.2.38 release acceptance](remote-0.2.38-release-acceptance.md) retains the
+preceding history-layout and prepend evidence.
 The [native queued-guide acceptance](native-queued-guide-0.2.27.md) records the
 single primary action, immediate queued-submission strip and history-trigger
 placement, plus the 0.2.28 follow-up record for optimistic send/Guide display,
@@ -58,6 +59,12 @@ verified.
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.
 
+Remote **0.2.39** adds a bounded host cache for completed history pages,
+low-priority background prewarm with foreground priority, up to three prepared
+pages during upward intent and server-attached turn timings. Cache invalidation
+covers native history rewrites and compaction; prewarm and coverage state share
+the 16-thread and 48 MiB bounds, and a lost walking page prevents a false
+complete marker.
 Remote **0.2.38** projects completed folded turns by turn semantics so steering
 messages remain visible without creating empty virtual rows for folded process
 slices. History prepends splice timeline checkpoints and reuse the untouched
@@ -117,7 +124,7 @@ and real PTY lifecycle tests pass. Platform output uses bounded rotating logs;
 macOS controls use the same-PID background wrapper and retain ownership checks.
 Local synthetic checks do not establish signed-in macOS service behavior.
 
-The current implementation through `v0.2.38` adds complete cursor-following
+The current implementation through `v0.2.39` adds complete cursor-following
 model/project catalogs, explicit reasoning inherit/default semantics, ordered
 settings acknowledgements, isolated Office conversion workers, bounded SSE
 backpressure, a supervisor-owned dynamic tunnel metrics port, explicit client
