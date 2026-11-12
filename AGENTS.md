@@ -60,7 +60,7 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Runtime manifest authentication is separate: all new runtime releases require
   Ed25519 publisher signatures verified against pinned public keys. Source
   fallback must match a signed release commit; never bypass missing signatures.
-  Remote 0.2.38 / manager 0.2.9 are the current formal release.
+  Remote 0.2.39 / manager 0.2.9 are the current formal release.
   Verify each installation against its own current acceptance record.
 - After completing and validating project changes, push the public repository
   by default unless the user explicitly asks not to. Never push the separate
