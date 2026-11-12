@@ -24,8 +24,8 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 本次不恢复 AU 功能；签名、公证和真实 Mac 登录环境验收仍是独立断点。
 未签名安装包可能需要按系统下载信誉或 Gatekeeper 流程确认。
 
-Remote 0.2.38 将折叠轮次改为按 turn 语义投影布局，历史补页按检查点拼接，
-保留插话内容和稳定阅读位置；运行包位于 `v0.2.38`。管理器 0.2.9 未变更，安装包继续位于
+Remote 0.2.39 增加已完成历史页的主机缓存、低优先级后台预热、上滑三页预取和
+主机 timings 覆盖；运行包位于 `v0.2.39`。管理器 0.2.9 未变更，安装包继续位于
 `v0.2.31`。
 运行包 Ed25519 清单签名已启用，与仍暂停的 AU 和 macOS 应用签名分别管理。
 
@@ -82,21 +82,22 @@ Remote 0.2.16 与管理器 0.2.2 不再将已等于目标版本的文件误判�
 
 ## 维护分发服务
 
-2026-11-11 已完成 Remote **0.2.38** 的分发与 `codexwin` 部署收尾。正式标签为
-`v0.2.38`，发布提交 `817e20e8abeb404ae8569acf82d4286a075b4bfb`。main CI
-`43016354483`、Runtime Packages `43016530341` 和 Desktop Manager
-`43016530255` 通过；管理器未改版，package job 按门禁跳过。
+2026-11-12 已完成 Remote **0.2.39** 的分发与 `codexwin` 部署收尾。正式标签为
+`v0.2.39`，发布提交 `80c82d576c47aadae08461310f4f212772c756ba`。main CI
+`43175971262`、Runtime Packages `43176056957` 和 Desktop Manager
+`43176056991` 通过；管理器未改版，package job 按门禁跳过。
 
-下载 Worker 版本 `26b5f04d-f2b0-435c-8436-adb0fcad7469` 已刷新四附件快照，
-`/releases/latest` 返回 `v0.2.38`。四个运行包/清单在显式 `-NoProxy` 条件下
-HEAD 均为 `200`，大小与 Release 元数据一致；Windows x64 运行包为 `12010192`
-字节，SHA-256 `94e6664294a6fb1c686cb75bc99a2aca72a679e3fdbc1b2fb467dbc9eec49cfb`。
+下载 Worker 版本 `101cd7f1-a113-4562-953d-e8a2b980a5dd` 已刷新四附件快照，
+`/releases/latest` 返回 `v0.2.39`。四个运行包/清单在项目分发和官方 GitHub
+备用地址 HEAD 均为 `200`，大小与 Release 元数据一致；Windows x64 运行包为
+`12036013` 字节，SHA-256
+`a2ce524a48aef3b5cb5215009d3a9b894e30106203322b220883470a2e3ec7ab`。
 
-本机 Remote 已从 0.2.37 通过签名预构建运行包升级到 0.2.38，事务备份为
-`output\manager-backup-e31bf832-17b2-422c-8418-e5d090b60594`；本地与
-`codexwin` 的 `/version.json` 均为 0.2.38，侧栏显示 0.2.38，构建标识
-`assets/index-06-44Qre.js`，`/health` 为 ready / desktop。静态边缘 Worker 版本为
-`469cfe1d-8cf4-4e99-a96b-e88607d4a26d`。服务与隧道继续由隐藏计划任务运行
+本机 Remote 已从 0.2.38 通过签名预构建运行包升级到 0.2.39，事务备份为
+`output\manager-backup-4314a272-0056-4951-a6af-276d98ea3fdf`；本地与
+`codexwin` 的 `/version.json` 均为 0.2.39，构建标识
+`assets/index-CBVSN1lU.js`，`/health` 为 ready / desktop。静态边缘 Worker 版本为
+`46629ef4-cde1-41dc-83d6-9a9b76b53b0c`。服务与隧道继续由隐藏计划任务运行
 `node-22.19.0-127.exe`，未弹出命令行窗口，Desktop 保持运行。
 
 2026-11-11 已完成 Remote **0.2.37** 的分发与 `codexwin` 部署收尾。正式标签为
