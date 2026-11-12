@@ -21,7 +21,8 @@ function state() {
         'current published release is Remote **0.2.25** / manager **0.2.4**'
     },
     trustedKeyCount: 1,
-    runtimeWorkflow: 'secrets.RELEASE_SIGNING_KEY'
+    runtimeWorkflow: 'secrets.RELEASE_SIGNING_KEY',
+    indexCrLfTypeScript: []
   };
 }
 
@@ -40,10 +41,12 @@ describe('release contract', () => {
     invalid.notes = "version: '0.2.24'\n管理器 0.2.3";
     invalid.trustedKeyCount = 0;
     invalid.runtimeWorkflow = '';
+    invalid.indexCrLfTypeScript = ['src/client/example.test.ts'];
     expect(validateReleaseContract(invalid, 'v0.2.26')).toEqual(expect.arrayContaining([
       'package-lock.json version mismatch',
       'Release notes do not cover the source version',
       'No publisher trust root',
+      'TypeScript files must use LF in the Git index: src/client/example.test.ts',
       'Release tag v0.2.26 does not match package version 0.2.25'
     ]));
   });
