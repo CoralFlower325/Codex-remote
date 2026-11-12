@@ -1899,11 +1899,19 @@ export function useRemote({
       // against the pre-compaction cursors must never be served again. The
       // silent refresh below skips the selection-change cleanup, so drop
       // them here, with the same joint clear as every other invalidation.
+      // Advancing the history revision also rejects a page the chain had
+      // already handed to the foreground but that has not committed yet:
+      // clearing cannot abort a taken promise, the revision check can.
       const threadId = String(params.threadId ?? '');
       if (threadId) invalidateAfterCompaction(threadId, {
         prefetch: earlierPageRef.current,
         chain: earlierChainRef.current,
         historyCache: historyCacheRef.current
+      }, {
+        advanceHistoryRevision: () => {
+          if (threadId === activeThreadRef.current) historyRevisionRef.current += 1;
+        },
+        removeDeviceSnapshot: (id) => { void removeDeviceChat(id); }
       });
       if (threadId === activeThreadRef.current) refreshActiveHistory();
     }

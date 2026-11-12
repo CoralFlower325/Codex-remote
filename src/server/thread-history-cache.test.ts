@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { ThreadHistoryCache } from './thread-history-cache.js';
 
 interface Entry { turnId: string; item: unknown; startedAtMs: number | null; completedAtMs: number | null }
-interface Turn { id: string; status: 'completed'; startedAt: number; completedAt: number; durationMs: number }
+interface Turn { id: string; status: 'completed'; startedAt: number; completedAt: number; durationMs: number;
+  error?: { message: string } }
 
 const user = (id: string, text: string) => ({ type: 'userMessage', id, content: [{ type: 'text', text }] });
 const agent = (id: string, text: string) => ({ type: 'agentMessage', id, phase: 'final_answer', text });
@@ -257,6 +258,80 @@ describe('ThreadHistoryCache', () => {
     const afterWalk = rpc(bridge.counts);
     await cache.historyPage(bridge.request, 'victim', 'i180', 100, true);
     expect(rpc(bridge.counts)).toBe(afterWalk);
+  });
+
+  it('does not mark prewarm done when a page is evicted while the walk is running', async () => {
+    const dataset = buildThread(30);
+    const bridge = makeBridge(dataset);
+    const cache = new ThreadHistoryCache();
+    // Gate the walk's second page: the first page is already cached while
+    // the walk is parked on the native read for the second.
+    const rawRequest = bridge.request as unknown as (method: string, params: unknown) => Promise<unknown>;
+    let itemsCalls = 0;
+    let releaseSecondPage!: () => void;
+    let markSecondPageStarted!: () => void;
+    const secondPageGate = new Promise<void>((resolve) => { releaseSecondPage = resolve; });
+    const secondPageStarted = new Promise<void>((resolve) => { markSecondPageStarted = resolve; });
+    const gatedRequest = async (method: string, params: unknown) => {
+      if (method === 'thread/items/list') {
+        itemsCalls += 1;
+        if (itemsCalls === 2) {
+          markSecondPageStarted();
+          await secondPageGate;
+        }
+      }
+      return rawRequest(method, params);
+    };
+    cache.prewarm(gatedRequest as never, 'victim', 'i180');
+    await secondPageStarted;
+    // Flood the entry cap from another thread: the victim's already-walked
+    // pages are the oldest entries and are evicted mid-walk.
+    for (let index = 1; index <= 700; index++) {
+      await cache.timingsPage(bridge.request, 'flood', `t${index}`);
+    }
+    releaseSecondPage();
+    await cache.prewarmIdle('victim');
+    const afterFirstWalk = rpc(bridge.counts);
+    // The walk finished its chain, but a page it walked is gone, so it
+    // must not have claimed done: the next nudge walks again and refills
+    // the missing page instead of trusting the incomplete cache.
+    cache.prewarm(bridge.request, 'victim', 'i180');
+    await cache.prewarmIdle('victim');
+    expect(rpc(bridge.counts)).toBeGreaterThan(afterFirstWalk);
+    // The second walk completed over a full cache, so now the walked
+    // pages really are served without native reads.
+    const afterSecondWalk = rpc(bridge.counts);
+    await cache.historyPage(bridge.request, 'victim', 'i180', 100, true);
+    expect(rpc(bridge.counts)).toBe(afterSecondWalk);
+  });
+
+  it('charges coverage timings against the shared byte budget', async () => {
+    // Each timing carries an 8 KiB error payload, so a few thousand
+    // retained timings are enough to reach the 48 MiB budget on the
+    // serialized-size yardstick the cache charges them with.
+    const payload = 'x'.repeat(8192);
+    const turns: Turn[] = Array.from({ length: 8000 }, (_, index) => ({
+      id: `turn${index}`, status: 'completed' as const, startedAt: 1000 + index * 100,
+      completedAt: 1000 + index * 100 + 60, durationMs: 60000, error: { message: payload }
+    }));
+    const items: Entry[] = turns.map((turn, index) => ({
+      turnId: turn.id, item: user(`u${index}`, '问题'), startedAtMs: null, completedAtMs: null
+    }));
+    const bridge = makeBridge({ items, turns });
+    const cache = new ThreadHistoryCache();
+    // Two deep pages drive the coverage frontier thousands of turns back
+    // from the head; without coverage accounting the frontier alone would
+    // retain well over the byte budget.
+    await cache.historyPage(bridge.request, 'thread', 'i100', 100, true);
+    await cache.historyPage(bridge.request, 'thread', 'i200', 100, true);
+    const stats = cache.stats();
+    expect(stats.coverageBytes).toBeGreaterThan(40 * 1024 * 1024);
+    expect(stats.totalBytes).toBeLessThanOrEqual(48 * 1024 * 1024);
+    expect(stats.entryBytes + stats.coverageBytes).toBe(stats.totalBytes);
+    // Dropping the thread releases its coverage bytes with everything else.
+    cache.event('thread/reverted', { threadId: 'thread' });
+    expect(cache.stats().coverageBytes).toBe(0);
+    expect(cache.stats().totalBytes).toBe(0);
   });
 
   it('drops ancillary per-thread state together with the thread', async () => {

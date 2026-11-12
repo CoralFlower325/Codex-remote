@@ -62,21 +62,38 @@ export class EarlierPageChain {
   }
 }
 
+/** Side effects a compaction invalidation must have beyond prepared pages. */
+export interface CompactionInvalidationEffects {
+  /**
+   * Advance the history revision. Clearing the chain cannot abort a page
+   * that take() already handed to the foreground, so a taken-but-uncommitted
+   * page is stopped only by making its captured revision stale: the commit
+   * path rechecks the revision and must reject it after compaction.
+   */
+  advanceHistoryRevision?: () => void;
+  /** Drop the thread's offline device snapshot, which holds pre-compaction history. */
+  removeDeviceSnapshot?: (threadId: string) => void;
+}
+
 /**
  * Compaction rewrites a thread's completed history, so every page prepared
  * or cached from the pre-compaction chain is stale: abort the speculative
- * page and the whole successor chain, and drop the thread's cached latest
- * page. Without this, the post-compaction refresh could still serve pages
+ * page and the whole successor chain, drop the thread's cached latest
+ * page, advance the history revision so a page already taken by the
+ * foreground cannot commit, and drop the offline device snapshot.
+ * Without this, the post-compaction refresh could still serve pages
  * keyed by cursors that compaction replaced.
  */
 export function invalidateAfterCompaction(threadId: string, prepared: {
   prefetch: HistoryPrefetch;
   chain: EarlierPageChain;
   historyCache: Map<string, ThreadHistoryPage>;
-}): void {
+}, effects: CompactionInvalidationEffects = {}): void {
   prepared.prefetch.clear();
   prepared.chain.clear();
   prepared.historyCache.delete(threadId);
+  effects.advanceHistoryRevision?.();
+  effects.removeDeviceSnapshot?.(threadId);
 }
 
 /** Direction a speculative earlier-history prefetch is preparing for. */

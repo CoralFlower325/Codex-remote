@@ -33,14 +33,34 @@ interface PrewarmState {
   done: boolean;
   failedAt: number;
   idleWaiters: Array<() => void>;
+  // Set when a cached page is lost while a walk is still running: that
+  // walk's chain is no longer fully cached, so it must not mark itself
+  // done when it finishes; the next nudge has to walk again.
+  lostWhileWalking: boolean;
 }
 
 interface CoverageState {
   turns: Map<string, TurnTiming>;
+  // Serialized-size estimate of `turns` (see turnTimingBytes), charged
+  // against the same MAX_BYTES budget as cached pages.
+  bytes: number;
   cursor: string | null;
   started: boolean;
   exhausted: boolean;
   chain: Promise<void>;
+}
+
+/** Conservative per-entry overhead charged for a coverage Map slot. */
+const COVERAGE_TURN_OVERHEAD_BYTES = 128;
+
+/**
+ * Byte estimate for one retained turn timing: its serialized form (the
+ * same yardstick cached pages are measured with), its Map key, and a
+ * fixed allowance for the Map entry and object overhead.
+ */
+function turnTimingBytes(turn: TurnTiming): number {
+  return Buffer.byteLength(JSON.stringify(turn)) +
+    Buffer.byteLength(JSON.stringify(turn.id)) + COVERAGE_TURN_OVERHEAD_BYTES;
 }
 
 /**
@@ -55,7 +75,10 @@ interface CoverageState {
  * prewarm states and fill stamps) under one LRU: a thread dropped by the
  * cap or by invalidation loses all of them together, and a completed
  * prewarm whose pages later expire or are evicted is marked not-done so it
- * can run again.
+ * can run again. Coverage turn timings are charged against the same byte
+ * budget as cached pages (entry bytes + coverage bytes <= MAX_BYTES):
+ * growing a frontier first sacrifices the coldest other coverage, then
+ * the oldest pages, and stops at the budget instead of passing it.
  */
 export class ThreadHistoryCache {
   private entries = new Map<string, Entry>();
@@ -99,11 +122,16 @@ export class ThreadHistoryCache {
   /**
    * A cached page left the cache early (TTL expiry or LRU eviction), so a
    * walk that once completed is no longer fully cached: forget its done
-   * flag so the next open can prewarm the thread again.
+   * flag so the next open can prewarm the thread again. A loss that lands
+   * while a walk is still running cannot clear a done flag that does not
+   * exist yet; it is recorded on the walk instead, and the walk's end
+   * must not set done over a chain that is known to have a hole in it.
    */
   private notePageLost(threadId: string): void {
     const state = this.prewarms.get(threadId);
-    if (state && state.done) {
+    if (!state) return;
+    if (state.walking) state.lostWhileWalking = true;
+    if (state.done) {
       state.done = false;
       state.failedAt = 0;
     }
@@ -162,10 +190,57 @@ export class ThreadHistoryCache {
     return page;
   }
 
+  /** Serialized bytes held by cached pages. */
+  private entryBytes(): number {
+    return [...this.entries.values()].reduce((sum, entry) => sum + entry.bytes, 0);
+  }
+
+  /** Estimated bytes held by coverage frontiers (see turnTimingBytes). */
+  private coverageBytes(): number {
+    return [...this.coverages.values()].reduce((sum, state) => sum + state.bytes, 0);
+  }
+
+  /** Everything the byte budget covers: pages plus coverage timings. */
+  private totalBytes(): number {
+    return this.entryBytes() + this.coverageBytes();
+  }
+
+  /** Drop one thread's coverage frontier; its cached pages are unaffected. */
+  private dropCoverage(threadId: string): void {
+    this.coverages.delete(threadId);
+  }
+
+  /**
+   * Free at least `incomingBytes` of budget for a growing coverage
+   * frontier: coldest other coverages go first, then the oldest cached
+   * pages. The caller's own frontier and pages are the last resort, so
+   * when nothing can be freed the caller stops at the budget instead.
+   */
+  private makeCoverageRoom(protectedThread: string, incomingBytes: number): void {
+    while (this.totalBytes() + incomingBytes > MAX_BYTES) {
+      const victim = [...this.coverages.keys()].find((threadId) => threadId !== protectedThread);
+      if (victim) {
+        this.dropCoverage(victim);
+        continue;
+      }
+      const oldestKey = this.entries.keys().next().value as string | undefined;
+      if (oldestKey === undefined) return;
+      const entry = this.entries.get(oldestKey);
+      this.entries.delete(oldestKey);
+      if (entry) this.notePageLost(entry.threadId);
+    }
+  }
+
   private coverageState(threadId: string): CoverageState {
     let state = this.coverages.get(threadId);
     if (!state) {
-      state = { turns: new Map(), cursor: null, started: false, exhausted: false, chain: Promise.resolve() };
+      state = { turns: new Map(), bytes: 0, cursor: null, started: false, exhausted: false, chain: Promise.resolve() };
+      this.coverages.set(threadId, state);
+      this.touchThread(threadId);
+    } else {
+      // Frontier use is LRU use: keep the map order honest for budget
+      // eviction, which sacrifices the coldest coverage first.
+      this.coverages.delete(threadId);
       this.coverages.set(threadId, state);
       this.touchThread(threadId);
     }
@@ -183,8 +258,27 @@ export class ThreadHistoryCache {
           : null;
       state.started = true;
       if (!result) { state.exhausted = true; return; }
-      result.turns.forEach((turn) => state.turns.set(turn.id, turn));
-      state.cursor = result.turnsCursor;
+      // Retain the page's timings under the shared byte budget. When the
+      // budget runs out mid-page the frontier stops here instead of
+      // passing it: the cursor is not advanced past unretained turns, so
+      // the client's own chase can still start from it.
+      let consumed = true;
+      for (const turn of result.turns) {
+        const previous = state.turns.get(turn.id);
+        const delta = turnTimingBytes(turn) - (previous ? turnTimingBytes(previous) : 0);
+        if (delta > 0) {
+          this.makeCoverageRoom(threadId, delta);
+          if (this.totalBytes() + delta > MAX_BYTES) {
+            state.exhausted = true;
+            consumed = false;
+            break;
+          }
+        }
+        state.turns.set(turn.id, turn);
+        state.bytes += delta;
+        if (state.turns.size > COVERAGE_TURN_CAP) { state.exhausted = true; break; }
+      }
+      if (consumed) state.cursor = result.turnsCursor;
       if (result.turnsCursor === null || state.turns.size > COVERAGE_TURN_CAP) state.exhausted = true;
     });
     state.chain = task.catch(() => undefined);
@@ -243,7 +337,7 @@ export class ThreadHistoryCache {
     if (!startCursor) return;
     let state = this.prewarms.get(threadId);
     if (!state) {
-      state = { generation: 0, walking: false, done: false, failedAt: 0, idleWaiters: [] };
+      state = { generation: 0, walking: false, done: false, failedAt: 0, idleWaiters: [], lostWhileWalking: false };
       this.prewarms.set(threadId, state);
       this.touchThread(threadId);
     }
@@ -263,6 +357,9 @@ export class ThreadHistoryCache {
     if (state.walking || state.done) return;
     if (state.failedAt && Date.now() - state.failedAt < PREWARM_RETRY_BACKOFF_MS) return;
     const generation = state.generation;
+    // A fresh walk re-proves the chain from its start cursor; any loss
+    // recorded against the previous walk does not apply to it.
+    state.lostWhileWalking = false;
     state.walking = true;
     void this.walk(request, threadId, startCursor, state, generation)
       .catch(() => {
@@ -301,7 +398,10 @@ export class ThreadHistoryCache {
       cursor = page.nextCursor;
       if (cursor !== null) await sleep(PREWARM_PAGE_DELAY_MS);
     }
-    if (current() && cursor === null) state.done = true;
+    // A walk that lost a page to expiry/eviction on the way knows its
+    // chain has a hole: it must not claim done, so the next nudge walks
+    // again instead of trusting an incomplete cache.
+    if (current() && cursor === null && !state.lostWhileWalking) state.done = true;
   }
 
   private async waitForForegroundQuiet(current: () => boolean): Promise<void> {
@@ -335,13 +435,25 @@ export class ThreadHistoryCache {
   }
 
   private trim(protectedThread: string): void {
-    let bytes = [...this.entries.values()].reduce((sum, entry) => sum + entry.bytes, 0);
+    // The byte budget covers coverage timings as well as pages, so the
+    // running total starts from both.
+    let bytes = this.totalBytes();
     const lostThreads = new Set<string>();
     for (const [key, entry] of this.entries) {
       if (this.entries.size <= MAX_ENTRIES && bytes <= MAX_BYTES) break;
       this.entries.delete(key);
       bytes -= entry.bytes;
       lostThreads.add(entry.threadId);
+    }
+    // Pages alone are back inside the caps; if the total is still over
+    // budget, coverage frontiers hold the excess — sacrifice the coldest
+    // coverage (the protected thread's own only as the last resort).
+    while (bytes > MAX_BYTES) {
+      const coverageThreads = [...this.coverages.keys()];
+      const victim = coverageThreads.find((threadId) => threadId !== protectedThread) ?? coverageThreads[0];
+      if (!victim) break;
+      bytes -= this.coverages.get(victim)?.bytes ?? 0;
+      this.dropCoverage(victim);
     }
     // Evicted pages break any completed walk's coverage of their thread:
     // its prewarm must be allowed to run again.
@@ -360,6 +472,7 @@ export class ThreadHistoryCache {
       state.generation += 1;
       state.done = false;
       state.failedAt = 0;
+      state.lostWhileWalking = false;
       // The orphaned walk exits on its identity/generation check; free the
       // flag and any idle waiters so a later open can prewarm again
       // immediately, then remove the state itself: per-thread ancillary
@@ -396,16 +509,21 @@ export class ThreadHistoryCache {
       state.done = false;
       state.failedAt = 0;
       state.walking = false;
+      state.lostWhileWalking = false;
       state.idleWaiters.splice(0).forEach((resolve) => resolve());
     }
     this.prewarms.clear();
   }
 
-  /** Entry counts for tests and probes. */
-  stats(): { entries: number; threads: number; prewarming: number;
+  /** Entry counts and byte totals for tests and probes. */
+  stats(): { entries: number; entryBytes: number; coverageBytes: number; totalBytes: number;
+    threads: number; prewarming: number;
     coverages: number; prewarms: number; generations: number } {
     return {
       entries: this.entries.size,
+      entryBytes: this.entryBytes(),
+      coverageBytes: this.coverageBytes(),
+      totalBytes: this.totalBytes(),
       threads: this.threadAccess.size,
       prewarming: [...this.prewarms.values()].filter((state) => state.walking).length,
       coverages: this.coverages.size,

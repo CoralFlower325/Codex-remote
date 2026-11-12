@@ -137,6 +137,44 @@ describe('prepared earlier chain and compaction invalidation', () => {
     await prefetch.read('speculative', speculativeLoad);
     expect(speculativeLoad).toHaveBeenCalledTimes(2);
   });
+
+  it('compaction rejects a taken-but-uncommitted page and drops the device snapshot', async () => {
+    const chain = new EarlierPageChain();
+    const prefetch = new HistoryPrefetch();
+    const historyCache = new Map<string, ThreadHistoryPage>([['thread', page]]);
+    // The foreground takes the prepared page out of the chain; from here
+    // on, chain.clear() can no longer abort its promise.
+    const preparedPage = chain.prepare('cursor', async () => page);
+    const taken = chain.take('cursor');
+    expect(taken).toBe(preparedPage);
+    expect(chain.take('cursor')).toBeNull();
+    // The load that took the page captured the history revision, exactly
+    // like loadEarlierHistory does before awaiting the page; it commits
+    // only if that revision is still current when the page lands.
+    const historyRevision = { current: 7 };
+    const loadRevision = historyRevision.current;
+    const deviceSnapshots = new Map<string, ThreadHistoryPage>([['thread', page], ['other', page]]);
+    const removeDeviceSnapshot = vi.fn((threadId: string) => { deviceSnapshots.delete(threadId); });
+
+    invalidateAfterCompaction('thread', { prefetch, chain, historyCache }, {
+      advanceHistoryRevision: () => { historyRevision.current += 1; },
+      removeDeviceSnapshot
+    });
+
+    // The taken promise itself still resolves — it cannot be aborted —
+    // but the revision it was captured under is stale, so the simulated
+    // commit path (same check as loadEarlierHistory) rejects the page.
+    await expect(taken as Promise<ThreadHistoryPage>).resolves.toBe(page);
+    let committed = false;
+    if (historyRevision.current === loadRevision) committed = true;
+    expect(committed).toBe(false);
+    expect(historyRevision.current).toBe(loadRevision + 1);
+    // The offline device snapshot for the compacted thread is dropped;
+    // other threads keep theirs.
+    expect(removeDeviceSnapshot).toHaveBeenCalledWith('thread');
+    expect(deviceSnapshots.has('thread')).toBe(false);
+    expect(deviceSnapshots.get('other')).toBe(page);
+  });
 });
 
 describe('prefetch attempt dedup key', () => {
