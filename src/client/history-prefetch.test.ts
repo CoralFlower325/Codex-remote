@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { HistoryPrefetch, isReadableHistoryItem, prepareHistoryPage } from './history-prefetch';
+import {
+  EarlierPageChain, HistoryPrefetch, invalidateAfterCompaction, isReadableHistoryItem,
+  prefetchAttemptKey, prepareHistoryPage
+} from './history-prefetch';
 import type { ThreadHistoryPage } from './types';
 import type { TurnTiming } from '../shared/turn-timing';
 
@@ -80,5 +83,110 @@ describe('silent history preparation', () => {
     await expect(prepareHistoryPage(async () => page, readTurns, {}, 'cursor', controller.signal))
       .rejects.toMatchObject({ name: 'AbortError' });
     expect(readTurns).not.toHaveBeenCalled();
+  });
+});
+
+describe('prepared earlier chain and compaction invalidation', () => {
+  it('shares a prepared successor page and hands it out exactly once', async () => {
+    const chain = new EarlierPageChain();
+    const load = vi.fn(async () => page);
+    const first = chain.prepare('cursor', load);
+    expect(chain.prepare('cursor', load)).toBe(first);
+    await expect(first).resolves.toBe(page);
+    expect(chain.take('cursor')).toBe(first);
+    expect(chain.take('cursor')).toBeNull();
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts in-flight successor fills when the chain is cleared', async () => {
+    const chain = new EarlierPageChain();
+    let signal!: AbortSignal;
+    const pending = chain.prepare('cursor', (abortSignal) => {
+      signal = abortSignal;
+      return new Promise<ThreadHistoryPage>(() => {});
+    });
+    void pending;
+    chain.clear();
+    expect(signal.aborted).toBe(true);
+    expect(chain.take('cursor')).toBeNull();
+  });
+
+  it('compaction drops prepared pages and the cached latest page', async () => {
+    const prefetch = new HistoryPrefetch();
+    const chain = new EarlierPageChain();
+    const historyCache = new Map<string, ThreadHistoryPage>([['thread', page], ['other', page]]);
+    const speculativeLoad = vi.fn(async () => page);
+    await prefetch.read('speculative', speculativeLoad);
+    await chain.prepare('chained', async () => page);
+    let chainSignal!: AbortSignal;
+    const inFlight = chain.prepare('in-flight', (abortSignal) => {
+      chainSignal = abortSignal;
+      return new Promise<ThreadHistoryPage>(() => {});
+    });
+    void inFlight;
+
+    invalidateAfterCompaction('thread', { prefetch, chain, historyCache });
+
+    // The thread's cached latest page is gone; other threads keep theirs.
+    expect(historyCache.has('thread')).toBe(false);
+    expect(historyCache.get('other')).toBe(page);
+    // No prepared page survives: the chain is empty and in-flight fills abort.
+    expect(chain.take('chained')).toBeNull();
+    expect(chainSignal.aborted).toBe(true);
+    // The speculative page is re-read instead of serving the pre-compaction one.
+    await prefetch.read('speculative', speculativeLoad);
+    expect(speculativeLoad).toHaveBeenCalledTimes(2);
+  });
+
+  it('compaction rejects a taken-but-uncommitted page and drops the device snapshot', async () => {
+    const chain = new EarlierPageChain();
+    const prefetch = new HistoryPrefetch();
+    const historyCache = new Map<string, ThreadHistoryPage>([['thread', page]]);
+    // The foreground takes the prepared page out of the chain; from here
+    // on, chain.clear() can no longer abort its promise.
+    const preparedPage = chain.prepare('cursor', async () => page);
+    const taken = chain.take('cursor');
+    expect(taken).toBe(preparedPage);
+    expect(chain.take('cursor')).toBeNull();
+    // The load that took the page captured the history revision, exactly
+    // like loadEarlierHistory does before awaiting the page; it commits
+    // only if that revision is still current when the page lands.
+    const historyRevision = { current: 7 };
+    const loadRevision = historyRevision.current;
+    const deviceSnapshots = new Map<string, ThreadHistoryPage>([['thread', page], ['other', page]]);
+    const removeDeviceSnapshot = vi.fn((threadId: string) => { deviceSnapshots.delete(threadId); });
+
+    invalidateAfterCompaction('thread', { prefetch, chain, historyCache }, {
+      advanceHistoryRevision: () => { historyRevision.current += 1; },
+      removeDeviceSnapshot
+    });
+
+    // The taken promise itself still resolves — it cannot be aborted —
+    // but the revision it was captured under is stale, so the simulated
+    // commit path (same check as loadEarlierHistory) rejects the page.
+    await expect(taken as Promise<ThreadHistoryPage>).resolves.toBe(page);
+    let committed = false;
+    if (historyRevision.current === loadRevision) committed = true;
+    expect(committed).toBe(false);
+    expect(historyRevision.current).toBe(loadRevision + 1);
+    // The offline device snapshot for the compacted thread is dropped;
+    // other threads keep theirs.
+    expect(removeDeviceSnapshot).toHaveBeenCalledWith('thread');
+    expect(deviceSnapshots.has('thread')).toBe(false);
+    expect(deviceSnapshots.get('other')).toBe(page);
+  });
+});
+
+describe('prefetch attempt dedup key', () => {
+  it('distinguishes direction so an underfilled first prefetch cannot block upward deep prefetch', () => {
+    const settled = prefetchAttemptKey('thread', 'head-item', 40, 'settled');
+    const earlier = prefetchAttemptKey('thread', 'head-item', 40, 'earlier');
+    expect(earlier).not.toBe(settled);
+    // Same direction over the same head still dedups.
+    expect(prefetchAttemptKey('thread', 'head-item', 40, 'earlier')).toBe(earlier);
+    expect(prefetchAttemptKey('thread', 'head-item', 40, 'settled')).toBe(settled);
+    // And the head/count components still distinguish different windows.
+    expect(prefetchAttemptKey('thread', 'other-head', 40, 'earlier')).not.toBe(earlier);
+    expect(prefetchAttemptKey('thread', 'head-item', 41, 'earlier')).not.toBe(earlier);
   });
 });

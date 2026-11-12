@@ -9,6 +9,7 @@ import type { EventJournal } from './event-journal.js';
 import type { QuestionTracker } from './question-tracker.js';
 import type { MetadataReader } from './bootstrap.js';
 import type { WorkspaceSnapshots } from './workspace-snapshots.js';
+import type { ThreadHistoryCache } from './thread-history-cache.js';
 import type { EphemeralChats } from './ephemeral-chats.js';
 import type { PushNotifications } from './push-notifications.js';
 import type { QueueDispatcher } from './queue-dispatcher.js';
@@ -47,6 +48,7 @@ interface PeerServices {
   questionTracker: QuestionTracker;
   metadataReader: MetadataReader;
   workspaceSnapshots: Pick<WorkspaceSnapshots, 'action'>;
+  historyCache?: Pick<ThreadHistoryCache, 'action'>;
   ephemeralChats: EphemeralChats<RemotePeer>;
   pushNotifications: Pick<PushNotifications, 'watch'>;
   queueDispatcher: Pick<QueueDispatcher, 'track'>;
@@ -55,7 +57,7 @@ interface PeerServices {
 }
 
 export function createPeerHub({ codexBridge, eventJournal, questionTracker, metadataReader,
-  workspaceSnapshots, ephemeralChats, pushNotifications, queueDispatcher, sessionConnections, actionLedger }: PeerServices) {
+  workspaceSnapshots, historyCache, ephemeralChats, pushNotifications, queueDispatcher, sessionConnections, actionLedger }: PeerServices) {
   const clients = new Set<RemotePeer>();
   const synchronizedClients = new Set<RemotePeer>();
   const watchedThreads = new Map<RemotePeer, Set<string>>();
@@ -157,6 +159,7 @@ export function createPeerHub({ codexBridge, eventJournal, questionTracker, meta
           ? await actionLedger.execute(message.actionId, message.method, message.params ?? {}, dispatch)
           : await dispatch();
         workspaceSnapshots.action(message.method, message.params as Record<string, unknown> ?? {});
+        historyCache?.action(message.method, message.params as Record<string, unknown> ?? {});
         if (message.method === 'project/create') metadataReader.clear('project/list');
         if (/^thread\/(?:start|fork|resume|read)$/.test(message.method)) {
           const thread = (result as { thread?: {

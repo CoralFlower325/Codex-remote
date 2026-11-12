@@ -29,6 +29,8 @@ Release and privacy policy remains in AGENTS.md.
 - `src/shared/rpc-methods.ts`: the native RPC allowlist; classification never
   authorizes automatic action retries.
 - `src/server/thread-history.ts`: native bounded history pagination.
+- `src/server/thread-history-cache.ts`: bounded host cache and low-priority
+  background prewarm for completed history pages, with turn-timing coverage.
 - `src/shared/catalog.ts`: complete native catalog pagination, cursor-cycle
   detection, identity deduplication and atomic snapshots.
 - `src/server/office-preview-worker.ts`: bounded low-privilege LibreOffice
@@ -123,9 +125,18 @@ Release and privacy policy remains in AGENTS.md.
   Anchor a visible stable item, not a scrollHeight snapshot taken before a
   request. Restore before paint and on delayed layout changes, while updating
   the anchor when the reader scrolls during a request.
-  Prefetch at most one older page in memory within two viewport heights of the
-  top; insert within 64px of the top after the gesture and momentum have settled,
-  without replacing the visible stream. Recheck scroll idleness after network
+  Prepare older pages speculatively without inserting them: while the reader
+  is settled or the viewport is underfilled, hold at most one prepared page;
+  while upward travel intent is active, up to three prepared pages (the next
+  page plus two successors) may be held, within two viewport heights of the
+  top. Prepared pages are inserted only within 64px of the top after the
+  gesture and momentum have settled, one page per commit, without replacing
+  the visible stream. The host caches completed older history pages per
+  thread together with their turn timings, so preparing a page normally
+  costs one request and never chases the timings cursor on the client;
+  opening a thread prewarms that cache in the background at low priority,
+  foreground reads always win, and any native event or action that can
+  rewrite completed history drops the thread's cached pages. Recheck scroll idleness after network
   completion and retain the prepared page if the reader has left the top.
   After a page containing only folded activity, hidden reasoning or commentary,
   retain upward intent at the restored reading anchor and continue one bounded
