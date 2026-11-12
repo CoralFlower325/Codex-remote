@@ -135,7 +135,7 @@ formal release channel; see [the resume checkpoint](docs/manager-self-update-che
 Native Codex runtime errors remain visible in their turns, including available
 HTTP status codes and Codex retry state. See [runtime errors](docs/native-runtime-errors.md).
 
-- **Read long conversations.** Bounded history pages preserve reading position; execution bodies load when expanded.
+- **Read long conversations.** Bounded host caching and low-priority prewarm make older history reusable without competing with foreground reads; up to three pages are prepared while moving upward, and execution bodies load only when expanded.
 - **Add files and reopen tasks.** Use the composer **+** menu for images, PDF, Office, text or code files, folders and enabled plugins. Task URLs support refresh, sharing and browser history; see [file attachments and limits](docs/guide.md#file-attachments).
 - **Edit after stopping.** Edit the original message of the latest stopped turn, then confirm resending with its attachments and skills. Conversation history is replaced; existing file changes remain.
 - **Handle native questions.** Explicit answers work in main and temporary chats. Pending badges reflect observed questions; they are not a complete search of unread history.
