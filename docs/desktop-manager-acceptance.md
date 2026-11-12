@@ -1,7 +1,8 @@
 # Desktop Manager Acceptance
 
-Current batch and historical acceptance records, reconciled 2026-11-10.
-Stable manager 0.2.9 is published with Remote 0.2.31; self-update work remains
+Historical manager acceptance records, reconciled 2026-11-10. The current
+Remote release pairing is recorded in the [0.2.39 release acceptance](remote-0.2.39-release-acceptance.md).
+Stable manager 0.2.9 was published with Remote 0.2.31; self-update work remains
 paused as [0.2.0AU](manager-self-update-checkpoints.md). Historical records below
 retain their original scope and counts.
 

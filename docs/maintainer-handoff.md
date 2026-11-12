@@ -59,6 +59,10 @@ verified.
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.
 
+The 2026-11-12 documentation-only closeout keeps Remote at 0.2.39 and updates
+the README overviews to describe the completed-history cache, background prewarm
+and bounded upward prefetch. It does not rebuild or redeploy the application.
+
 Remote **0.2.39** adds a bounded host cache for completed history pages,
 low-priority background prewarm with foreground priority, up to three prepared
 pages during upward intent and server-attached turn timings. Cache invalidation
