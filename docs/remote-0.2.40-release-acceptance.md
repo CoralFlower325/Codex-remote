@@ -23,7 +23,26 @@
 
 ## 发布与部署
 
-待 CI、Release、分发、Windows 安装、国内静态资源和双入口核查完成后补录。
+- PR #42 合并提交为 `3391901a4a5f187a5112e44273f4a07bef161d1c`。首次运行包
+  发布发现三个文本文件的 Git blob 为 CRLF，签名摘要门禁在正式发布前阻断；
+  PR #43 只规范 `.env.example`、`package.json` 和 `package-lock.json` 为 LF。
+- PR #43 与最终 tag source 指向
+  `d939828213e99483b3a27494065d6c0a3f722e0b`。main CI `43432391478`、
+  Runtime Packages `43432431776` 和 Desktop Manager `43432428144` 通过；
+  管理器 package job 按计划跳过。
+- `v0.2.40` 为非草稿、非预发布 latest。Windows x64 归档 `12047334` 字节，
+  SHA-256 `957b76deb2aefd58049c990dcb0afdb4c6fee0779c565e13b37a17fd8ac4ccc4`；
+  macOS Apple Silicon 归档 `10122021` 字节，SHA-256
+  `1493efec0d060e2f6eafa1c2e9eb3ac9450227c903e3fa060d344df7a078dfae`。
+- 下载 Worker `096ad31f-4119-4c44-a3dd-7d1994e963ce` 的快照返回 v0.2.40；
+  `codex-remote-static` 版本为
+  `b7348e2d-e563-4c8e-8883-a11872311b9c`。
+- 本机通过签名运行包升级到 0.2.40，事务备份为
+  `output\manager-backup-14202311-57d9-477b-9251-65d25f6b4226`，没有未完成
+  update journal。
+- 本地、`codexwin.mmmmmzzzzzyyyyy.online` 与 `codexwin.73916482.xyz`
+  均返回版本 0.2.40、构建 `assets/index-nEP_tXGA.js` 和 ready / desktop
+  health。国内入口使用 Brotli，Cloudflare 边缘以 gzip/br 回退。
 
 ## 边界
 

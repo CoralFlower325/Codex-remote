@@ -47,13 +47,14 @@ mobile command menus; and manager 0.2.8 recognition of versioned Node runtime
 executables. An actual 0.2.29 to 0.2.30 upgrade then showed that the old selected
 control could leave the versioned Node process alive; the transaction rolled back
 safely, and 0.2.31 adds the manager-owned stop fallback before retrying.
-The four `v0.2.39` runtime assets, refreshed download snapshot, `codexwin` static
-edge and local Remote 0.2.39 installation are verified. Manager 0.2.9 is
-unchanged and remains on `v0.2.31`. Local and public `/version.json` identify
-`assets/index-CBVSN1lU.js`; `/health` is ready / desktop. Publication, Remote
-installation and edge deployment remain separate states. The release tag points
-to `80c82d576c47aadae08461310f4f212772c756ba`; main CI `43175971262`, Runtime
-Packages `43176056957` and the manager plan `43176056991` passed.
+The four `v0.2.40` runtime assets, refreshed download snapshot, domestic Caddy
+release, `codexwin` static edge and local Remote 0.2.40 installation are verified.
+Manager 0.2.9 is unchanged and remains on `v0.2.31`. Local, domestic and
+Cloudflare `/version.json` identify `assets/index-nEP_tXGA.js`; `/health` is
+ready / desktop. Publication, Remote installation and edge deployment remain
+separate states. The release tag points to
+`d939828213e99483b3a27494065d6c0a3f722e0b`; main CI `43432391478`, Runtime
+Packages `43432431776` and the manager plan `43432428144` passed.
 The live installation, manager selection and both Windows tasks now use
 `F:\AAAAcodexremote\codex-remote-main`; the old version-named directory and
 private experimental residue were removed after the runtime data migration was
