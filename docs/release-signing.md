@@ -25,9 +25,9 @@ macOS 应用代码签名和公证分别管理。
 私钥是 PEM 格式，通过 GitHub Actions 的 `RELEASE_SIGNING_KEY` secret 注入
 runtime 工作流。不要将其放入 `.env`、仓库、工作流文本、日志或公开附件。
 初始化脚本不会上传 secret。2026-11-08 经发布授权已配置 GitHub secret。
-正式 runtime 工作流 `43176056957` 在 Windows/macOS 均通过。
+正式 runtime 工作流 `43432431776` 在 Windows/macOS 均通过。
 两个正式清单已用固定公钥独立验签，签名提交均为
-`80c82d576c47aadae08461310f4f212772c756ba`，完整源码树与标签一致。
+`d939828213e99483b3a27494065d6c0a3f722e0b`，完整源码树与标签一致。
 
 正式发布顺序：
 

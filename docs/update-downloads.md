@@ -24,8 +24,8 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 本次不恢复 AU 功能；签名、公证和真实 Mac 登录环境验收仍是独立断点。
 未签名安装包可能需要按系统下载信誉或 Gatekeeper 流程确认。
 
-Remote 0.2.39 增加已完成历史页的主机缓存、低优先级后台预热、上滑三页预取和
-主机 timings 覆盖；运行包位于 `v0.2.39`。管理器 0.2.9 未变更，安装包继续位于
+Remote 0.2.40 增加非 Cloudflare 多公网入口、Origin 403 与 Brotli 静态发布；
+运行包位于 `v0.2.40`。管理器 0.2.9 未变更，安装包继续位于
 `v0.2.31`。
 运行包 Ed25519 清单签名已启用，与仍暂停的 AU 和 macOS 应用签名分别管理。
 
@@ -81,6 +81,28 @@ Remote 0.2.16 与管理器 0.2.2 不再将已等于目标版本的文件误判�
 详见[管理器](desktop-manager.zh-CN.md)与[网页后端更新](web-backend-update.md)。
 
 ## 维护分发服务
+
+2026-11-13 已完成 Remote **0.2.40** 的分发、国内直连与 `codexwin` 部署收尾。
+正式标签为 `v0.2.40`，发布提交
+`d939828213e99483b3a27494065d6c0a3f722e0b`。main CI `43432391478`、
+Runtime Packages `43432431776` 和 Desktop Manager `43432428144` 通过；
+管理器未改版，package job 按门禁跳过。首次标签发布在签名前发现三个文本文件
+仍为 CRLF，运行包被摘要校验正确阻断；修复 PR #43 只规范换行后重新创建未发布
+标签并重新通过全部门禁。
+
+下载 Worker 版本 `096ad31f-4119-4c44-a3dd-7d1994e963ce` 已刷新四附件快照，
+`/releases/latest` 返回 `v0.2.40`。Windows x64 运行包为 `12047334` 字节，
+SHA-256 `957b76deb2aefd58049c990dcb0afdb4c6fee0779c565e13b37a17fd8ac4ccc4`；
+macOS Apple Silicon 运行包为 `10122021` 字节，SHA-256
+`1493efec0d060e2f6eafa1c2e9eb3ac9450227c903e3fa060d344df7a078dfae`。
+
+本机 Remote 已从 0.2.39 通过签名预构建运行包升级到 0.2.40，事务备份为
+`output\manager-backup-14202311-57d9-477b-9251-65d25f6b4226`；没有未完成
+update journal。本地、国内 HTTPS 与 `codexwin` 的 `/version.json` 均为 0.2.40，
+构建标识 `assets/index-nEP_tXGA.js`，`/health` 为 ready / desktop。
+静态边缘 Worker 版本为 `b7348e2d-e563-4c8e-8883-a11872311b9c`；国内 Caddy
+从 `releases/0.2.40` 提供 Brotli 附属文件，Cloudflare 边缘继续作为回退。
+服务、Cloudflare 隧道和国内 SSH 隧道均由隐藏计划任务运行，Desktop 保持运行。
 
 2026-11-12 已完成 Remote **0.2.39** 的分发与 `codexwin` 部署收尾。正式标签为
 `v0.2.39`，发布提交 `80c82d576c47aadae08461310f4f212772c756ba`。main CI
