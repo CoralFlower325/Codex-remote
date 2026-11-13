@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-11-12.
+Last reconciled: 2026-11-13.
 
 ## Authority
 
@@ -62,6 +62,22 @@ acceptance as separate states. Never start another App Server.
 The 2026-11-12 documentation-only closeout keeps Remote at 0.2.39 and updates
 the README overviews to describe the completed-history cache, background prewarm
 and bounded upward prefetch. It does not rebuild or redeploy the application.
+
+On 2026-11-13, the previously paused Hangzhou domestic entry was activated after
+ICP registration completed. Caddy terminates public HTTPS and proxies same-origin
+API and WebSocket traffic to a loopback reverse-SSH port; the hidden Windows task
+`CodexRemoteDomesticTunnel` restores that tunnel after process or task restarts.
+The domestic static copy serves Remote 0.2.39 asset
+`assets/index-CBVSN1lU.js`, while the existing Cloudflare `codexwin` entry remains
+live. Seven Windows-side samples measured a 222 ms median TTFB through the
+domestic entry and 1785 ms through Cloudflare, but this is not physical-device or
+long-duration network acceptance. External static hosting remains a separate
+deployment state: every future release must generate Brotli sidecars, copy its
+`dist/client` directory to a new server release directory and atomically update
+`current`. Caddy serves those sidecars with zstd/gzip fallback. On a synthetic
+390x844, 1.6 Mbps, 150 ms RTT and 4x CPU profile, Brotli reduced critical
+transfer from 108,214 to 86,575 bytes, FCP from 2.06 to 1.95 seconds and LCP from
+2.55 to 2.42 seconds. These are emulation results, not physical-device acceptance.
 
 Remote **0.2.39** adds a bounded host cache for completed history pages,
 low-priority background prewarm with foreground priority, up to three prepared
