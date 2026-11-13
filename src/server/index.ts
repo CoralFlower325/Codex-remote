@@ -49,6 +49,7 @@ import { updateClientRouter } from './update-client-router.js';
 import { publicClientRouter } from './public-client-router.js';
 import { localSetupRequest, LoginBudget } from './request-security.js';
 import { apiBoundary } from './api-boundary.js';
+import { assertTrustedOrigin, UntrustedOriginError } from './origin-policy.js';
 import { ActionLedger } from './action-ledger.js';
 import { installRotatingConsole } from './logging.js';
 
@@ -118,7 +119,7 @@ app.disable('x-powered-by');
 app.use(compression());
 app.use('/api', apiBoundary(requireAuth));
 app.use('/api/connection', requireAuth, (req, _res, next) => {
-  assertTrustedOrigin(req);
+  assertTrustedOrigin(req.get('origin'), allowedOrigins());
   next();
 }, express.json({ limit: '100mb' }), httpConnections({
   session: req => readSessionCookie(req.headers.cookie)!.sid,
@@ -149,13 +150,6 @@ function allowedOrigins(): string[] {
     'http://localhost:5173'
   ];
   return [...new Set([...(origin ? [origin] : []), ...config.allowedOrigins, ...defaults])];
-}
-
-function assertTrustedOrigin(req: Request): void {
-  const origin = req.get('origin');
-  if (!origin) return;
-  if (allowedOrigins().includes(origin)) return;
-  throw new Error('Untrusted request origin.');
 }
 
 function requireAuth(req: Request, res: Response, next: NextFunction): void {
@@ -200,7 +194,7 @@ app.get(
 app.post(
   '/api/auth/setup',
   asyncRoute(async (req, res) => {
-    assertTrustedOrigin(req);
+    assertTrustedOrigin(req.get('origin'), allowedOrigins());
     if (isPasswordConfigured()) {
       res.status(409).json({ error: 'Password is already configured. Use the local CLI to reset it.' });
       return;
@@ -224,7 +218,7 @@ app.post(
 app.post(
   '/api/auth/login',
   asyncRoute(async (req, res) => {
-    assertTrustedOrigin(req);
+    assertTrustedOrigin(req.get('origin'), allowedOrigins());
     if (!isPasswordConfigured()) {
       res.status(409).json({ error: 'Password is not configured yet.' });
       return;
@@ -255,7 +249,7 @@ app.post(
 app.post(
   '/api/auth/logout',
   asyncRoute(async (req, res) => {
-    assertTrustedOrigin(req);
+    assertTrustedOrigin(req.get('origin'), allowedOrigins());
     revokeSessionCookie(req.headers.cookie);
     res.setHeader('Set-Cookie', clearSessionCookie(isSecureRequest(req)));
     res.json({ ok: true });
@@ -301,18 +295,23 @@ app.use('/api/thread/dock', threadDockRouter(requireAuth, (method, params) => co
 app.use('/api/thread/item', historyItemRouter(requireAuth, (method, params) => codexBridge.request(method, params)));
 
 app.use('/api/notifications', requireAuth, (req, _res, next) => {
-  assertTrustedOrigin(req);
+  assertTrustedOrigin(req.get('origin'), allowedOrigins());
   next();
 }, pushNotifications.router());
 
 app.use('/api/automations', requireAuth, (req, _res, next) => {
-  assertTrustedOrigin(req);
+  assertTrustedOrigin(req.get('origin'), allowedOrigins());
   next();
 }, automations.router());
 
 app.get('/api/connections', requireAuth, (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ publicOrigin: config.publicOrigin, lanOrigins: lanServer?.listening ? config.lanOrigins : [], lanWarning });
+  res.json({
+    publicOrigin: config.publicOrigin,
+    publicOrigins: config.publicOrigins,
+    lanOrigins: lanServer?.listening ? config.lanOrigins : [],
+    lanWarning
+  });
 });
 
 app.get(
@@ -474,8 +473,8 @@ if (fs.existsSync(productionClientDir)) {
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message = error instanceof Error ? error.message : String(error);
-  console.error('[request]', message);
-  res.status(500).json({ error: message });
+  if (!(error instanceof UntrustedOriginError)) console.error('[request]', message);
+  res.status(error instanceof UntrustedOriginError ? error.status : 500).json({ error: message });
 });
 
 lanServer?.on('error', error => { console.error('[LAN]', error.message); });

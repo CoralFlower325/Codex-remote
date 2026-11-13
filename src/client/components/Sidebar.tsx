@@ -52,7 +52,11 @@ export function Sidebar({
 }: SidebarProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
-  const [connections, setConnections] = useState<{ publicOrigin: string | null; lanOrigins: string[] } | null>(null);
+  const [connections, setConnections] = useState<{
+    publicOrigin: string | null;
+    publicOrigins?: string[];
+    lanOrigins: string[];
+  } | null>(null);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -97,7 +101,7 @@ export function Sidebar({
     if (!accountOpen) return;
     footerRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     const controller = new AbortController();
-    void api<{ publicOrigin: string | null; lanOrigins: string[] }>('/api/connections', {
+    void api<{ publicOrigin: string | null; publicOrigins?: string[]; lanOrigins: string[] }>('/api/connections', {
       signal: controller.signal, cache: 'no-store'
     }).then(setConnections).catch(() => undefined);
     const dismiss = (event: PointerEvent) => {
@@ -213,8 +217,17 @@ export function Sidebar({
               setAccountOpen(false);
               void remote.toggleArchived().catch((error: Error) => remote.setLastError(error.message));
             }}><Archive size={15} /><span>{remote.showArchived ? '返回所有任务' : '已归档任务'}</span></button>
-            {connections?.publicOrigin && location.origin !== connections.publicOrigin &&
-              <a className="connection-link" href={connections.publicOrigin}>公网连接</a>}
+            {(connections?.publicOrigins?.length
+              ? connections.publicOrigins
+              : connections?.publicOrigin ? [connections.publicOrigin] : [])
+              .filter(origin => origin !== location.origin)
+              .map(origin => (
+                <a className="connection-link" href={origin} key={origin}>
+                  {origin === connections?.publicOrigin
+                    ? '公网连接'
+                    : `公网备用 · ${new URL(origin).host}`}
+                </a>
+              ))}
             {connections?.lanOrigins.filter(origin => origin !== location.origin).map(origin =>
               <a className="connection-link" href={origin} key={origin}>局域网 · {new URL(origin).host}</a>)}
             <div className="account-menu-separator" />

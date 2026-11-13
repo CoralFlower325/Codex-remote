@@ -11,7 +11,7 @@ See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
-Remote 0.2.39 pairs with stable manager 0.2.9, using manual installer upgrades.
+Remote 0.2.40 pairs with stable manager 0.2.9, using manual installer upgrades.
 Install 0.2.9 over the old app, select the same host root and retry the update.
 Updating Remote cannot change the old manager's bundled updater.
 Manager self-update is preserved on the paused 0.2.0AU development line;
@@ -191,7 +191,7 @@ Phone / computer browser
         |
         | HTTPS + WebSocket / HTTP events
         v
-Cloudflare Tunnel (optional)
+Cloudflare Tunnel or self-hosted HTTPS reverse proxy (optional)
         |
         v
 Local Node.js server (127.0.0.1:4545)
@@ -287,7 +287,35 @@ diagnostics.
 
 The included `scripts/cloudflared-tunnel.sh` is a legacy, interactive, locally managed setup. It writes `~/.cloudflared/config.yml` and installs a system service, requiring `sudo`. Review it before use if cloudflared is already configured. This path has not been revalidated on macOS in this release.
 
-Another HTTPS reverse proxy is possible when it supports WebSocket upgrades and forwards to the local server. Set `PUBLIC_ORIGIN` and `ALLOWED_ORIGINS` accordingly. Do not expose the desktop debug port.
+### Non-Cloudflare HTTPS reverse proxy
+
+Another HTTPS reverse proxy is possible when it supports WebSocket upgrades and forwards to the local server. `deploy/caddy/Caddyfile.example` demonstrates Caddy terminating public TLS, serving static assets with Brotli, and proxying `/api`, `/ws` and `/health` to a loopback-only tunnel port.
+
+Build and generate the Brotli sidecars, then publish the complete `dist/client` tree as one immutable version:
+
+```bash
+npm run build
+npm run precompress:client
+```
+
+For example, Windows can reverse-forward a loopback port from the edge server:
+
+```powershell
+ssh -N -i C:\path\to\edge_key `
+  -o BatchMode=yes -o ExitOnForwardFailure=yes `
+  -o ServerAliveInterval=30 -o ServerAliveCountMax=3 `
+  -R 127.0.0.1:14545:127.0.0.1:4545 codexremote@edge.example.com
+```
+
+Keep that SSH process in an independent windowless scheduled task if desired. It is not a Cloudflare Tunnel and is not adopted by the existing Windows start/stop controls. Restart Remote after configuring:
+
+```dotenv
+PUBLIC_ORIGIN=https://codex.example.com
+PUBLIC_ORIGINS=https://codex.example.com,https://backup.example.com
+ALLOWED_ORIGINS=https://codex.example.com,https://backup.example.com
+```
+
+The connection menu lists each configured public origin other than the current page. The reverse proxy must preserve WebSocket upgrades and forward the real `X-Forwarded-For` and `X-Forwarded-Proto`; configure `TRUST_PROXY` when the proxy is not loopback. Never proxy the desktop debug endpoint or App Server.
 
 ## Configuration
 
@@ -309,8 +337,9 @@ cp .env.example .env
 | --- | --- | --- |
 | `HOST` | `127.0.0.1` | Local web listener |
 | `PORT` | `4545` | Web server port |
-| `PUBLIC_ORIGIN` | Empty | Final HTTPS origin |
-| `ALLOWED_ORIGINS` | Empty | Additional comma-separated browser origins |
+| `PUBLIC_ORIGIN` | Empty | Canonical public HTTPS origin |
+| `PUBLIC_ORIGINS` | Empty | Optional comma-separated public entries; `PUBLIC_ORIGIN` is first when set |
+| `ALLOWED_ORIGINS` | Empty | Additional trusted origins that need not appear in the connection menu |
 | `CODEX_BINARY` | Auto-detected | Explicit path to the bundled Codex CLI |
 | `CODEX_HOME` | `~/.codex` | Codex state and configuration directory |
 | `CODEX_WORKDIR` | Home directory | Default working directory |
@@ -369,7 +398,7 @@ and never triggers automatic resubmission; check the conversation before proceed
 - **Automations.** Manage Desktop's native tasks from the sidebar: create scheduled chats, edit, pause, delete, and open recent run links. Existing-chat heartbeats retain their native ownership; manual execution requires Desktop.
 - **Turn clock times.** Every turn shows its native start and end time (HH:MM:SS) beside the processed duration; running turns show only the start.
 - **Faster repeat entry.** Previously verified devices can open the empty workspace while login is checked in the background; tasks and chats still require server authentication.
-- **Self-hosted access.** Password login, signed HTTP-only sessions, local-only initial setup, and optional Cloudflare Tunnel.
+- **Self-hosted access.** Password login, signed HTTP-only sessions, local-only initial setup, and optional Cloudflare Tunnel or self-hosted HTTPS reverse proxy.
 - **Windows and macOS controls.** Double-click `.cmd` files on Windows or `.command` files on macOS to start and stop Remote.
 
 ## Responsive Layout

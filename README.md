@@ -103,7 +103,7 @@ Open **http://127.0.0.1:4545** and sign in. `/health` must report `codex: ready`
 
 ### 3. Use It From Another Device
 
-Publish the protected web origin through an **HTTPS tunnel or reverse proxy**. The Windows Cloudflare helper configures a stable hostname; macOS tunnel setup has separate requirements.
+Publish the protected web origin through an **HTTPS tunnel or reverse proxy**. Besides the Windows Cloudflare helper, a direct Caddy-style HTTPS proxy can be used with multiple public origins; macOS tunnel setup has separate requirements.
 
 [Public access setup](docs/guide.md#public-access) · [Windows start/stop](docs/guide.md#windows-start--stop) · [macOS start/stop](docs/guide.md#macos-start--stop)
 
@@ -119,7 +119,7 @@ keeps it in the tray. Releases provide unsigned installers. Live macOS GUI accep
 remains pending. Manager 0.2.9 also uses a bundled windowless stop helper when an
 older installation cannot confirm its versioned Node service has stopped.
 
-Remote **0.2.39** pairs with manager **0.2.9**.
+Remote **0.2.40** pairs with manager **0.2.9**.
 Actual installed versions remain separately recorded in each deployment's acceptance. Install the manager
 manually over 0.2.0, select the same host directory and retry; updating Remote
 cannot replace the old manager's bundled updater. [Manager downloads](docs/update-downloads.md)

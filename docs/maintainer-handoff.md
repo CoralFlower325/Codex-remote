@@ -15,8 +15,10 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.39** / manager **0.2.9**, tag
-`v0.2.39`.
+The current published release is Remote **0.2.40** / manager **0.2.9**, tag
+`v0.2.40`.
+The [0.2.40 release acceptance](remote-0.2.40-release-acceptance.md) records the
+non-Cloudflare multi-origin, Caddy/Brotli and direct-deployment batch.
 The [0.2.39 release acceptance](remote-0.2.39-release-acceptance.md) records the
 history cache, prewarm, prefetch, signed runtime, distribution, edge and Windows
 installation. The [0.2.38 release acceptance](remote-0.2.38-release-acceptance.md)
@@ -79,6 +81,10 @@ deployment state: every future release must generate Brotli sidecars, copy its
 transfer from 108,214 to 86,575 bytes, FCP from 2.06 to 1.95 seconds and LCP from
 2.55 to 2.42 seconds. These are emulation results, not physical-device acceptance.
 
+Remote **0.2.40** adds explicit support for non-Cloudflare public deployment:
+multiple validated public origins can be declared, the connection menu exposes
+canonical and backup entries, untrusted browser origins return 403, and a Caddy
+example plus Brotli precompression command keep domestic static delivery fast.
 Remote **0.2.39** adds a bounded host cache for completed history pages,
 low-priority background prewarm with foreground priority, up to three prepared
 pages during upward intent and server-attached turn timings. Cache invalidation
@@ -144,7 +150,7 @@ and real PTY lifecycle tests pass. Platform output uses bounded rotating logs;
 macOS controls use the same-PID background wrapper and retain ownership checks.
 Local synthetic checks do not establish signed-in macOS service behavior.
 
-The current implementation through `v0.2.39` adds complete cursor-following
+The current implementation through `v0.2.40` adds complete cursor-following
 model/project catalogs, explicit reasoning inherit/default semantics, ordered
 settings acknowledgements, isolated Office conversion workers, bounded SSE
 backpressure, a supervisor-owned dynamic tunnel metrics port, explicit client

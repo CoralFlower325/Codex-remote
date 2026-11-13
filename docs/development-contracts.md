@@ -31,6 +31,8 @@ Release and privacy policy remains in AGENTS.md.
 - `src/server/thread-history.ts`: native bounded history pagination.
 - `src/server/thread-history-cache.ts`: bounded host cache and low-priority
   background prewarm for completed history pages, with turn-timing coverage.
+- `src/server/origin-policy.ts`: canonical HTTP(S) origin parsing, multi-public
+  origin resolution and the explicit 403 policy for untrusted browser origins.
 - `src/shared/catalog.ts`: complete native catalog pagination, cursor-cycle
   detection, identity deduplication and atomic snapshots.
 - `src/server/office-preview-worker.ts`: bounded low-privilege LibreOffice
@@ -199,7 +201,13 @@ Release and privacy policy remains in AGENTS.md.
   and native snapshot fallback. Never resubmit uncertain model requests.
 - PWA and edge caches contain public static assets only. Do not cache API,
   conversations, local images, approvals, or terminal output. Edge routes must
-  leave /api, /ws and /health on the authenticated origin.
+  leave /api, /ws and /health on the authenticated origin. Non-Cloudflare
+  deployments may publish one canonical `PUBLIC_ORIGIN` plus additional
+  `PUBLIC_ORIGINS`; only explicit HTTP(S) origins are trusted, and untrusted
+  browser origins fail with 403 rather than a password or server error. Preserve
+  WebSocket upgrades and forwarded client protocol/address through the proxy.
+  Static releases intended for Caddy or another precompressed-file server must
+  generate Brotli sidecars for text assets while retaining zstd/gzip fallback.
 - Use scripts/acceptance-viewports.json for responsive acceptance, including
   402x874 and 874x402 CSS viewports at DPR 3. Physical-phone networks and
   signed-in macOS integration require separate live acceptance.
