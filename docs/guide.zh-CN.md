@@ -7,7 +7,7 @@ Remote 保留切换会话时的待发图片与技能草稿，输入框上方提�
 详见[输入草稿与布局验收](composer-layout-acceptance.md)。
 Remote 将晚到的原生事件留在所属轮次，随后原生读取校准不重复条目，
 保留消息内容和原生时间锚点。
-详见[原生聊天顺序](native-history-order.md)。Remote 0.2.39 配套正式管理器 0.2.9，
+详见[原生聊天顺序](native-history-order.md)。Remote 0.2.40 配套正式管理器 0.2.9，
 通过安装包手动覆盖旧管理器，选择原主机目录后重试更新。单独更新 Remote
 不能修改旧管理器内置的更新器。管理器自更新保存为暂停的 0.2.0AU 开发线，
 详见[开发断点](manager-self-update-checkpoints.md)。
@@ -177,7 +177,7 @@ curl --fail http://127.0.0.1:4545/health
         |
         | HTTPS + WebSocket / HTTP events
         v
-Cloudflare Tunnel（可选）
+Cloudflare Tunnel 或自托管 HTTPS 反向代理（可选）
         |
         v
 本地 Node.js 服务（127.0.0.1:4545）
@@ -269,7 +269,35 @@ npm run tunnel:windows -- -PublicHost codex.example.com
 
 `scripts/cloudflared-tunnel.sh` 是保留的交互式本地管理方案，会写入 `~/.cloudflared/config.yml` 并安装系统服务，需要 `sudo`。已有 cloudflared 配置时请先检查脚本。本次发布未重新完成该 macOS 路径的实机验收。
 
-也可使用支持 WebSocket 升级的 HTTPS 反向代理，将请求转发到本地服务，并正确设置 `PUBLIC_ORIGIN`、`ALLOWED_ORIGINS`。不要公开桌面调试端口。
+### 非 Cloudflare HTTPS 反向代理
+
+也可使用支持 WebSocket 升级的 HTTPS 反向代理，将请求转发到本地服务。`deploy/caddy/Caddyfile.example` 提供 Caddy 示例：Caddy 负责公网 TLS、静态资源和 Brotli，`/api`、`/ws`、`/health` 转发到仅回环可达的隧道端口。
+
+构建后生成 Brotli 附属文件，再把整个 `dist/client` 目录作为同一版本静态资源发布：
+
+```bash
+npm run build
+npm run precompress:client
+```
+
+例如 Windows 可以通过反向 SSH 把边缘服务器的回环端口接到本机：
+
+```powershell
+ssh -N -i C:\path\to\edge_key `
+  -o BatchMode=yes -o ExitOnForwardFailure=yes `
+  -o ServerAliveInterval=30 -o ServerAliveCountMax=3 `
+  -R 127.0.0.1:14545:127.0.0.1:4545 codexremote@edge.example.com
+```
+
+该 SSH 进程可以使用独立、无窗口的计划任务维护；它不是 Cloudflare Tunnel，也不由现有 Windows 启停脚本识别。修改 `.env` 后重启 Remote：
+
+```dotenv
+PUBLIC_ORIGIN=https://codex.example.com
+PUBLIC_ORIGINS=https://codex.example.com,https://backup.example.com
+ALLOWED_ORIGINS=https://codex.example.com,https://backup.example.com
+```
+
+连接菜单会列出当前来源之外的公网入口。反向代理必须保留 WebSocket 升级并传入真实的 `X-Forwarded-For` 与 `X-Forwarded-Proto`；代理不在回环地址时还要配置 `TRUST_PROXY`。不要让代理访问桌面调试端口或 App Server。
 
 ## 配置
 
@@ -291,8 +319,9 @@ cp .env.example .env
 | --- | --- | --- |
 | `HOST` | `127.0.0.1` | 本地监听地址 |
 | `PORT` | `4545` | 网页服务端口 |
-| `PUBLIC_ORIGIN` | 空 | 最终 HTTPS 来源 |
-| `ALLOWED_ORIGINS` | 空 | 额外允许的浏览器来源，逗号分隔 |
+| `PUBLIC_ORIGIN` | 空 | 规范公网 HTTPS 来源 |
+| `PUBLIC_ORIGINS` | 空 | 可选的多公网入口，逗号分隔；空时以 `PUBLIC_ORIGIN` 为首项 |
+| `ALLOWED_ORIGINS` | 空 | 额外信任但不一定展示的浏览器来源，逗号分隔 |
 | `CODEX_BINARY` | 自动发现 | 显式指定内置 Codex CLI 路径 |
 | `CODEX_HOME` | `~/.codex` | Codex 状态和配置目录 |
 | `CODEX_WORKDIR` | 用户主目录 | 默认工作目录 |
@@ -349,7 +378,7 @@ Windows 会依次探测应用包、独立安装目录和 `PATH` 中的 CLI；mac
 - **自动任务**：侧栏管理 Desktop 原生任务，可新建定时聊天、编辑、暂停、删除并查看最近运行会话；继续现有聊天的任务保留原生归属，手动立即运行需在 Desktop 操作。
 - **回合时刻**：每轮对话在用时旁显示原生的开始与结束时刻（时:分:秒），运行中只显示开始时刻。
 - **快速再次进入**：已成功验证的设备可先打开空白工作区，后台检查登录；任务和聊天仍需服务端鉴权。
-- **自托管访问**：密码登录、签名 HTTP-only 会话、本机初始化，以及可选的 Cloudflare Tunnel。
+- **自托管访问**：密码登录、签名 HTTP-only 会话、本机初始化，以及可选的 Cloudflare Tunnel 或自托管 HTTPS 反向代理。
 - **Windows 与 macOS 双击开关**：Windows 使用 `.cmd`，macOS 使用 `.command` 开启或关闭远控。
 
 ## 响应式布局

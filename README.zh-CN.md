@@ -100,7 +100,7 @@ cd Codex-remote
 
 ### 3. 从另一台设备访问
 
-通过 **HTTPS 隧道或反向代理**公开受保护的网页入口。Windows Cloudflare 助手可配置固定域名；macOS 隧道有独立的安装要求。
+通过 **HTTPS 隧道或反向代理**公开受保护的网页入口。除 Windows Cloudflare 助手外，也可直接使用 Caddy 等国内 HTTPS 反向代理，并配置多个公网来源；macOS 隧道有独立的安装要求。
 
 [公网访问配置](docs/guide.zh-CN.md#公网访问) · [Windows 开关](docs/guide.zh-CN.md#windows-开启与关闭) · [macOS 开关](docs/guide.zh-CN.md#macos-开启与关闭)
 
@@ -114,7 +114,7 @@ Windows 常驻右下通知区域，macOS 常驻顶部菜单栏。
 macOS GUI 的实机验收仍待完成。管理器 0.2.9 在旧安装无法确认版本化 Node
 服务已停止时，会使用随包的无窗口停止助手完成升级停服。
 
-Remote **0.2.39** 为当前版本，配套管理器 **0.2.9**。
+Remote **0.2.40** 为当前版本，配套管理器 **0.2.9**。
 各主机实际安装版本以部署验收记录为准。请手动下载安装包覆盖旧管理器，
 选择原主机目录重试；单独更新 Remote 不能替换旧管理器内置的更新器。
 [管理器下载](docs/update-downloads.md)优先走项目自有公共分发，另有官方 GitHub 备用地址。

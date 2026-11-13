@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.40', changes: [
+    '新增非 Cloudflare 公网入口支持：`PUBLIC_ORIGINS` 可声明多个公网来源，连接菜单会在当前来源之外列出规范入口和备用入口；`ALLOWED_ORIGINS` 继续用于额外信任来源，非法或带路径、查询、凭据的 Origin 会明确拒绝。',
+    '非可信 Origin 的登录、设置和实时连接错误改为明确的 403 响应，不再冒用密码错误或服务端 500 提示。',
+    '新增 Caddy 反向代理示例和 Brotli 静态预压缩命令；国内 HTTPS 入口可与 Cloudflare 入口并存，静态资源继续使用版本化长缓存与不可变资源策略。',
+    '管理器 0.2.9 无变更。'
+  ] },
   { version: '0.2.39', changes: [
     '完成历史读取的主机侧缓存：已完成的较早历史页按线程和游标复用，并在原生回滚、压缩、归档、删除等改写事件后整线程失效；缓存按 600 条目、48 MiB、16 个线程和 30 分钟 TTL 有界。',
     '打开会话后以低优先级后台预热历史，前台读取始终优先；上滑意图期间客户端最多准备三页，静止或内容不足一屏时仍只准备一页，预备页不投机插入，手势与惯性结束后仍按原有锚点逐页提交。',
