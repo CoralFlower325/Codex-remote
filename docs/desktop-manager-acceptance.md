@@ -1,10 +1,24 @@
 # Desktop Manager Acceptance
 
-Historical manager acceptance records, reconciled 2026-11-10. The current
-Remote release pairing is recorded in the [0.2.40 release acceptance](remote-0.2.40-release-acceptance.md).
-Stable manager 0.2.9 was published with Remote 0.2.31; self-update work remains
+Historical manager acceptance records, reconciled 2026-11-19. The current
+Remote release pairing is recorded in the [0.2.41 release acceptance](remote-0.2.41-release-acceptance.md).
+Manager 0.2.10 adds multi-public-origin health and explicit Windows SSH
+reverse-tunnel management; self-update work remains
 paused as [0.2.0AU](manager-self-update-checkpoints.md). Historical records below
 retain their original scope and counts.
+
+## Manager 0.2.10 Non-Cloudflare And SSH Tunnel
+
+The manager reads `PUBLIC_ORIGIN` and `PUBLIC_ORIGINS`, probes every `/health`
+route independently, and distinguishes an HTTP 502 static-shell/API split from
+DNS, timeout and unexpected-origin failures. A Windows SSH tunnel is adopted or
+created only with explicit `SSH_TUNNEL_MANAGED=1` and matching host/user/key/port
+configuration. Repair validates the existing task before replacing it, stores
+only the private-key path, and runs a hidden supervisor that restarts SSH after
+any exit. Start, Stop, Restart, repair and update paths include the managed tunnel.
+Unit and Electron smoke checks cover parsing, rejected settings, multiple entries,
+the 502 diagnosis, repair confirmation and log redaction. Live deployment and the
+controlled SSH-process restart drill are recorded in the 0.2.41 acceptance.
 
 ## Manager 0.2.9 Upgrade Stop Fallback
 

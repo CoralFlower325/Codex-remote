@@ -11,8 +11,8 @@ See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
-Remote 0.2.40 pairs with stable manager 0.2.9, using manual installer upgrades.
-Install 0.2.9 over the old app, select the same host root and retry the update.
+Remote 0.2.41 pairs with stable manager 0.2.10, using manual installer upgrades.
+Install 0.2.10 over the old app, select the same host root and retry the update.
 Updating Remote cannot change the old manager's bundled updater.
 Manager self-update is preserved on the paused 0.2.0AU development line;
 see [the checkpoint](manager-self-update-checkpoints.md).
@@ -84,7 +84,7 @@ Detailed setup, everyday controls and operating limits. Screenshots use syntheti
 | Runtime | Node.js **22.19 or later**, with npm |
 | Codex | Installed and authenticated Codex Desktop / compatible bundled CLI |
 | Desktop sync | Loopback Desktop debug endpoint; Windows/macOS discover the current trusted process port, with `9229` as fallback |
-| Public access | Optional `cloudflared`; a Cloudflare-managed hostname for the Windows helper |
+| Public access | Optional Cloudflare, or a Windows SSH reverse tunnel managed by Desktop Manager |
 | Windows tunnel helper | PowerShell 7 and an authenticated `cf` CLI |
 
 This application uses internal desktop interfaces. Compatibility may change when Codex Desktop updates. Linux desktop integration is not validated.
@@ -307,13 +307,34 @@ ssh -N -i C:\path\to\edge_key `
   -R 127.0.0.1:14545:127.0.0.1:4545 codexremote@edge.example.com
 ```
 
-Keep that SSH process in an independent windowless scheduled task if desired. It is not a Cloudflare Tunnel and is not adopted by the existing Windows start/stop controls. Restart Remote after configuring:
+Desktop Manager 0.2.10 can manage that SSH process when the configuration is
+explicitly marked. It migrates a matching legacy task to a stable hidden
+supervisor under private `data`, restarts SSH after any exit, and includes the
+tunnel in Start/Stop, repair and manager updates. An unmarked SSH process remains
+external and is never adopted automatically. Restart Remote after configuring:
 
 ```dotenv
 PUBLIC_ORIGIN=https://codex.example.com
 PUBLIC_ORIGINS=https://codex.example.com,https://backup.example.com
 ALLOWED_ORIGINS=https://codex.example.com,https://backup.example.com
 ```
+
+For managed SSH, add:
+
+```dotenv
+SSH_TUNNEL_MANAGED=1
+SSH_TUNNEL_HOST=edge.example.com
+SSH_TUNNEL_USER=remote-user
+SSH_TUNNEL_KEY=C:/Users/example/.ssh/codex-remote
+SSH_TUNNEL_REMOTE_PORT=14545
+SSH_TUNNEL_LOCAL_PORT=4545
+SSH_TUNNEL_TASK=CodexRemoteDomesticTunnel
+```
+
+The private key must already exist and authenticate non-interactively. The
+manager stores only its path, never its contents. It checks each public origin
+independently; a static shell with a 502 health response means the reverse tunnel
+or upstream API forwarding is unavailable.
 
 The connection menu lists each configured public origin other than the current page. The reverse proxy must preserve WebSocket upgrades and forward the real `X-Forwarded-For` and `X-Forwarded-Proto`; configure `TRUST_PROXY` when the proxy is not loopback. Never proxy the desktop debug endpoint or App Server.
 
@@ -339,6 +360,11 @@ cp .env.example .env
 | `PORT` | `4545` | Web server port |
 | `PUBLIC_ORIGIN` | Empty | Canonical public HTTPS origin |
 | `PUBLIC_ORIGINS` | Empty | Optional comma-separated public entries; `PUBLIC_ORIGIN` is first when set |
+| `SSH_TUNNEL_MANAGED` | Empty | Explicitly lets Desktop Manager manage a Windows SSH reverse tunnel |
+| `SSH_TUNNEL_HOST` / `SSH_TUNNEL_USER` | Empty | Managed SSH destination and login user |
+| `SSH_TUNNEL_KEY` | Empty | Existing private-key path only; key contents are never read by the manager |
+| `SSH_TUNNEL_REMOTE_PORT` / `SSH_TUNNEL_LOCAL_PORT` | `14545` / `PORT` | Managed reverse-forward remote and local ports |
+| `SSH_TUNNEL_TASK` | `CodexRemoteDomesticTunnel` | Managed Windows task name; must start with `CodexRemote` |
 | `ALLOWED_ORIGINS` | Empty | Additional trusted origins that need not appear in the connection menu |
 | `CODEX_BINARY` | Auto-detected | Explicit path to the bundled Codex CLI |
 | `CODEX_HOME` | `~/.codex` | Codex state and configuration directory |

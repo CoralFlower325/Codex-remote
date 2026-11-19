@@ -53,10 +53,14 @@ function App() {
   const stale = !status || now - status.checkedAt > 20_000;
   const canControl = Boolean(status) && !conflict && !state.healthError && !stale && !state.recoveryRequired;
   const canRepair = canControl && status?.service.running && status.service.enabled;
-  const tunnelIssue = status?.publicEntry.configured && !status.publicEntry.reachable ||
-    status?.tunnel.managed && !status.tunnel.ready;
+  const cloudflareIssue = status?.tunnel.managed && !status.tunnel.ready ||
+    status?.publicEntry.configured && !status.publicEntry.reachable && !status?.sshTunnel.managed;
+  const sshIssue = status?.sshTunnel.managed && (!status.sshTunnel.ready || !status.sshTunnel.supervised ||
+    status?.publicEntry.configured && ['http-error', 'unexpected'].includes(status.publicEntry.state));
   const repairTunnel = () => { setDiagnosing(true); void perform(() => window.manager.repair('Tunnel')); };
+  const repairSshTunnel = () => { setDiagnosing(true); void perform(() => window.manager.repair('SshTunnel')); };
   const tunnelRepairable = status?.tunnel.managed || state.platform === 'darwin';
+  const sshRepairable = state.platform === 'win32' && Boolean(status?.sshTunnel.managed);
   const text = state.busy ? state.updateProgress ? state.updateProgress.status === 'recovering' ? '正在恢复' : '正在更新' : state.busy
     : state.healthError ? '检测未完成' : status ? labels[status.state] : state.root ? '正在检测' : '选择安装目录';
   const issue = error || state.error || state.healthError;
@@ -119,13 +123,24 @@ function App() {
           <Row name="访问密码" value={status ? status.passwordConfigured ? '已设置' : '未设置' : '等待检测'} good={status?.passwordConfigured} stale={stale}
             action={<IconButton title="修改访问密码" disabled={disabled || !state.root || state.recoveryRequired} onClick={() => devices(true)}><KeyRound size={14} /></IconButton>} />
           <Row name="Cloudflare 隧道" value={status?.tunnel.managed ? status.tunnel.ready ? '已连接' : '未就绪'
-            : status?.publicEntry.configured ? '外部管理' : '未配置'} good={status?.tunnel.managed ? status.tunnel.ready : undefined} stale={stale}
-            action={tunnelRepairable && tunnelIssue && <IconButton title="修复 Cloudflare 隧道" disabled={disabled || !canRepair}
+            : state.platform === 'darwin' && status?.publicEntry.configured ? '外部管理' : '未配置'} good={status?.tunnel.managed ? status.tunnel.ready : undefined} stale={stale}
+            action={tunnelRepairable && cloudflareIssue && <IconButton title="修复 Cloudflare 隧道" disabled={disabled || !canRepair}
               onClick={repairTunnel}><Wrench size={14} /></IconButton>} />
-          <Row name="公网入口" value={publicValue} good={status?.publicEntry.reachable ? true : status?.publicEntry.state === 'unknown' || !status?.publicEntry.configured ? undefined : false} stale={stale}
-            action={<>{tunnelRepairable && tunnelIssue && <IconButton title="一键修复公网连接" disabled={disabled || !canRepair}
+          <Row name="SSH 反向隧道" value={!status?.sshTunnel.configured ? '未配置' : !status.sshTunnel.managed ? '外部管理'
+            : status.sshTunnel.ready ? status.sshTunnel.supervised ? '已连接' : '运行中（可加固）' : '未就绪'}
+            good={status?.sshTunnel.managed ? Boolean(status.sshTunnel.ready) : undefined} stale={stale}
+            action={sshRepairable && sshIssue && <IconButton title="修复 SSH 反向隧道" disabled={disabled || !canRepair}
+              onClick={repairSshTunnel}><Wrench size={14} /></IconButton>} />
+          <Row name="公网主入口" value={publicValue} good={status?.publicEntry.reachable ? true : status?.publicEntry.state === 'unknown' || !status?.publicEntry.configured ? undefined : false} stale={stale}
+            action={<>{tunnelRepairable && cloudflareIssue && <IconButton title="修复公网连接" disabled={disabled || !canRepair}
               onClick={repairTunnel}><Wrench size={14} /></IconButton>}
+              {sshRepairable && sshIssue && <IconButton title="修复国内入口" disabled={disabled || !canRepair}
+                onClick={repairSshTunnel}><Wrench size={14} /></IconButton>}
               <IconButton title="诊断公网连接" disabled={disabled || !status?.publicEntry.configured} onClick={diagnose}><ScanSearch size={14} /></IconButton></>} />
+          {(status?.publicEntries || []).slice(1).map((entry, index) => <Row key={entry.url || index}
+            name={`公网备用 ${index + 1}`}
+            value={!entry.configured ? '未设置' : entry.reachable ? '可达' : entry.state === 'unknown' ? '待确认' : '响应异常'}
+            good={entry.reachable ? true : entry.state === 'unknown' || !entry.configured ? undefined : false} stale={stale} />)}
           <Row name="Remote 登录启动" value={status ? status.service.enabled ? '已启用' : '未启用' : '等待检测'} stale={stale} />
         </dl>
         {diagnosing && <section className="connection-report" aria-label="连接诊断">
@@ -135,8 +150,10 @@ function App() {
           <div className="inline-actions">
             <button disabled={disabled} onClick={diagnose}><RefreshCw size={14} />重新检测</button>
             <button disabled={disabled || !status?.publicEntry.configured} onClick={() => void perform(window.manager.open)}><ExternalLink size={14} />打开入口</button>
-            {tunnelRepairable && tunnelIssue && <button disabled={disabled || !canRepair}
+            {tunnelRepairable && cloudflareIssue && <button disabled={disabled || !canRepair}
               onClick={repairTunnel}><Wrench size={14} />一键修复</button>}
+            {sshRepairable && sshIssue && <button disabled={disabled || !canRepair}
+              onClick={repairSshTunnel}><Wrench size={14} />修复国内入口</button>}
           </div>
         </section>}
         <details className="installation" open={!state.root || undefined}>
@@ -157,6 +174,7 @@ function App() {
           <div className="inline-actions">
             <button disabled={disabled || !state.root} onClick={() => void perform(() => window.manager.logs('Server'))}>服务日志</button>
             <button disabled={disabled || !state.root} onClick={() => void perform(() => window.manager.logs('Tunnel'))}>隧道日志</button>
+            <button disabled={disabled || !state.root || !status?.sshTunnel.managed} onClick={() => void perform(() => window.manager.logs('SshTunnel'))}>SSH 隧道日志</button>
           </div>
           {state.logs && <pre className="raw-output" aria-label="运行日志内容">{state.logs.text}</pre>}
         </details>

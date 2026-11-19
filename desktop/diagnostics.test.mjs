@@ -17,6 +17,9 @@ describe('scoped native connection repair', () => {
     expect(execute.mock.calls[1][1]).toContain('Server');
     execute.mockResolvedValue('{"running":true,"enabled":true,"tunnelManaged":false}');
     await expect(repairControl(info, 'Tunnel', execute, 'darwin')).rejects.toThrow('确认');
+    execute.mockResolvedValue('{"running":true,"enabled":true,"tunnelManaged":false}');
+    await repairControl({ ...info, sshTunnel: { managed: true } }, 'SshTunnel', execute, 'win32');
+    expect(execute.mock.calls.some(([, args]) => args.includes('Repair'))).toBe(true);
     execute.mockResolvedValue('{"running":false,"enabled":false,"tunnelManaged":true}');
     await expect(repairControl(info, 'Server', execute, 'win32')).rejects.toThrow('开启');
     await expect(repairControl(info, '../Desktop', execute, 'win32')).rejects.toThrow('未知');
@@ -29,6 +32,8 @@ describe('scoped native connection repair', () => {
       const logs = await readDiagnosticLogs({ root }, 'Server');
       expect(logs.length).toBeLessThan(8400);
       for (const secret of ['=secret', '=hidden', '=private']) expect(logs).not.toContain(secret);
+      await fs.writeFile(path.join(root, 'data/ssh-tunnel.log'), 'Synthetic SSH tunnel log');
+      expect(await readDiagnosticLogs({ root }, 'SshTunnel')).toContain('Synthetic SSH tunnel log');
       await expect(readDiagnosticLogs({ root }, '../auth')).rejects.toThrow('未知');
     } finally { await fs.rm(root, { recursive: true, force: true }); }
   });
