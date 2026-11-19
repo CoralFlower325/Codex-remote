@@ -35,18 +35,27 @@
 - 源码 Electron 验收与打包 Electron 验收均通过，覆盖 400/480/780 宽度、
   自动发现、托盘状态、认证、更新恢复、诊断布局与外部隧道修复控件。
 - Windows manager 安装包
-  `Codex-Remote-Manager-0.2.10-win-x64.exe` 为 `121718685` 字节，
-  SHA-256 `a880624c79bd2d62dd8a41fae54c23b51e4cb24f79a5e708ac7b4657490342e4`。
+  `Codex-Remote-Manager-0.2.10-win-x64.exe` 为 `121718525` 字节，
+  SHA-256 `4c3a10f1b9def047db6b44014f51ac44dd3d543d1c0b97ca16398339508dee40`。
 - 安装器静默退出码为 `0`；Windows 卸载记录和可执行文件产品版本均为
   `0.2.10`。安装后管理器正常启动，Remote、Cloudflare 与 SSH 三项任务保持运行。
 
 ## 发布状态
 
-- 源码、GitHub Release、下载分发、本机 Remote 安装和公网静态资源是独立状态；
-  发布完成后须补齐精确提交、CI 任务、运行包摘要、下载快照和 Remote 0.2.41
-  本机安装结果。
-- Remote 0.2.41 不修改网页或后端运行逻辑，只同步版本与发布元数据；本批实际
-  功能变化在 manager 0.2.10。
+- PR #45 合并提交和 `v0.2.41` 标签源为
+  `0110ce7862a4411e00efd21d7b4c550f1d3d2338`。PR CI `44459398248` 的
+  Ubuntu、Windows、macOS 和浏览器合成验收全部通过。
+- Runtime Packages `44460543487` 与 Desktop Manager `44460543509` 通过。
+  macOS 运行包首次在终端 smoke 阶段失败，原作业重跑后通过；两份签名清单均验证到
+  同一发布提交。
+- Release 已发布为非草稿、非预发布 latest，共 7 个附件。下载 Worker
+  `7906d5e0-004d-4050-984f-88b66c0716ce` 已刷新快照，`/releases/latest`
+  返回 `v0.2.41`，七个附件的项目分发 HEAD 均为 `200`。
+- 本机 Remote 已从 0.2.40 通过签名预构建运行包升级到 0.2.41，事务备份为
+  `output\manager-backup-62033631-e5b0-4a17-a98e-be4d8e4752be`。
+- 国内 Caddy 已原子切换到 `releases/0.2.41`，旧 0.2.40 目录保留。主入口和
+  Cloudflare 入口的 `/version.json` 均为 0.2.41，构建标识
+  `assets/index-C8YizH9h.js`，`/health` 为 ready / desktop。
 
 ## 边界
 

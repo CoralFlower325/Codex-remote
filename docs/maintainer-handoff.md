@@ -16,7 +16,12 @@ historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
 The current published release is Remote **0.2.41** / manager **0.2.10**, tag
-`v0.2.41`, once the release workflow and deployment checks below complete.
+`v0.2.41`, source `0110ce7862a4411e00efd21d7b4c550f1d3d2338`.
+PR #45 CI `44459398248`, Runtime Packages `44460543487` and Desktop Manager
+`44460543509` passed. The latest Release contains seven signed/verified runtime
+and manager assets; download Worker `7906d5e0-004d-4050-984f-88b66c0716ce`
+serves `v0.2.41`. The local Remote and published Windows manager build are
+installed, and the domestic Caddy target is atomically switched to `releases/0.2.41`.
 Remote **0.2.41** keeps the web and backend behavior of 0.2.40 and updates release
 metadata so the independently versioned manager can ship. Manager **0.2.10**
 checks every configured public origin, explains static-shell/API-502 separation,

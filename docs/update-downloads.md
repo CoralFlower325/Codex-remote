@@ -5,16 +5,16 @@
 失败后尝试官方 GitHub。分发由项目的 Cloudflare Worker 提供，不要求更新主机配置
 Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 
-## 安装管理器 0.2.9
+## 安装管理器 0.2.10
 
 | 系统 | 项目分发 | 官方备用 |
 | --- | --- | --- |
-| macOS Apple Silicon | [DMG](https://downloads.73916482.xyz/releases/download/v0.2.31/Codex-Remote-Manager-0.2.9-mac-arm64.dmg) · [ZIP](https://downloads.73916482.xyz/releases/download/v0.2.31/Codex-Remote-Manager-0.2.9-mac-arm64.zip) | [DMG](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.31/Codex-Remote-Manager-0.2.9-mac-arm64.dmg) · [ZIP](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.31/Codex-Remote-Manager-0.2.9-mac-arm64.zip) |
-| Windows x64 | [安装程序](https://downloads.73916482.xyz/releases/download/v0.2.31/Codex-Remote-Manager-0.2.9-win-x64.exe) | [安装程序](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.31/Codex-Remote-Manager-0.2.9-win-x64.exe) |
+| macOS Apple Silicon | [DMG](https://downloads.73916482.xyz/releases/download/v0.2.41/Codex-Remote-Manager-0.2.10-mac-arm64.dmg) · [ZIP](https://downloads.73916482.xyz/releases/download/v0.2.41/Codex-Remote-Manager-0.2.10-mac-arm64.zip) | [DMG](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.41/Codex-Remote-Manager-0.2.10-mac-arm64.dmg) · [ZIP](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.41/Codex-Remote-Manager-0.2.10-mac-arm64.zip) |
+| Windows x64 | [安装程序](https://downloads.73916482.xyz/releases/download/v0.2.41/Codex-Remote-Manager-0.2.10-win-x64.exe) | [安装程序](https://github.com/CoralFlower325/Codex-remote/releases/download/v0.2.41/Codex-Remote-Manager-0.2.10-win-x64.exe) |
 
 1. 从菜单栏／托盘菜单退出旧管理器。退出管理器不停止 Remote。
-2. 下载并安装 0.2.9，覆盖旧应用。macOS 将新应用替换到原应用位置。
-3. 重新打开管理器，确认显示 0.2.9，选择原 Remote 安装目录。
+2. 下载并安装 0.2.10，覆盖旧应用。macOS 将新应用替换到原应用位置。
+3. 重新打开管理器，确认显示 0.2.10，选择原 Remote 安装目录。
 4. 有中断事务时先恢复；否则重新检查并执行主机更新。保留事务记录和备份，
    不要为重试删除本机数据、文档或更新锁。
 
@@ -24,12 +24,12 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 本次不恢复 AU 功能；签名、公证和真实 Mac 登录环境验收仍是独立断点。
 未签名安装包可能需要按系统下载信誉或 Gatekeeper 流程确认。
 
-Remote 0.2.40 增加非 Cloudflare 多公网入口、Origin 403 与 Brotli 静态发布；
-运行包位于 `v0.2.40`。管理器 0.2.9 未变更，安装包继续位于
-`v0.2.31`。
+Remote 0.2.41 同步版本与发布元数据，运行包位于 `v0.2.41`。管理器 0.2.10
+增加多公网入口健康监控、HTTP 502 分层诊断和显式 Windows SSH 反向隧道管理；
+安装包同样位于 `v0.2.41`。
 运行包 Ed25519 清单签名已启用，与仍暂停的 AU 和 macOS 应用签名分别管理。
 
-English: install manager 0.2.9 manually over the old app, reopen it and select the same
+English: install manager 0.2.10 manually over the old app, reopen it and select the same
 Remote directory before retrying. Host updates cannot patch the old manager's
 bundled updater. Manager self-update, signing and notarization remain paused.
 
@@ -81,6 +81,30 @@ Remote 0.2.16 与管理器 0.2.2 不再将已等于目标版本的文件误判�
 详见[管理器](desktop-manager.zh-CN.md)与[网页后端更新](web-backend-update.md)。
 
 ## 维护分发服务
+
+2026-11-19 已完成 Remote **0.2.41** / manager **0.2.10** 的分发与部署。
+正式标签为 `v0.2.41`，发布提交
+`0110ce7862a4411e00efd21d7b4c550f1d3d2338`。PR #45 的 Ubuntu、Windows、
+macOS 和浏览器合成验收全部通过。Runtime Packages `44460543487` 与 Desktop
+Manager `44460543509` 通过；macOS 运行包首次终端 smoke 失败，原作业重跑后通过，
+两份签名清单均验证到同一发布提交。
+
+下载 Worker 版本 `7906d5e0-004d-4050-984f-88b66c0716ce` 已刷新七附件快照，
+`/releases/latest` 返回 `v0.2.41`；七个附件的项目分发 HEAD 均为 `200`，大小与
+Release 元数据一致。Windows x64 运行包为 `12057765` 字节，SHA-256
+`d6ab1b592293c467c9072e7fc38bb90ba2bc7a78128eb14fcd8f72a1b81e2036`；
+macOS Apple Silicon 运行包为 `10130612` 字节，SHA-256
+`47daedd91f16ed93691fc0b6b26af2cd5ea81bc9f2746bb85630829fd1fb378d`。
+发布用 Windows manager 安装包为 `121718525` 字节，SHA-256
+`4c3a10f1b9def047db6b44014f51ac44dd3d543d1c0b97ca16398339508dee40`。
+
+本机 Remote 已从 0.2.40 通过签名预构建运行包升级到 0.2.41，事务备份为
+`output\manager-backup-62033631-e5b0-4a17-a98e-be4d8e4752be`；没有未完成
+update journal。发布用 manager 0.2.10 已覆盖安装，Windows 注册版本和可执行文件
+产品版本均为 0.2.10。国内 Caddy 已切换到 `releases/0.2.41`，旧 0.2.40 目录保留；
+主入口和 Cloudflare 入口的 `/version.json` 均为 0.2.41，构建标识
+`assets/index-C8YizH9h.js`，`/health` 为 ready / desktop。Remote、Cloudflare 与
+国内 SSH 三项任务保持运行。
 
 2026-11-13 已完成 Remote **0.2.40** 的分发、国内直连与 `codexwin` 部署收尾。
 正式标签为 `v0.2.40`，发布提交
