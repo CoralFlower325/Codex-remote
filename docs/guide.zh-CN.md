@@ -7,7 +7,7 @@ Remote 保留切换会话时的待发图片与技能草稿，输入框上方提�
 详见[输入草稿与布局验收](composer-layout-acceptance.md)。
 Remote 将晚到的原生事件留在所属轮次，随后原生读取校准不重复条目，
 保留消息内容和原生时间锚点。
-详见[原生聊天顺序](native-history-order.md)。Remote 0.2.40 配套正式管理器 0.2.9，
+详见[原生聊天顺序](native-history-order.md)。Remote 0.2.41 配套正式管理器 0.2.10，
 通过安装包手动覆盖旧管理器，选择原主机目录后重试更新。单独更新 Remote
 不能修改旧管理器内置的更新器。管理器自更新保存为暂停的 0.2.0AU 开发线，
 详见[开发断点](manager-self-update-checkpoints.md)。
@@ -289,13 +289,32 @@ ssh -N -i C:\path\to\edge_key `
   -R 127.0.0.1:14545:127.0.0.1:4545 codexremote@edge.example.com
 ```
 
-该 SSH 进程可以使用独立、无窗口的计划任务维护；它不是 Cloudflare Tunnel，也不由现有 Windows 启停脚本识别。修改 `.env` 后重启 Remote：
+管理器 0.2.10 可以在配置显式标记后管理该 SSH 进程。它会把匹配的旧任务迁移为
+私有 `data` 下的稳定隐藏监管任务，SSH 退出后自动重连，并在启停、修复和本机更新
+时一起处理；没有标记的 SSH 进程仍由外部工具管理，不会被自动接管。
+修改 `.env` 后重启 Remote：
 
 ```dotenv
 PUBLIC_ORIGIN=https://codex.example.com
 PUBLIC_ORIGINS=https://codex.example.com,https://backup.example.com
 ALLOWED_ORIGINS=https://codex.example.com,https://backup.example.com
 ```
+
+受管 SSH 还需设置：
+
+```dotenv
+SSH_TUNNEL_MANAGED=1
+SSH_TUNNEL_HOST=edge.example.com
+SSH_TUNNEL_USER=remote-user
+SSH_TUNNEL_KEY=C:/Users/example/.ssh/codex-remote
+SSH_TUNNEL_REMOTE_PORT=14545
+SSH_TUNNEL_LOCAL_PORT=4545
+SSH_TUNNEL_TASK=CodexRemoteDomesticTunnel
+```
+
+私钥必须已经存在并可非交互认证。管理器只保存私钥路径，不读取或输出私钥内容。
+它会逐项检查所有公网入口；静态页面可打开但 `/health` 返回 502，表示反向隧道
+或上游 API 转发不可用。
 
 连接菜单会列出当前来源之外的公网入口。反向代理必须保留 WebSocket 升级并传入真实的 `X-Forwarded-For` 与 `X-Forwarded-Proto`；代理不在回环地址时还要配置 `TRUST_PROXY`。不要让代理访问桌面调试端口或 App Server。
 
@@ -321,6 +340,11 @@ cp .env.example .env
 | `PORT` | `4545` | 网页服务端口 |
 | `PUBLIC_ORIGIN` | 空 | 规范公网 HTTPS 来源 |
 | `PUBLIC_ORIGINS` | 空 | 可选的多公网入口，逗号分隔；空时以 `PUBLIC_ORIGIN` 为首项 |
+| `SSH_TUNNEL_MANAGED` | 空 | 显式允许本机管理器管理 Windows SSH 反向隧道 |
+| `SSH_TUNNEL_HOST` / `SSH_TUNNEL_USER` | 空 | 受管 SSH 的目标主机与登录用户 |
+| `SSH_TUNNEL_KEY` | 空 | 已存在的私钥路径；管理器不会读取私钥内容 |
+| `SSH_TUNNEL_REMOTE_PORT` / `SSH_TUNNEL_LOCAL_PORT` | `14545` / `PORT` | 受管反向转发的远端与本机端口 |
+| `SSH_TUNNEL_TASK` | `CodexRemoteDomesticTunnel` | 受管 Windows 任务名，必须以 `CodexRemote` 开头 |
 | `ALLOWED_ORIGINS` | 空 | 额外信任但不一定展示的浏览器来源，逗号分隔 |
 | `CODEX_BINARY` | 自动发现 | 显式指定内置 Codex CLI 路径 |
 | `CODEX_HOME` | `~/.codex` | Codex 状态和配置目录 |
@@ -334,7 +358,8 @@ cp .env.example .env
 | `SESSION_DAYS` | `7` | 浏览器会话有效天数，最多 30 天 |
 | `SESSION_IDLE_HOURS` | `24` | 闲置失效小时数，最多 168 小时 |
 
-使用本地隧道或反向代理时，应保持回环监听。Windows 隧道助手默认转发到 `4545`，改端口时需要同时指定其 `-LocalUrl` 参数。
+使用本地隧道或反向代理时，应保持回环监听。管理器 SSH 隧道默认转发到 `4545`；
+如修改 `PORT`，应同步设置 `SSH_TUNNEL_LOCAL_PORT`。
 显式配置和自动发现的桌面调试端口都失效时，Remote 还会探测标准端口 `9229`。
 
 Windows 会依次探测应用包、独立安装目录和 `PATH` 中的 CLI；macOS 会探测支持的应用位置、独立安装目录及 `PATH`。发现失败时可设置 `CODEX_BINARY`。

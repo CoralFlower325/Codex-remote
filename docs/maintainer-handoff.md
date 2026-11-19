@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-11-13.
+Last reconciled: 2026-11-19.
 
 ## Authority
 
@@ -15,8 +15,17 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.40** / manager **0.2.9**, tag
-`v0.2.40`.
+The current published release is Remote **0.2.41** / manager **0.2.10**, tag
+`v0.2.41`, once the release workflow and deployment checks below complete.
+Remote **0.2.41** keeps the web and backend behavior of 0.2.40 and updates release
+metadata so the independently versioned manager can ship. Manager **0.2.10**
+checks every configured public origin, explains static-shell/API-502 separation,
+and can explicitly manage a Windows SSH reverse tunnel. It migrates a matching
+legacy task to a hidden supervisor that restarts SSH after any exit. Private-key
+contents are never read or returned; configurations without
+`SSH_TUNNEL_MANAGED=1` remain external.
+The [0.2.41 release acceptance](remote-0.2.41-release-acceptance.md) records this
+batch.
 The [0.2.40 release acceptance](remote-0.2.40-release-acceptance.md) records the
 non-Cloudflare multi-origin, Caddy/Brotli and direct-deployment batch.
 The [0.2.39 release acceptance](remote-0.2.39-release-acceptance.md) records the
@@ -128,7 +137,9 @@ row without shrinking its 36px or 44px controls. Active turns keep one primary
 action and show an optimistic queued row until the native queue returns the same
 `clientUserMessageId`; Guide uses `turn/steer`, and disabling queue switches that
 turn to direct steering. The add and slash menus stay compact overlays on phones.
-Manager **0.2.9** recognizes `node-22.19.0-127.exe` and other managed versioned
+Manager **0.2.10** adds non-Cloudflare multi-origin monitoring and explicit
+Windows SSH reverse-tunnel management while retaining the 0.2.9 versioned-Node
+stop fallback. It recognizes `node-22.19.0-127.exe` and other managed versioned
 Node names in status, repair, service control and update ownership checks. If an
 older installation's stop script leaves the versioned process alive during an
 upgrade, the manager uses a bundled windowless stop helper scoped to the selected
@@ -138,7 +149,7 @@ Runtime updates now require Ed25519 publisher signatures against bundled public
 keys, including signed commit identity for source fallback. The private key stays
 outside the repository; the `RELEASE_SIGNING_KEY` GitHub secret and formal
 two-platform signing workflow have been validated. Follow [release-signing.md](release-signing.md) before a
-formal runtime release. Manager 0.2.9 requires its own installer; changing Remote
+formal runtime release. Manager 0.2.10 requires its own installer; changing Remote
 does not patch an already installed manager. AU self-update and macOS application
 signing/notarization remain paused.
 

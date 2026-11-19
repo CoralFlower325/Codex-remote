@@ -6,11 +6,16 @@ import { commandEnvironment, control, serviceStatus, portListening } from './con
 import { cleanOutput } from './update-progress.mjs';
 import { run } from './process.mjs';
 import { repairMacTunnel } from './macos-tunnel.mjs';
+import { controlSshTunnel } from './ssh-tunnel.mjs';
 
 export async function repairControl(info, target, execute = run, platform = process.platform, selectedTunnel) {
-  if (!['Server', 'Tunnel'].includes(target)) throw new Error('未知修复目标。');
+  if (!['Server', 'Tunnel', 'SshTunnel'].includes(target)) throw new Error('未知修复目标。');
   const status = await serviceStatus(info, execute, platform);
   if (status.conflict || !status.running || !status.enabled) throw new Error('请先确认服务归属并开启 Remote。');
+  if (target === 'SshTunnel') {
+    await controlSshTunnel(info, 'Repair', execute, platform);
+    return;
+  }
   if (target === 'Tunnel' && platform === 'darwin') {
     if (!selectedTunnel) throw new Error('请先选择并确认要修复的 Cloudflare 服务。');
     await repairMacTunnel(selectedTunnel, execute);
@@ -39,12 +44,13 @@ export async function repairControl(info, target, execute = run, platform = proc
 }
 
 export async function readDiagnosticLogs(info, kind) {
-  if (!['Server', 'Tunnel'].includes(kind)) throw new Error('未知日志类型。');
+  if (!['Server', 'Tunnel', 'SshTunnel'].includes(kind)) throw new Error('未知日志类型。');
   let env = {};
   try { env = parseEnv(await fs.readFile(path.join(info.root, '.env'), 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   const data = path.resolve(info.root, env.DATA_DIR?.trim() || 'data');
   const names = kind === 'Tunnel' ? ['cloudflared.log']
+    : kind === 'SshTunnel' ? ['ssh-tunnel.log', 'ssh-tunnel-ssh.log']
     : ['server.err.log', 'server.out.log', 'codex-remote.err.log', 'codex-remote.out.log'];
   const parts = [];
   for (const name of names) {

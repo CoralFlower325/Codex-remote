@@ -9,6 +9,7 @@ import { pendingUpdate, recoverPendingUpdate } from './update-transaction.mjs';
 import { manageAuthentication } from './security.mjs';
 import { repairControl } from './diagnostics.mjs';
 import { discoverMacTunnels } from './macos-tunnel.mjs';
+import { controlSshTunnel } from './ssh-tunnel.mjs';
 import { run } from './process.mjs';
 // Installation state and serialized operations; the Electron shell owns windows.
 export function createManagerSession({ app, dialog, shell, fetchRelease, getWindow, publish, here }) {
@@ -65,14 +66,25 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
     }
     throw new Error('旧 Remote 仍在运行，已停止后续操作。');
   }
+  async function start() {
+    await control(settings.root, 'Start');
+    const info = await installation(settings.root);
+    if (info.sshTunnel?.managed) await controlSshTunnel(info, 'Start');
+  }
   async function stop() {
+    let primaryError;
     try {
       await control(settings.root, 'Stop');
+    } catch (error) { primaryError = error; }
+    try {
+      const info = await installation(settings.root);
+      if (info.sshTunnel?.managed) await controlSshTunnel(info, 'Stop');
+    } catch (error) { primaryError ??= error; }
+    if (!primaryError) {
       await waitStopped();
       return;
-    } catch (error) {
-      if (process.platform !== 'win32') throw error;
     }
+    if (process.platform !== 'win32') throw primaryError;
     // Older installations may only recognize node.exe. During an upgrade, use
     // the manager-owned stop helper so versioned Node tasks cannot survive the
     // stop request and turn a valid update into a port-conflict rollback.
@@ -111,7 +123,7 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
         if (kind !== 'Start') await stop();
         if (kind === 'Stop') event('Remote 已关闭');
         else {
-          await control(settings.root, 'Start');
+          await start();
           const status = await verify({ requireDesktop: false });
           event(status.desktop ? 'Remote 已启动' : 'Remote 已启动，Desktop 同步待就绪');
         }
@@ -130,13 +142,18 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
     });
   }
   async function repair(target) {
-    if (!['Server', 'Tunnel'].includes(target)) throw new Error('未知修复目标。');
+    if (!['Server', 'Tunnel', 'SshTunnel'].includes(target)) throw new Error('未知修复目标。');
     const selectedRoot = settings.root;
     return exclusive('正在修复连接', async () => {
       await requireCompletedUpdate();
       const status = await health(settings.root, undefined, process.platform, fetchRelease);
       if (['conflict', 'unowned'].includes(status.state)) throw new Error('请先解决服务归属或端口冲突。');
       let selectedTunnel;
+      if (target === 'SshTunnel') {
+        if (process.platform !== 'win32' || !status.sshTunnel?.managed) {
+          throw new Error('未配置可管理的 Windows SSH 反向隧道。');
+        }
+      }
       if (target === 'Tunnel' && process.platform === 'darwin') {
         const tunnels = await discoverMacTunnels();
         if (!tunnels.length) throw new Error('未找到可修复的 Cloudflare 系统服务。请先使用 cloudflared service install 或 Homebrew 注册已有隧道，再重试。');
@@ -152,11 +169,15 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
         } else selectedTunnel = tunnels[0];
       }
       const { response } = await dialog.showMessageBox(getWindow(), {
-        type: 'question', title: target === 'Tunnel' ? '修复公网连接' : '修复 Remote 服务',
+        type: 'question', title: target === 'Tunnel' ? '修复公网连接'
+          : target === 'SshTunnel' ? '修复国内入口' : '修复 Remote 服务',
         message: selectedTunnel ? `启用并启动或重启 ${selectedTunnel.label}？`
-          : target === 'Tunnel' ? '重启当前安装的受管隧道？' : '重启当前安装的 Remote 服务？',
+          : target === 'Tunnel' ? '重启当前安装的受管隧道？'
+            : target === 'SshTunnel' ? '重启受管的 SSH 反向隧道？' : '重启当前安装的 Remote 服务？',
         detail: selectedTunnel?.domain === 'system' ? '系统将请求管理员授权，随后自动复检公网入口。'
-          : target === 'Tunnel' ? '随后自动复检公网入口。' : 'Remote 会短暂离线，Codex Desktop 保持运行。',
+          : target === 'Tunnel' ? '随后自动复检公网入口。'
+            : target === 'SshTunnel' ? '随后自动复检国内入口；Codex Desktop 与 Remote 后端保持运行。'
+              : 'Remote 会短暂离线，Codex Desktop 保持运行。',
         buttons: ['取消', '开始修复'], defaultId: 0, cancelId: 0
       });
       if (response !== 1) return;
@@ -165,17 +186,21 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
       await repairControl(status, target, undefined, process.platform, selectedTunnel);
       if (target === 'Server') await verify({ requireDesktop: false });
       let checked;
-      for (let attempt = 0; attempt < (target === 'Tunnel' ? 4 : 1); attempt++) {
+      for (let attempt = 0; attempt < (target === 'Tunnel' ? 4 : target === 'SshTunnel' ? 5 : 1); attempt++) {
         checked = await health(settings.root, undefined, process.platform, fetchRelease, { publicTimeout: 5000 });
         if (checked.publicEntry.reachable) break;
         if (target === 'Tunnel' && attempt < 3) await new Promise(resolve => setTimeout(resolve, 2000));
+        if (target === 'SshTunnel' && attempt < 4) await new Promise(resolve => setTimeout(resolve, 2000));
       }
       state.status = checked;
       state.connectionReport = { checkedAt: checked.checkedAt, ...checked.publicEntry };
       state.result = target === 'Tunnel' ? checked.publicEntry.reachable
         ? 'Cloudflare 已重新启动，公网入口复检通过。'
         : `Cloudflare 已重新启动，公网入口尚未确认恢复：${checked.publicEntry.detail}`
-        : 'Remote 已重新启动，请查看健康状态。';
+        : target === 'SshTunnel' ? checked.publicEntry.reachable
+          ? 'SSH 反向隧道已重新启动，主入口复检通过。'
+          : `SSH 反向隧道已重新启动，主入口尚未确认恢复：${checked.publicEntry.detail}`
+          : 'Remote 已重新启动，请查看健康状态。';
       event(state.result);
     });
   }
@@ -243,7 +268,7 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
       let requireDesktop = current.desktop;
       let result;
       try { result = await installUpdate(prepared, {
-        stop, start: () => control(settings.root, 'Start'), verify: () => verify({ requireDesktop }),
+        stop, start, verify: () => verify({ requireDesktop }),
         isRunning: async () => {
           const status = await health(settings.root);
           requireDesktop = status.desktop;
@@ -273,7 +298,7 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
         const pending = await pendingUpdate(settings.root);
         if (!pending) { state.recoveryRequired = false; return; }
         const result = await recoverPendingUpdate(settings.root, {
-          stop, start: () => control(settings.root, 'Start'),
+          stop, start,
           verify: () => verify({ requireDesktop: Boolean(pending.requireDesktop) }), report
         });
         state.recoveryRequired = false;

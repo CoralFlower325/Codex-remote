@@ -81,4 +81,25 @@ describe('manager external tunnel repair', () => {
     expect(dialog.showMessageBox).not.toHaveBeenCalled();
     expect(repairControl).not.toHaveBeenCalled();
   });
+  it('confirms and verifies a managed Windows SSH reverse tunnel independently', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'manager-ssh-repair-'));
+    roots.push(root);
+    const dialog = { showMessageBox: vi.fn().mockResolvedValue({ response: 1 }) };
+    const session = createManagerSession({
+      app: { getPath: () => root, getVersion: () => 'test' }, dialog, shell: {},
+      getWindow: () => null, publish: vi.fn(), here: root, fetchRelease: vi.fn()
+    });
+    session.settings.root = root;
+    pendingUpdate.mockResolvedValue(null);
+    const publicEntry = { configured: true, reachable: true, detail: 'ok', state: 'reachable' };
+    health.mockResolvedValue({ root, checkedAt: 1, state: 'healthy', publicEntry,
+      sshTunnel: { configured: true, managed: true, ready: true } });
+    await session.repair('SshTunnel');
+    expect(repairControl).toHaveBeenCalledWith(expect.objectContaining({
+      sshTunnel: expect.objectContaining({ managed: true })
+    }), 'SshTunnel', undefined, 'win32', undefined);
+    expect(dialog.showMessageBox.mock.calls[0][1].message).toContain('SSH 反向隧道');
+    expect(session.state.result).toContain('主入口复检通过');
+  });
 });

@@ -334,7 +334,7 @@ try {
   await page.getByRole('region', { name: '连接诊断' }).getByText(/尚不能确认公网入口故障/).waitFor();
   if (process.platform === 'darwin') {
     // Actual launchd repair uses a separate, isolated synthetic job acceptance.
-    await page.getByRole('button', { name: '一键修复公网连接', exact: true }).waitFor();
+    await page.getByRole('button', { name: '修复公网连接', exact: true }).waitFor();
     await page.getByRole('button', { name: '一键修复', exact: true }).waitFor();
     results.externalMacRepairVisible = true;
   } else {
@@ -358,7 +358,7 @@ try {
   }, { ...actual, platform: 'darwin', status: { ...actual.status, checkedAt: Date.now(),
     tunnel: { managed: false, ready: false },
     publicEntry: { configured: true, reachable: false, state: 'http-error', detail: '公网入口返回 HTTP 530。' } } });
-  await page.getByRole('button', { name: '一键修复公网连接', exact: true }).waitFor();
+  await page.getByRole('button', { name: '修复公网连接', exact: true }).waitFor();
   for (const [width, height] of [[400, 550], [480, 690]]) {
     await application.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0].setSize(...size), [width, height]);
     const overflow = await page.locator('.health').evaluate(element => element.scrollWidth > element.clientWidth);

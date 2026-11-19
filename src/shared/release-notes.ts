@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.41', changes: [
+    '管理器 0.2.10 新增非 Cloudflare 公网入口管理：逐项显示 `PUBLIC_ORIGIN` 与 `PUBLIC_ORIGINS` 的健康状态，并将静态页面可达但健康接口返回 502 的情况明确指向反向隧道或上游 API 转发。',
+    'Windows 管理器可显式管理 SSH 反向隧道：使用现有私钥路径创建或迁移隐藏计划任务，通过监管进程在 SSH 退出后自动重连；开始、关闭、重启、服务修复和本机更新会同步管理该隧道。',
+    'SSH 配置只保存主机、用户、私钥路径与端口，不读取或输出私钥内容；无显式 `SSH_TUNNEL_MANAGED=1` 时保持外部管理，不自动接管任务。',
+    'Remote 0.2.41 仅同步版本与发布元数据，网页和后端行为与 0.2.40 一致。'
+  ] },
   { version: '0.2.40', changes: [
     '新增非 Cloudflare 公网入口支持：`PUBLIC_ORIGINS` 可声明多个公网来源，连接菜单会在当前来源之外列出规范入口和备用入口；`ALLOWED_ORIGINS` 继续用于额外信任来源，非法或带路径、查询、凭据的 Origin 会明确拒绝。',
     '非可信 Origin 的登录、设置和实时连接错误改为明确的 403 响应，不再冒用密码错误或服务端 500 提示。',

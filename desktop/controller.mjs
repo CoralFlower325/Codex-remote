@@ -4,6 +4,22 @@ import { parseEnv } from 'node:util';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { run } from './process.mjs';
+import { parseSshTunnel, sshTunnelStatus } from './ssh-tunnel.mjs';
+
+function publicOrigins(env) {
+  const configured = [];
+  for (const value of [env.PUBLIC_ORIGIN, ...(env.PUBLIC_ORIGINS || '').split(',')]) {
+    const text = String(value || '').trim();
+    if (!text) continue;
+    const url = new URL(text);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password ||
+      url.pathname !== '/' || url.search || url.hash) {
+      throw new Error('PUBLIC_ORIGIN and PUBLIC_ORIGINS must contain HTTP(S) origins without credentials, paths, queries or fragments.');
+    }
+    configured.push(url.origin);
+  }
+  return [...new Set(configured)];
+}
 
 export async function installation(directory) {
   const root = await fs.realpath(directory);
@@ -20,15 +36,10 @@ export async function installation(directory) {
   if (!Number.isInteger(desktopDebugPort) || desktopDebugPort < 1 || desktopDebugPort > 65535) {
     throw new Error('Invalid CODEX_DESKTOP_DEBUG_PORT in .env.');
   }
-  let publicUrl = '';
-  if (env.PUBLIC_ORIGIN) {
-    const url = new URL(env.PUBLIC_ORIGIN);
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
-      throw new Error('PUBLIC_ORIGIN must be an HTTP(S) URL without credentials.');
-    }
-    publicUrl = url.origin;
-  }
-  return { root, version: pkg.version, localUrl: `http://127.0.0.1:${port}`, publicUrl, desktopDebugPort };
+  const publicUrls = publicOrigins(env);
+  const sshTunnel = parseSshTunnel(env, port);
+  return { root, version: pkg.version, localUrl: `http://127.0.0.1:${port}`,
+    publicUrl: publicUrls[0] || '', publicUrls, desktopDebugPort, sshTunnel };
 }
 
 export async function tunnelMetricsPort(root) {
@@ -56,7 +67,7 @@ export function controlCommand(platform, root, action) {
 export function commandEnvironment() {
   const env = { ...process.env };
   for (const key of ['ELECTRON_RUN_AS_NODE', 'NODE_OPTIONS', 'DOTENV_CONFIG_PATH',
-    'PORT', 'HOST', 'PUBLIC_ORIGIN', 'DATA_DIR']) delete env[key];
+    'PORT', 'HOST', 'PUBLIC_ORIGIN', 'PUBLIC_ORIGINS', 'DATA_DIR']) delete env[key];
   if (process.platform === 'darwin') env.PATH = `${env.PATH || ''}:/opt/homebrew/bin:/usr/local/bin`;
   return env;
 }
@@ -109,7 +120,10 @@ export async function probe(url, json = true, fetcher = fetch, timeout = 2500) {
 export function publicDiagnosis(result) {
   if (externalEntry(result)) return { state: 'reachable', detail: '公网健康接口响应正常。' };
   if (!result) return { state: 'unconfigured', detail: '未配置公网入口。' };
-  if (result.failure === 'http') return { state: 'http-error', detail: `公网入口返回 HTTP ${result.httpStatus}，需要检查隧道或上游代理。` };
+  if (result.failure === 'http') return { state: 'http-error',
+    detail: result.httpStatus === 502
+      ? '公网入口返回 HTTP 502；若静态页面仍可打开，请检查反向隧道和上游 API 转发。'
+      : `公网入口返回 HTTP ${result.httpStatus}，需要检查隧道或上游代理。` };
   if (result.failure === 'timeout') return { state: 'unknown', detail: '本次探测超时，尚不能确认公网入口故障。可复检，或从其他设备打开入口。' };
   if (result.reachable) return { state: 'unexpected', detail: '入口已响应，但不是预期的 Remote 健康接口，请检查域名指向。' };
   return { state: 'unknown', detail: '本机未能完成公网请求，可能与 DNS、代理或网络有关。可复检，或从其他设备打开入口。' };
@@ -126,12 +140,15 @@ export function portListening(localUrl) {
   });
 }
 
-export function summarize(service, local, tunnel) {
+export function summarize(service, local, tunnel, sshTunnel = {}, canonicalPublic = null) {
   if (service.conflict) return 'conflict';
   if (!service.running && (local.reachable || local.listening)) return 'unowned';
   if (local.reachable && local.body?.ok === true) {
     if (local.body.codex !== 'ready' || local.body.transport !== 'desktop' ||
-      local.body.passwordConfigured !== true || (service.tunnelManaged && !tunnel.reachable)) return 'degraded';
+      local.body.passwordConfigured !== true || (service.tunnelManaged && !tunnel.reachable) ||
+      (sshTunnel.managed && !sshTunnel.ready) ||
+      (sshTunnel.managed && canonicalPublic &&
+        ['http-error', 'unexpected'].includes(canonicalPublic.state))) return 'degraded';
     return 'healthy';
   }
   return service.running ? 'degraded' : 'stopped';
@@ -159,26 +176,43 @@ export function diagnostics(status) {
   }
   if (!status.passwordConfigured) messages.push('尚未设置 Remote 访问密码，请在安装目录运行 npm run set-password。');
   if (status.tunnel.managed && !status.tunnel.ready) messages.push('受管隧道尚未就绪，请检查隧道状态。');
+  if (status.sshTunnel?.managed && !status.sshTunnel.ready) {
+    messages.push(status.sshTunnel.error ||
+      '受管 SSH 反向隧道未运行；国内入口会显示静态页面，但 API 与实时连接不可用。');
+  }
+  if (status.sshTunnel?.managed && status.publicEntry?.state === 'http-error' &&
+      status.publicEntry.httpStatus === 502) {
+    messages.push('主入口返回 HTTP 502；请检查反向 SSH 隧道及其服务端监听端口。');
+  }
   return messages;
 }
 
 export function startupReady(status, requireDesktop = true) {
   return status.service.running && !['conflict', 'unowned', 'stopped'].includes(status.state) &&
     status.backend.ready && status.passwordConfigured &&
-    (!status.tunnel.managed || status.tunnel.ready) && (!requireDesktop || status.desktop);
+    (!status.tunnel.managed || status.tunnel.ready) &&
+    (!status.sshTunnel?.managed || status.sshTunnel.ready) &&
+    (!requireDesktop || status.desktop);
 }
 
 export async function health(directory, execute = run, platform = process.platform, fetcher = fetch, { publicTimeout = 5000 } = {}) {
   const info = await installation(directory);
   const tunnelPort = await tunnelMetricsPort(info.root);
   const service = await serviceStatus(info, execute, platform);
-  const [local, tunnel, listening, external] = await Promise.all([
+  const [local, tunnel, listening, sshTunnel, ...publicResults] = await Promise.all([
     probe(`${info.localUrl}/health`, true, fetcher),
     service.tunnelManaged ? probe(`http://127.0.0.1:${tunnelPort}/ready`, false, fetcher)
       : Promise.resolve({ reachable: false, body: null }),
     portListening(info.localUrl),
-    info.publicUrl ? probe(`${info.publicUrl}/health`, true, fetcher, publicTimeout) : Promise.resolve(null)
+    sshTunnelStatus(info, execute, platform),
+    ...info.publicUrls.map(url => probe(`${url}/health`, true, fetcher, publicTimeout))
   ]);
+  const publicEntries = info.publicUrls.map((url, index) => {
+    const result = publicResults[index];
+    return { url, configured: true, ms: result?.ms ?? null, httpStatus: result?.httpStatus ?? null,
+      reachable: externalEntry(result), ...publicDiagnosis(result) };
+  });
+  const publicEntry = publicEntries[0] ?? { configured: false, reachable: false, ...publicDiagnosis(null) };
   const desktop = local.body?.codex === 'ready' && local.body?.transport === 'desktop';
   const debug = local.body?.ok === true && !desktop
     ? await probe(`http://127.0.0.1:${info.desktopDebugPort}/json/list`, true, fetcher) : null;
@@ -192,8 +226,10 @@ export async function health(directory, execute = run, platform = process.platfo
           target.url.includes('app://-/index.html'))) },
     passwordConfigured: local.body?.passwordConfigured === true,
     tunnel: { managed: Boolean(service.tunnelManaged), ready: tunnel.reachable },
-    publicEntry: { configured: Boolean(info.publicUrl), reachable: externalEntry(external), ...publicDiagnosis(external) },
-    state: summarize(service, { ...local, listening }, tunnel) };
+    sshTunnel,
+    publicEntries,
+    publicEntry,
+    state: summarize(service, { ...local, listening }, tunnel, sshTunnel, publicEntry) };
   return { ...status, diagnostics: diagnostics(status) };
 }
 

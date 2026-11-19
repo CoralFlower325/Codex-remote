@@ -74,6 +74,7 @@ describe('web backend update authority and durable state', () => {
     const job = f.launch.mock.calls[0][0];
     await fs.access(path.join(job, 'node_modules/tar/package.json'));
     await fs.access(path.join(job, 'node_modules/undici/package.json'));
+    await fs.access(path.join(job, 'desktop/ssh-tunnel.mjs'));
     const worker = await import(pathToFileURL(path.join(job, 'scripts/web-update-worker.mjs')).href);
     expect(typeof worker.runUpdate).toBe('function');
     expect(await fs.readFile(path.join(f.root, 'dist-server/server/index.js'), 'utf8')).toBe('old');

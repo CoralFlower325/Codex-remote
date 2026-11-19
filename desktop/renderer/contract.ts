@@ -1,10 +1,23 @@
-export type PublicEntry = { configured: boolean; reachable: boolean; state: string; detail: string };
+export type PublicEntry = {
+  configured: boolean; reachable: boolean; state: string; detail: string;
+  url?: string; ms?: number | null; httpStatus?: number | null;
+};
 export type Status = {
-  root: string; version: string; localUrl: string; publicUrl: string; checkedAt: number;
+  root: string; version: string; localUrl: string; publicUrl: string; publicUrls: string[];
+  checkedAt: number;
   state: 'healthy' | 'degraded' | 'stopped' | 'conflict' | 'unowned';
   service: { running: boolean; enabled: boolean; installed: boolean };
   backend: { reachable: boolean; ready: boolean; ms: number }; desktop: boolean; passwordConfigured: boolean;
-  diagnostics: string[]; tunnel: { managed: boolean; ready: boolean }; publicEntry: PublicEntry;
+  diagnostics: string[];
+  tunnel: { managed: boolean; ready: boolean };
+  sshTunnel: {
+    configured: boolean; managed: boolean; supported?: boolean; installed?: boolean; enabled?: boolean;
+    taskState?: string; running?: boolean; sshRunning?: boolean; supervisorRunning?: boolean;
+    ready?: boolean; supervised?: boolean; legacy?: boolean; conflict?: boolean;
+    error?: string;
+    host?: string; user?: string; taskName?: string; remotePort?: number; localPort?: number;
+  };
+  publicEntry: PublicEntry; publicEntries?: PublicEntry[];
 };
 export type State = {
   root: string; version: string; platform: string; packaged: boolean; launchAtLogin: boolean;

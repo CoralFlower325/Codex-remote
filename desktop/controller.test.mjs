@@ -145,6 +145,44 @@ describe('local manager control boundary', () => {
       expect(fetcher).toHaveBeenCalledTimes(1);
     } finally { await fs.rm(root, { recursive: true, force: true }); }
   });
+  it('reads every public origin and resolves a managed SSH tunnel without exposing its key', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'remote-multi-origin-'));
+    try {
+      await fs.mkdir(path.join(root, 'scripts'), { recursive: true });
+      await fs.mkdir(path.join(root, 'dist-server/server'), { recursive: true });
+      for (const name of ['remote-control-windows.ps1', 'remote-control-macos.sh']) {
+        await fs.writeFile(path.join(root, 'scripts', name), '', 'utf8');
+      }
+      await fs.writeFile(path.join(root, 'dist-server/server/index.js'), '', 'utf8');
+      await fs.writeFile(path.join(root, 'package.json'), '{"name":"codex-remote","version":"0.2.40"}', 'utf8');
+      await fs.writeFile(path.join(root, '.env'), [
+        'PUBLIC_ORIGIN=https://primary.example.com',
+        'PUBLIC_ORIGINS=https://primary.example.com,https://backup.example.com',
+        'SSH_TUNNEL_MANAGED=1',
+        'SSH_TUNNEL_HOST=edge.example.com',
+        'SSH_TUNNEL_USER=codexremote',
+        'SSH_TUNNEL_KEY=C:/private/secret-key',
+        'SSH_TUNNEL_REMOTE_PORT=14545',
+        'SSH_TUNNEL_LOCAL_PORT=4545'
+      ].join('\n'), 'utf8');
+      const healthBody = { ok: true, codex: 'ready', transport: 'desktop', passwordConfigured: true };
+      const fetcher = vi.fn(async (url) => {
+        if (url === 'https://primary.example.com/health') return { ok: false, status: 502 };
+        if (url.startsWith('https://')) return { ok: true, json: async () => healthBody };
+        return { ok: true, json: async () => healthBody };
+      });
+      const execute = vi.fn(async (_file, args) => args.includes('Status') && args.some(arg => String(arg).includes('ssh-tunnel-windows.ps1'))
+        ? '{"configured":true,"managed":true,"installed":true,"enabled":true,"ready":true,"supervised":true}'
+        : '{"running":true,"tunnelManaged":false}');
+      const result = await health(root, execute, 'win32', fetcher);
+      expect(result.publicUrls).toEqual(['https://primary.example.com', 'https://backup.example.com']);
+      expect(result.publicEntries.map(entry => entry.state)).toEqual(['http-error', 'reachable']);
+      expect(result.sshTunnel).toMatchObject({ managed: true, host: 'edge.example.com', ready: true });
+      expect(JSON.stringify(result)).not.toContain('secret-key');
+      expect(result.state).toBe('degraded');
+      expect(result.diagnostics.join('\n')).toContain('HTTP 502');
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+  });
   it('does not mistake a generic proxy response for the Remote health endpoint', () => {
     expect(externalEntry({ reachable: true, body: { ok: true } })).toBe(false);
     expect(externalEntry({ reachable: false, body: { ok: true, codex: 'ready', transport: 'desktop' } })).toBe(false);
@@ -158,6 +196,8 @@ describe('local manager control boundary', () => {
     const http = await probe('https://remote.example.com/health', true, async () => ({ ok: false, status: 530 }));
     expect(publicDiagnosis(http)).toMatchObject({ state: 'http-error' });
     expect(publicDiagnosis(http).detail).toContain('530');
+    const gateway = await probe('https://remote.example.com/health', true, async () => ({ ok: false, status: 502 }));
+    expect(publicDiagnosis(gateway).detail).toContain('反向隧道');
     expect(publicDiagnosis({ reachable: true, body: { ok: true } }).state).toBe('unexpected');
     expect(publicDiagnosis(null).state).toBe('unconfigured');
   });
@@ -170,6 +210,7 @@ describe('local manager control boundary', () => {
   it('allows a started service to await Desktop while preserving strict update verification', () => {
     const status = { state: 'degraded', service: { running: true }, backend: { ready: true },
       desktop: false, passwordConfigured: true, tunnel: { managed: false, ready: false },
+      sshTunnel: { managed: false, ready: false },
       desktopDebug: { port: 9444, reachable: false, targetReady: false } };
     expect(startupReady(status, false)).toBe(true);
     expect(startupReady(status)).toBe(false);
@@ -182,7 +223,7 @@ describe('local manager control boundary', () => {
     expect(diagnostics({ ...status, desktop: true })).toEqual([]);
     for (const change of [{ backend: { ready: false } }, { service: { running: false } },
       { state: 'unowned' }, { state: 'conflict' }, { passwordConfigured: false },
-      { tunnel: { managed: true, ready: false } }]) {
+      { tunnel: { managed: true, ready: false } }, { sshTunnel: { managed: true, ready: false } }]) {
       expect(startupReady({ ...status, ...change }, false)).toBe(false);
     }
   });

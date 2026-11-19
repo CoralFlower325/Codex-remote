@@ -6,14 +6,14 @@ turns and exposes no network control API.
 
 ## Install And Open
 
-Remote 0.2.40 pairs with manager 0.2.9. Download the Windows installer or macOS
+Remote 0.2.41 pairs with manager 0.2.10. Download the Windows installer or macOS
 DMG/ZIP from the [project distribution or official fallback](update-downloads.md).
 Windows packages target x64; macOS packages target Apple Silicon (arm64).
 Initial packages are unsigned; normal Windows reputation/Gatekeeper approval may
 be required. Signing, notarization and live macOS GUI acceptance remain pending.
 
 To replace an older manager, quit the manager from its tray/menu-bar menu, install
-0.2.9 over the existing app, reopen it and select the same Remote installation
+0.2.10 over the existing app, reopen it and select the same Remote installation
 directory. Quitting the manager preserves the service. Retry the host update, or
 recover a recorded interrupted install first. Host updates cannot patch the old
 manager's bundled updater; checking for a Remote release does not upgrade the app.
@@ -65,8 +65,20 @@ shows only the target version and a short downtime/data-preservation notice.
 - Installed builds offer manager login startup, separately from Remote service
   startup. Start/Stop continue enabling/disabling Remote's own login startup.
 - Health refreshes every five seconds without overlapping reads: owned backend,
-  Desktop transport, password and managed Windows tunnel. Running alone is not
-  healthy. Readings older than twenty seconds become stale.
+  Desktop transport, password, managed Cloudflare tunnel, explicitly managed
+  Windows SSH reverse tunnel and every configured public origin. Running alone is
+  not healthy. Readings older than twenty seconds become stale.
+- `PUBLIC_ORIGIN` is the canonical entry and `PUBLIC_ORIGINS` lists additional
+  entries. Each `/health` route is checked independently. An HTTP 502 while the
+  static shell remains available is reported as a reverse-tunnel or upstream API
+  forwarding fault instead of a password or DNS failure.
+- Windows SSH reverse-tunnel management requires explicit
+  `SSH_TUNNEL_MANAGED=1` plus `SSH_TUNNEL_HOST`, `SSH_TUNNEL_USER` and
+  `SSH_TUNNEL_KEY`. Remote and backup ports default to 4545 and 14545. The manager
+  stores only host, user and private-key path; it never reads or returns key
+  contents. Repair migrates a matching legacy SSH task to a hidden supervisor that
+  restarts SSH after any exit. Configurations without the explicit marker remain
+  external and are never adopted automatically.
 - Manager 0.2.8 recognizes managed runtime names such as
   `node-22.19.0-127.exe` in Windows status and repair checks instead of accepting
   only `node.exe`, preventing a healthy backend from being reported as an
@@ -217,7 +229,7 @@ clean HEAD. Backups and older frontend chunks for open tabs remain available.
 This updates **the selected host installation**, not the manager executable.
 The manager and Remote display their own versions and may differ. Update checks
 compare the selected Remote installation with the release. Install a newer manager
-separately when its controls or updater need a fix. Stable manager 0.2.9 does not
+separately when its controls or updater need a fix. Stable manager 0.2.10 does not
 include manager self-update. Its paused 0.2.0AU development line and signing
 prerequisites are preserved in [the resume checkpoint](manager-self-update-checkpoints.md).
 The manager uses an independent version starting at 0.2.0. Remote-only updates
