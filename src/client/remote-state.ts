@@ -35,19 +35,11 @@ export function activeTurnIdFromTimings(
   currentId: string | null,
   timings: Record<string, TurnTiming>
 ): string | null {
-  if (currentId) {
-    const current = timings[currentId];
-    // A missing timing is not completion. Keep the live event's turn until a
-    // native record explicitly finishes it.
-    return current && current.status !== 'inProgress' ? null : currentId;
-  }
-  let active: TurnTiming | null = null;
-  for (const timing of Object.values(timings)) {
-    if (timing.status !== 'inProgress') continue;
-    if (!active || (timing.startedAt ?? Number.NEGATIVE_INFINITY) >=
-        (active.startedAt ?? Number.NEGATIVE_INFINITY)) active = timing;
-  }
-  return active?.id ?? null;
+  if (!currentId) return null;
+  const current = timings[currentId];
+  // A missing timing is not completion. Keep the live event's turn until a
+  // native record explicitly finishes it.
+  return current && current.status !== 'inProgress' ? null : currentId;
 }
 
 export function reconcileActiveTurnId(
@@ -71,6 +63,9 @@ export function reconcileActiveTurnId(
     // completion, and an older active record must not rewind native live state.
     return incoming?.status === 'inProgress' && incoming.startedAt != null && currentStart != null &&
       incoming.startedAt > currentStart ? incoming.id : currentId;
+  }
+  if (!currentId) {
+    return [...snapshot.turns].reverse().find(turn => turn.status === 'inProgress')?.id ?? null;
   }
   const local = activeTurnIdFromTimings(currentId, currentTimings);
   if (!local) return null;

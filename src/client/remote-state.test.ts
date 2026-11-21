@@ -26,7 +26,7 @@ describe('remote thread state', () => {
     const completed = { ...live, status: 'completed' as const, completedAt: 25, durationMs: 5000 };
     expect(activeTurnIdFromTimings('live', { live, newer })).toBe('live');
     expect(activeTurnIdFromTimings('live', { live: completed, newer })).toBeNull();
-    expect(activeTurnIdFromTimings(null, { live, newer, old })).toBe('newer');
+    expect(activeTurnIdFromTimings(null, { live, newer, old })).toBeNull();
   });
 
   it('drops an optimistic steer only when the native user message arrives', () => {
@@ -53,6 +53,7 @@ describe('remote thread state', () => {
     expect(reconcileActiveTurnId('live', { live }, { activeTurnId: 'newer', turns: [newer] })).toBe('newer');
     expect(reconcileActiveTurnId(null, {}, { activeTurnId: 'live', turns: [live] })).toBe('live');
     expect(reconcileActiveTurnId(null, { live }, { activeTurnId: null, turns: [live] })).toBe('live');
+    expect(reconcileActiveTurnId(null, { live }, { activeTurnId: null, turns: [] })).toBeNull();
     expect(reconcileActiveTurnId(null, { live }, {
       activeTurnId: null, turns: [{ ...live, status: 'completed', completedAt: 25 }]
     })).toBeNull();

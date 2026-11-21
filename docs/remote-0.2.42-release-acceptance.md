@@ -13,10 +13,10 @@
 
 ## 源码验证
 
-- 全量测试：`1195 passed / 2 skipped`，149 个测试文件通过。
+- 全量测试：`1196 passed / 2 skipped`，149 个测试文件通过。
 - `npm run typecheck` 与 Remote 生产构建通过。
 - 构建产品版本为 `0.2.42`，入口构建标识为
-  `assets/index-Cp7-P--5.js`。
+  `assets/index-Nk9GOGX-.js`。
 
 ## 发布与部署
 

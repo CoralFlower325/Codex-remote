@@ -1196,6 +1196,33 @@ describe('live turn timing', () => {
     await settle();
     expect(f.remote.activeTurnId).toBe('refreshing-turn');
   });
+
+  it('does not revive a completed turn when completion refreshes the same conversation', async () => {
+    const completed = { id: 'completed-turn', status: 'completed' as const, startedAt: 100,
+      completedAt: 105, durationMs: 5000 };
+    const f = fixture(path => {
+      const url = String(path);
+      if (url.includes('/thread/open?')) return json({
+        result: { thread }, items: [], turns: [completed], activeTurnId: null,
+        turnsCursor: null, nextCursor: null
+      });
+      if (url.includes('/thread/timings?')) return json({
+        turns: [completed], turnsCursor: null, activeTurnId: null
+      });
+      return new Promise(() => {});
+    });
+    await f.remote.openThread(thread.id);
+    await settle();
+    connection.options.onMessage({ type: 'event', method: 'turn/started', params: {
+      threadId: thread.id, turn: { id: 'completed-turn', status: 'inProgress', startedAt: 100 }
+    } });
+    await settle();
+    connection.options.onMessage({ type: 'event', method: 'turn/completed', params: {
+      threadId: thread.id, turn: { ...completed, items: [] }
+    } });
+    await settle();
+    expect(f.remote.activeTurnId).toBeNull();
+  });
 });
 
 describe('new native question arrivals', () => {
