@@ -23,7 +23,17 @@ the live duration to stop early. Live turn metadata now wins until completion or
 interruption, while the Desktop-aligned freeze at the first final-answer record
 is unchanged. Manager **0.2.10** has no changes.
 The [0.2.42 release acceptance](remote-0.2.42-release-acceptance.md) records this
-batch. The [0.2.41 release acceptance](remote-0.2.41-release-acceptance.md)
+batch. Its final source and tag target are
+`b1a49bbccca0d5140ec9766631f5a84c86a1289d`; main CI `44853893449`,
+Runtime Packages `44854588388` and the manager plan `44854588412` passed.
+The latest Release contains both signed runtime pairs, and download Worker
+`e826ac9f-0550-4a12-95a2-6ff032bcf9dc` serves `v0.2.42`. The local transaction
+backup is `output\manager-backup-84933633-c777-4f84-93c7-daf8a02928cc`.
+Domestic Caddy serves `releases/0.2.42` with `0.2.41` retained for rollback, and
+the `codex-remote-static` Worker version
+`2d4ef8c7-7456-4cb2-97a6-8485bdc852bb` serves the matching edge assets.
+Manager installers remain unchanged in `v0.2.41`.
+The [0.2.41 release acceptance](remote-0.2.41-release-acceptance.md)
 retains the preceding non-Cloudflare deployment and SSH supervisor evidence.
 The [0.2.40 release acceptance](remote-0.2.40-release-acceptance.md) records the
 non-Cloudflare multi-origin, Caddy/Brotli and direct-deployment batch.
@@ -161,7 +171,7 @@ and real PTY lifecycle tests pass. Platform output uses bounded rotating logs;
 macOS controls use the same-PID background wrapper and retain ownership checks.
 Local synthetic checks do not establish signed-in macOS service behavior.
 
-The current implementation through `v0.2.40` adds complete cursor-following
+The current implementation through `v0.2.42` adds complete cursor-following
 model/project catalogs, explicit reasoning inherit/default semantics, ordered
 settings acknowledgements, isolated Office conversion workers, bounded SSE
 backpressure, a supervisor-owned dynamic tunnel metrics port, explicit client

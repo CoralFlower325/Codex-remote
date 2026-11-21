@@ -67,6 +67,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
+| [Remote 0.2.42 发布与部署验收](remote-0.2.42-release-acceptance.md) | 0.2.42 / manager 0.2.10：轮次计时状态修复、三平台与八视口验收、签名运行包、下载分发、本机升级、国内 Caddy 与 Cloudflare 静态边缘同步；真机边界保留 |
 | [Remote 0.2.41 发布与部署验收](remote-0.2.41-release-acceptance.md) | 0.2.41 / manager 0.2.10：多入口健康监控、502 分层诊断、显式 SSH 反向隧道管理、自动重连与本机部署；真机边界保留 |
 | [Remote 0.2.40 发布与部署验收](remote-0.2.40-release-acceptance.md) | 0.2.40 / manager 0.2.9：非 Cloudflare 多公网来源、连接菜单、Caddy/Brotli 静态发布、国内直连与 Cloudflare 回退；真机边界保留 |
 | [Remote 0.2.39 发布与部署验收](remote-0.2.39-release-acceptance.md) | 0.2.39 / manager 0.2.9：历史主机缓存、后台预热、三页上滑预取、timings 主机覆盖、签名运行包、分发与本机部署；真机边界保留 |

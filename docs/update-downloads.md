@@ -24,9 +24,8 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 本次不恢复 AU 功能；签名、公证和真实 Mac 登录环境验收仍是独立断点。
 未签名安装包可能需要按系统下载信誉或 Gatekeeper 流程确认。
 
-Remote 0.2.41 同步版本与发布元数据，运行包位于 `v0.2.41`。管理器 0.2.10
-增加多公网入口健康监控、HTTP 502 分层诊断和显式 Windows SSH 反向隧道管理；
-安装包同样位于 `v0.2.41`。
+Remote 0.2.42 修复会话轮次计时在短暂 idle 状态或同线程静默刷新时提前停止，
+运行包位于 `v0.2.42`。管理器 0.2.10 无变更，安装包继续位于 `v0.2.41`。
 运行包 Ed25519 清单签名已启用，与仍暂停的 AU 和 macOS 应用签名分别管理。
 
 English: install manager 0.2.10 manually over the old app, reopen it and select the same
@@ -81,6 +80,27 @@ Remote 0.2.16 与管理器 0.2.2 不再将已等于目标版本的文件误判�
 详见[管理器](desktop-manager.zh-CN.md)与[网页后端更新](web-backend-update.md)。
 
 ## 维护分发服务
+
+2026-11-21 已完成 Remote **0.2.42** / manager **0.2.10** 的分发与部署。
+正式标签为 `v0.2.42`，标签目标与最终源码提交均为
+`b1a49bbccca0d5140ec9766631f5a84c86a1289d`。main CI `44853893449` 的
+Ubuntu、Windows、macOS 和浏览器合成验收全部通过。Runtime Packages
+`44854588388` 完成双平台签名运行包、解包和终端验证；Desktop Manager
+`44854588412` 的 plan 通过，管理器未改版，package job 按门禁跳过。
+
+Release 已发布为非草稿、非预发布 latest，共四附件。下载 Worker 版本
+`e826ac9f-0550-4a12-95a2-6ff032bcf9dc` 已刷新四附件快照，
+`/releases/latest` 返回 `v0.2.42`；四个附件的项目分发 HEAD 均为 `200`，大小
+与 Release 元数据一致。管理器 0.2.10 安装包继续从 `v0.2.41` 提供。
+
+本机 Remote 已从 0.2.41 通过签名预构建运行包升级到 0.2.42，事务备份为
+`output\manager-backup-84933633-c777-4f84-93c7-daf8a02928cc`；更新任务
+`c98da869-34f5-480a-8ff1-9162c80d42e7` 已完成。国内 Caddy 已原子切换到
+`releases/0.2.42`，旧 0.2.41 目录保留；主入口与 Cloudflare 入口的
+`/version.json` 均为 0.2.42，构建标识 `assets/index-Nk9GOGX-.js`，
+`/health` 为 ready / desktop。`codex-remote-static` 静态边缘 Worker 版本为
+`2d4ef8c7-7456-4cb2-97a6-8485bdc852bb`；Remote、Cloudflare 与国内 SSH
+三项任务保持运行，Desktop 未重启。
 
 2026-11-19 已完成 Remote **0.2.41** / manager **0.2.10** 的分发与部署。
 正式标签为 `v0.2.41`，发布提交
