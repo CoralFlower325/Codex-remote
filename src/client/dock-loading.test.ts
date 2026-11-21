@@ -1155,6 +1155,48 @@ describe('on-demand execution bodies', () => {
   });
 });
 
+describe('live turn timing', () => {
+  it('keeps a live timing through a transient idle thread status until turn completion', async () => {
+    const f = fixture(() => new Promise(() => {}));
+    void f.remote.openThread(thread.id).catch(() => {});
+    await settle();
+    connection.options.onMessage({ type: 'event', method: 'turn/started', params: {
+      threadId: thread.id, turn: { id: 'timed-turn', status: 'inProgress', startedAt: 100 }
+    } });
+    await settle();
+    connection.options.onMessage({ type: 'event', method: 'thread/status/changed', params: {
+      threadId: thread.id, status: { type: 'idle' }
+    } });
+    await settle();
+    expect(f.remote.activeTurnId).toBe('timed-turn');
+    connection.options.onMessage({ type: 'event', method: 'turn/completed', params: {
+      threadId: thread.id, turn: { id: 'timed-turn', status: 'completed', startedAt: 100,
+        completedAt: 105, durationMs: 5000, items: [] }
+    } });
+    await settle();
+    expect(f.remote.activeTurnId).toBeNull();
+  });
+
+  it('does not clear a live turn while the same conversation refreshes silently', async () => {
+    let opens = 0;
+    const f = fixture(path => {
+      if (!String(path).includes('/thread/open?')) return new Promise(() => {});
+      opens += 1;
+      return opens === 1 ? json({
+        result: { thread }, items: [], turns: [], activeTurnId: null, turnsCursor: null, nextCursor: null
+      }) : new Promise(() => {});
+    });
+    await f.remote.openThread(thread.id);
+    await settle();
+    connection.options.onMessage({ type: 'event', method: 'turn/started', params: {
+      threadId: thread.id, turn: { id: 'refreshing-turn', status: 'inProgress', startedAt: 100 }
+    } });
+    await settle();
+    void f.remote.openThread(thread.id, { silent: true }).catch(() => {});
+    await settle();
+    expect(f.remote.activeTurnId).toBe('refreshing-turn');
+  });
+});
 
 describe('new native question arrivals', () => {
   it('keeps late native items in their owning turn without clearing the newer active turn', async () => {

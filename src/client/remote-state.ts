@@ -31,6 +31,25 @@ export function mergeTurnTimings(current: Record<string, TurnTiming>, latest: Tu
   return next;
 }
 
+export function activeTurnIdFromTimings(
+  currentId: string | null,
+  timings: Record<string, TurnTiming>
+): string | null {
+  if (currentId) {
+    const current = timings[currentId];
+    // A missing timing is not completion. Keep the live event's turn until a
+    // native record explicitly finishes it.
+    return current && current.status !== 'inProgress' ? null : currentId;
+  }
+  let active: TurnTiming | null = null;
+  for (const timing of Object.values(timings)) {
+    if (timing.status !== 'inProgress') continue;
+    if (!active || (timing.startedAt ?? Number.NEGATIVE_INFINITY) >=
+        (active.startedAt ?? Number.NEGATIVE_INFINITY)) active = timing;
+  }
+  return active?.id ?? null;
+}
+
 export function reconcileActiveTurnId(
   currentId: string | null,
   currentTimings: Record<string, TurnTiming>,
@@ -42,15 +61,21 @@ export function reconcileActiveTurnId(
     const local = currentTimings[snapshot.activeTurnId];
     if (local && local.status !== 'inProgress') return null;
   }
-  if (!currentId || snapshot.activeTurnId === currentId) return snapshot.activeTurnId;
-  const current = snapshot.turns.find(turn => turn.id === currentId);
-  if (current && current.status !== 'inProgress') return snapshot.activeTurnId;
-  const incoming = snapshot.turns.find(turn => turn.id === snapshot.activeTurnId);
-  const currentStart = currentTimings[currentId]?.startedAt;
-  // A bounded/lagging page can omit a just-started turn. Absence is not a
-  // completion, and an older active record must not rewind native live state.
-  return incoming?.status === 'inProgress' && incoming.startedAt != null && currentStart != null &&
-    incoming.startedAt > currentStart ? incoming.id : currentId;
+  if (snapshot.activeTurnId) {
+    if (!currentId || snapshot.activeTurnId === currentId) return snapshot.activeTurnId;
+    const current = snapshot.turns.find(turn => turn.id === currentId);
+    if (current && current.status !== 'inProgress') return snapshot.activeTurnId;
+    const incoming = snapshot.turns.find(turn => turn.id === snapshot.activeTurnId);
+    const currentStart = currentTimings[currentId]?.startedAt;
+    // A bounded/lagging page can omit a just-started turn. Absence is not a
+    // completion, and an older active record must not rewind native live state.
+    return incoming?.status === 'inProgress' && incoming.startedAt != null && currentStart != null &&
+      incoming.startedAt > currentStart ? incoming.id : currentId;
+  }
+  const local = activeTurnIdFromTimings(currentId, currentTimings);
+  if (!local) return null;
+  const snapshotTurn = snapshot.turns.find(turn => turn.id === local);
+  return snapshotTurn && snapshotTurn.status !== 'inProgress' ? null : local;
 }
 
 export function mergeOlderTurnTimings(current: Record<string, TurnTiming>, older: TurnTiming[]): Record<string, TurnTiming> {

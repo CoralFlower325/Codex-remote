@@ -13,7 +13,7 @@ import { beginForegroundRead, constrainedNetwork, prioritizeInteraction, yieldTo
 import { readDeviceWorkspace, saveDeviceWorkspace, readDeviceChat, saveDeviceChat, removeDeviceChat } from './device-snapshots';
 import { provisionalHistory, provisionalThread, type OpenThreadPage } from './loading-snapshots';
 import { RemoteConnection, type RemoteChannel } from './remote-connection';
-import { isThreadWriterConflict, isUnusableThreadError, itemKey, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings, reconcileActiveTurnId, reconcileOptimisticUserMessages, upsertItem } from './remote-state';
+import { activeTurnIdFromTimings, isThreadWriterConflict, isUnusableThreadError, itemKey, mergeEmbeddedTurnItems, mergeLatestHistoryItems, mergeOlderHistoryItems, mergeOlderTurnTimings, mergeTurnTimings, reconcileActiveTurnId, reconcileOptimisticUserMessages, upsertItem } from './remote-state';
 import type {
   BridgeStatus,
   ServerRequest,
@@ -414,8 +414,11 @@ export function useRemote({
         turnsCursorRef.current = null;
         olderHistoryCursorRef.current = null;
         setHasMoreHistory(false);
-        setActiveTurnId(null);
-        activeTurnIdRef.current = null;
+        const restoredActiveTurnId = sameThread
+          ? activeTurnIdFromTimings(activeTurnIdRef.current, timings)
+          : null;
+        setActiveTurnId(restoredActiveTurnId);
+        activeTurnIdRef.current = restoredActiveTurnId;
         if (!sameThread) { goalRevisionRef.current++; setActiveGoal(null); }
       }
       const version = selectionVersionRef.current;
@@ -1949,9 +1952,13 @@ export function useRemote({
         updateThread(threadId, thread => ({ ...thread, status }));
         setActiveThread((current) => (current?.id === threadId ? { ...current, status } : current));
         if (threadId === activeThreadRef.current && status.type !== 'active') {
-          turnRevisionRef.current += 1;
-          activeTurnIdRef.current = null;
-          setActiveTurnId(null);
+          const current = activeTurnIdRef.current;
+          const active = activeTurnIdFromTimings(current, turnTimingsRef.current);
+          if (active !== current) {
+            turnRevisionRef.current += 1;
+            activeTurnIdRef.current = active;
+            setActiveTurnId(active);
+          }
         }
       }
     }

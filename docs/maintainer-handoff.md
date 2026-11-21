@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-11-19.
+Last reconciled: 2026-11-21.
 
 ## Authority
 
@@ -15,22 +15,16 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.41** / manager **0.2.10**, tag
-`v0.2.41`, source `0110ce7862a4411e00efd21d7b4c550f1d3d2338`.
-PR #45 CI `44459398248`, Runtime Packages `44460543487` and Desktop Manager
-`44460543509` passed. The latest Release contains seven signed/verified runtime
-and manager assets; download Worker `7906d5e0-004d-4050-984f-88b66c0716ce`
-serves `v0.2.41`. The local Remote and published Windows manager build are
-installed, and the domestic Caddy target is atomically switched to `releases/0.2.41`.
-Remote **0.2.41** keeps the web and backend behavior of 0.2.40 and updates release
-metadata so the independently versioned manager can ship. Manager **0.2.10**
-checks every configured public origin, explains static-shell/API-502 separation,
-and can explicitly manage a Windows SSH reverse tunnel. It migrates a matching
-legacy task to a hidden supervisor that restarts SSH after any exit. Private-key
-contents are never read or returned; configurations without
-`SSH_TUNNEL_MANAGED=1` remain external.
-The [0.2.41 release acceptance](remote-0.2.41-release-acceptance.md) records this
-batch.
+The current published release is Remote **0.2.42** / manager **0.2.10**, tag
+`v0.2.42`. The matching tag and Release identify the exact source commit.
+Remote **0.2.42** fixes an edge case where a transient idle thread status or a
+silent refresh could clear a native turn that was still `inProgress`, causing
+the live duration to stop early. Live turn metadata now wins until completion or
+interruption, while the Desktop-aligned freeze at the first final-answer record
+is unchanged. Manager **0.2.10** has no changes.
+The [0.2.42 release acceptance](remote-0.2.42-release-acceptance.md) records this
+batch. The [0.2.41 release acceptance](remote-0.2.41-release-acceptance.md)
+retains the preceding non-Cloudflare deployment and SSH supervisor evidence.
 The [0.2.40 release acceptance](remote-0.2.40-release-acceptance.md) records the
 non-Cloudflare multi-origin, Caddy/Brotli and direct-deployment batch.
 The [0.2.39 release acceptance](remote-0.2.39-release-acceptance.md) records the

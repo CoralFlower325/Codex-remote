@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  activeTurnIdFromTimings,
   displayThreadTitle,
   findActiveTurnId,
   isUnusableThreadError,
@@ -18,6 +19,16 @@ import type { TurnTiming } from '../shared/turn-timing';
 import type { Thread, ThreadItem } from './types';
 
 describe('remote thread state', () => {
+  it('derives an active turn from live timings without reviving finished turns', () => {
+    const live: TurnTiming = { id: 'live', status: 'inProgress', startedAt: 20, completedAt: null, durationMs: null };
+    const newer = { ...live, id: 'newer', startedAt: 30 };
+    const old = { ...live, id: 'old', startedAt: 10 };
+    const completed = { ...live, status: 'completed' as const, completedAt: 25, durationMs: 5000 };
+    expect(activeTurnIdFromTimings('live', { live, newer })).toBe('live');
+    expect(activeTurnIdFromTimings('live', { live: completed, newer })).toBeNull();
+    expect(activeTurnIdFromTimings(null, { live, newer, old })).toBe('newer');
+  });
+
   it('drops an optimistic steer only when the native user message arrives', () => {
     const optimistic: ThreadItem = {
       type: 'userMessage', id: 'pending', turnId: 't', optimistic: 'sending',
@@ -41,6 +52,10 @@ describe('remote thread state', () => {
     const newer = { ...live, id: 'newer', startedAt: 30 };
     expect(reconcileActiveTurnId('live', { live }, { activeTurnId: 'newer', turns: [newer] })).toBe('newer');
     expect(reconcileActiveTurnId(null, {}, { activeTurnId: 'live', turns: [live] })).toBe('live');
+    expect(reconcileActiveTurnId(null, { live }, { activeTurnId: null, turns: [live] })).toBe('live');
+    expect(reconcileActiveTurnId(null, { live }, {
+      activeTurnId: null, turns: [{ ...live, status: 'completed', completedAt: 25 }]
+    })).toBeNull();
   });
   it('reconciles a turn-less optimistic send with its native echo by content', () => {
     const optimistic: ThreadItem = {
