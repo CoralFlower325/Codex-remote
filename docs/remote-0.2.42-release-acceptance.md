@@ -48,6 +48,9 @@
 - `https://codexwin.mmmmmzzzzzyyyyy.online/version.json` 与
   `https://codexwin.73916482.xyz/version.json` 均返回 `0.2.42` 和同一入口构建
   标识；两个入口的 `/health` 均返回 ready / desktop。
+- 两个域名均写入 `PUBLIC_ORIGINS` 与 `ALLOWED_ORIGINS`。分别从两个实际公网
+  Origin 提交无效测试凭据时，登录接口均返回 `401` 的凭据错误，没有返回 `403`
+  的未信任来源错误；测试没有读取或输出真实密码。
 - `codex-remote-static` 已发布 `0.2.42` 静态边缘，Worker 版本为
   `2d4ef8c7-7456-4cb2-97a6-8485bdc852bb`，部署为
   `567a2ed7-646d-42d3-b77b-d4fe03215c20`。首页与版本化资源由边缘返回，资源响应
