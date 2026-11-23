@@ -82,6 +82,30 @@ Remote 0.2.16 与管理器 0.2.2 不再将已等于目标版本的文件误判�
 
 ## 维护分发服务
 
+2026-11-23 已完成 Remote **0.2.43** / manager **0.2.10** 的分发与部署。
+正式标签与 Release 为 `v0.2.43`，PR #46 合并发布源码。main CI
+`45138042290` 通过；Runtime Packages `45139094926` 完成双平台签名运行包、
+解包和终端验证，Desktop Manager `45139094906` 的 plan 通过，管理器未改版，
+package job 按门禁跳过。Release 已发布为非草稿、非预发布 latest，共四附件。
+
+下载 Worker 版本 `178906cd-dc09-414e-8b0f-81763a8e5a90` 已刷新四附件快照，
+`/releases/latest` 返回 `v0.2.43`；四个附件的项目分发 HEAD 均为 `200`，
+完整下载大小和 SHA-256 与 Release 元数据一致。Windows x64 运行包为
+`12064590` 字节，macOS Apple Silicon 运行包为 `10135313` 字节；本记录不复制
+摘要值。管理器 0.2.10 安装包继续从 `v0.2.41` 提供。
+
+本机 Remote 已从 0.2.42 通过签名预构建运行包升级到 0.2.43，事务备份为
+`output\manager-backup-b98fd5f8-bd7f-430d-956b-02cc84ef4788`；更新任务
+`1be9e524-3e20-49f9-b032-888fb3969118` 已完成。Remote PID `58388` 监听
+`127.0.0.1:4545`，`/health` 为 ready / desktop，`/version.json` 为 0.2.43。
+国内 Caddy 已原子切换到 `releases/0.2.43`，共 118 个文件，旧 0.2.42 目录
+保留；国内主入口与 Cloudflare 入口的 `/version.json` 均为 0.2.43，构建标识
+`assets/index-B1vKcnCJ.js`，`/health` 为 ready / desktop。
+`codex-remote-static` 静态边缘 Worker 版本为
+`e3a6bab5-5907-495f-bb4d-ad23f0991710`，版本化 JavaScript 带
+`x-codex-static: edge`。Remote、Cloudflare 与国内 SSH 三项任务保持运行，
+Desktop 未重启。
+
 2026-11-21 已完成 Remote **0.2.42** / manager **0.2.10** 的分发与部署。
 正式标签为 `v0.2.42`，标签目标与最终源码提交均为
 `b1a49bbccca0d5140ec9766631f5a84c86a1289d`。main CI `44853893449` 的

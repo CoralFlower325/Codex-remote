@@ -41,8 +41,30 @@
 
 ## 发布与部署
 
-- 正式源码、CI、签名运行包、GitHub Release、下载分发、本机升级、国内 Caddy 和
-  Cloudflare 静态边缘的最终状态在本轮发布完成后补充。
+- PR #46 已合并，正式标签与 Release `v0.2.43` 精确绑定到该发布源码；Release
+  已发布为非草稿、非预发布 latest，Windows x64 与 Apple Silicon 的签名运行包
+  清单、归档共四附件齐全。main CI `45138042290`、Runtime Packages
+  `45139094926` 和 Desktop Manager `45139094906` 通过；PR CI `45136295090`
+  首次浏览器作业在既有等待点超时，原作业重跑后通过。
+- 下载 Worker 版本 `178906cd-dc09-414e-8b0f-81763a8e5a90`（部署
+  `1de552f4-b60f-4962-997e-dc748800413a`）已刷新四附件快照，
+  `/releases/latest` 返回 `v0.2.43`。四个附件的项目分发 HEAD 均为 `200`，
+  完整下载的大小与 SHA-256 和 Release 元数据一致，未输出摘要值。
+- 本机通过正式更新事务从 0.2.42 升级到 0.2.43，更新任务
+  `1be9e524-3e20-49f9-b032-888fb3969118` 已完成；保留备份
+  `output\manager-backup-b98fd5f8-bd7f-430d-956b-02cc84ef4788`。Remote PID
+  `58388` 监听 `127.0.0.1:4545`，`/health` 为 ready / desktop，
+  `/version.json` 为 0.2.43；`CodexRemote`、`CodexRemoteTunnel` 和
+  `CodexRemoteDomesticTunnel` 三项任务均为 Running。Desktop 未重启。
+- 国内 Caddy 的 `current` 已原子切换到 `releases/0.2.43`，共 118 个文件，
+  `releases/0.2.42` 保留用于回滚。Cloudflare `codex-remote-static` Worker
+  版本 `e3a6bab5-5907-495f-bb4d-ad23f0991710`（部署
+  `4dfca6a8-ead2-4993-afa6-799776ede70c`）已上线 30 个新/变更静态文件；
+  版本化 JavaScript 返回 `x-codex-static: edge` 和
+  `Cache-Control: public, max-age=31536000, immutable`。
+- 国内主入口 `codexwin.mmmmmzzzzzyyyyy.online` 与 Cloudflare 入口
+  `codexwin.73916482.xyz` 的 `/version.json` 均返回 0.2.43 和
+  `assets/index-B1vKcnCJ.js`，`/health` 均为 ready / desktop。
 
 ## 边界
 
