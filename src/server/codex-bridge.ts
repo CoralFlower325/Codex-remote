@@ -8,9 +8,14 @@ import { validateGoalMutation } from '../shared/goal-mutations.js';
 
 export { isAllowedRpcMethod } from '../shared/rpc-methods.js';
 
+const RECONNECT_PROBE_MS = 100;
+const OFFLINE_GRACE_MS = 1500;
+
 export class CodexBridge extends EventEmitter {
   private status: 'starting' | 'ready' | 'restarting' | 'offline' = 'offline';
   private desktopRetry: ReturnType<typeof setTimeout> | null = null;
+  private reconnectProbe: ReturnType<typeof setTimeout> | null = null;
+  private offlineGrace: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
 
   constructor() {
@@ -20,13 +25,31 @@ export class CodexBridge extends EventEmitter {
     desktopBridge.on('resolved', (requestId) => this.emit('resolved', requestId));
     desktopBridge.on('connected', () => {
       if (this.stopped) return;
+      this.clearRecoveryTimers();
+      if (this.desktopRetry) clearTimeout(this.desktopRetry);
+      this.desktopRetry = null;
+      const wasReady = this.status === 'ready';
       this.setStatus('ready');
-      this.emit('event', { method: 'remote/connected', params: {} });
+      if (!wasReady) this.emit('event', { method: 'remote/connected', params: {} });
     });
     desktopBridge.on('disconnected', () => {
       if (this.stopped) return;
-      this.setStatus('offline');
-      this.retryDesktop();
+      if (this.status !== 'ready' || this.offlineGrace) {
+        this.markOffline();
+        return;
+      }
+      // Desktop reloads can close the CDP socket briefly. Probe once before
+      // exposing an outage so clients do not restart every catalog/history read.
+      this.reconnectProbe = setTimeout(() => {
+        this.reconnectProbe = null;
+        void desktopBridge.connect();
+      }, RECONNECT_PROBE_MS);
+      this.reconnectProbe.unref();
+      this.offlineGrace = setTimeout(() => {
+        this.offlineGrace = null;
+        this.markOffline();
+      }, OFFLINE_GRACE_MS);
+      this.offlineGrace.unref();
     });
   }
 
@@ -49,6 +72,7 @@ export class CodexBridge extends EventEmitter {
   shutdown(): void {
     this.stopped = true;
     if (this.desktopRetry) clearTimeout(this.desktopRetry);
+    this.clearRecoveryTimers();
     desktopBridge.shutdown();
   }
 
@@ -69,6 +93,19 @@ export class CodexBridge extends EventEmitter {
       void desktopBridge.connect().then((connected) => { if (!connected) this.retryDesktop(); });
     }, 3000);
     this.desktopRetry.unref();
+  }
+
+  private markOffline(): void {
+    this.clearRecoveryTimers();
+    this.setStatus('offline');
+    this.retryDesktop();
+  }
+
+  private clearRecoveryTimers(): void {
+    if (this.reconnectProbe) clearTimeout(this.reconnectProbe);
+    if (this.offlineGrace) clearTimeout(this.offlineGrace);
+    this.reconnectProbe = null;
+    this.offlineGrace = null;
   }
 
   async request(method: ClientRpcMethod, params: unknown): Promise<unknown> {
