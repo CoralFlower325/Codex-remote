@@ -317,13 +317,24 @@
 .model-menu-note { margin: 4px 9px 8px; line-height: 1.5; overflow-wrap: anywhere; }
 
 .composer-popover--add {
+  display: flex;
+  overflow: hidden;
+  flex-direction: column;
   width: min(352px, calc(100vw - 24px));
   max-height: min(72vh, 680px);
 }
 
+.composer-popover--add > .popover-heading {
+  flex: 0 0 auto;
+}
+
 .composer-add-menu {
   display: flex;
+  flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   flex-direction: column;
   gap: 8px;
 }
@@ -435,8 +446,6 @@
 
 .composer-add-plugins {
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 .composer-add-empty,

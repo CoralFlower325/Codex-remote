@@ -289,6 +289,7 @@ export function Composer({
 
   useLayoutEffect(() => {
     if (!menu) return;
+    let positionFrame = 0;
     const updatePosition = () => {
       if (layout === 'mobile') {
         const top = composerRef.current?.getBoundingClientRect().top ?? window.innerHeight - 118;
@@ -320,16 +321,31 @@ export function Composer({
         transformOrigin: alignStart ? 'left bottom' : 'right bottom'
       });
     };
+    const schedulePosition = () => {
+      cancelAnimationFrame(positionFrame);
+      positionFrame = requestAnimationFrame(updatePosition);
+    };
     updatePosition();
-    const frame = requestAnimationFrame(() => {
+    const focusFrame = requestAnimationFrame(() => {
       const root = popoverRef.current;
       (root?.querySelector<HTMLButtonElement>('[aria-checked="true"]') ??
-        root?.querySelector<HTMLButtonElement>('[role="menuitemradio"], [role="menuitem"]'))?.focus();
+        root?.querySelector<HTMLButtonElement>('[role="menuitemradio"], [role="menuitem"]'))?.focus({
+          preventScroll: true
+        });
     });
-    window.addEventListener('resize', updatePosition);
+    const viewport = window.visualViewport;
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedulePosition);
+    if (composerRef.current) observer?.observe(composerRef.current);
+    window.addEventListener('resize', schedulePosition);
+    viewport?.addEventListener('resize', schedulePosition);
+    viewport?.addEventListener('scroll', schedulePosition);
     return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('resize', updatePosition);
+      cancelAnimationFrame(positionFrame);
+      cancelAnimationFrame(focusFrame);
+      observer?.disconnect();
+      window.removeEventListener('resize', schedulePosition);
+      viewport?.removeEventListener('resize', schedulePosition);
+      viewport?.removeEventListener('scroll', schedulePosition);
     };
   }, [activeMenu, layout]);
 

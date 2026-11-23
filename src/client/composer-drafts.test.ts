@@ -85,6 +85,23 @@ describe('composer drafts', () => {
     expect(recovered.recoveryNotice).toContain('large.png');
   });
 
+  it('keeps a transient document upload out of live recovery warnings until it is ready', () => {
+    const storage = memoryStorage();
+    const owner = createComposerDrafts(storage).open('a');
+    const uploading = { ...document, id: 'uploading', name: 'report.docx',
+      path: '', url: '', status: 'uploading' as const };
+    owner.update(current => ({ ...current, attachments: [uploading] }));
+    expect(owner.get().attachments).toEqual([uploading]);
+    expect(owner.get().recoveryNotice).toBeUndefined();
+    expect(createComposerDrafts(storage).open('a').get().recoveryNotice).toBeTruthy();
+
+    owner.update(current => ({ ...current, attachments: [document] }));
+    expect(owner.get().recoveryNotice).toBeUndefined();
+    const recovered = createComposerDrafts(storage).open('a').get();
+    expect(recovered.attachments).toEqual([{ ...document, kind: 'document' }]);
+    expect(recovered.recoveryNotice).toBeUndefined();
+  });
+
   it('bounds the shared store, retaining the active input and warning for evicted conversations', () => {
     const storage = memoryStorage();
     const drafts = createComposerDrafts(storage);

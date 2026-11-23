@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanupStalePreviewDirectories, OfficePreviews, runOffice } from './office-preview.js';
+import { cleanupStalePreviewDirectories, officeProcessEnvironment, OfficePreviews, runOffice } from './office-preview.js';
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -15,6 +15,23 @@ async function fixture() {
   await fs.writeFile(source, 'synthetic');
   return { root, source };
 }
+
+it('passes Windows LibreOffice discovery settings into isolated workers', () => {
+  expect(officeProcessEnvironment({
+    PATH: 'C:\\Windows\\System32',
+    ProgramFiles: 'C:\\Program Files',
+    'ProgramFiles(x86)': 'C:\\Program Files (x86)',
+    ProgramW6432: 'C:\\Program Files',
+    LIBREOFFICE_PATH: 'C:\\Program Files\\LibreOffice\\program\\soffice.com',
+    UNRELATED_SECRET: 'must-not-leak'
+  })).toEqual({
+    PATH: 'C:\\Windows\\System32',
+    ProgramFiles: 'C:\\Program Files',
+    'ProgramFiles(x86)': 'C:\\Program Files (x86)',
+    ProgramW6432: 'C:\\Program Files',
+    LIBREOFFICE_PATH: 'C:\\Program Files\\LibreOffice\\program\\soffice.com'
+  });
+});
 
 it('serializes conversions, shares duplicate in-flight reads and releases finished bytes', async () => {
   const { source } = await fixture();

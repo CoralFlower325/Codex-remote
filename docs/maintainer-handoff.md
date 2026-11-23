@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-11-21.
+Last reconciled: 2026-11-23.
 
 ## Authority
 
@@ -15,23 +15,26 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.42** / manager **0.2.10**, tag
-`v0.2.42`. The matching tag and Release identify the exact source commit.
-Remote **0.2.42** fixes an edge case where a transient idle thread status or a
-silent refresh could clear a native turn that was still `inProgress`, causing
-the live duration to stop early. Live turn metadata now wins until completion or
-interruption, while the Desktop-aligned freeze at the first final-answer record
-is unchanged. Manager **0.2.10** has no changes.
-The [0.2.42 release acceptance](remote-0.2.42-release-acceptance.md) records this
-batch. Its final source and tag target are
+The current published release is Remote **0.2.43** / manager **0.2.10**, tag
+`v0.2.43`. The matching tag and Release identify the exact source commit.
+Remote **0.2.43** fixes Office upload previews on Windows by preserving the
+LibreOffice discovery environment in the isolated conversion worker. It also
+removes a false draft-recovery warning during document uploads and consolidates
+the composer add menu into one viewport-aware scroll surface. Manager **0.2.10**
+has no changes. The [0.2.43 release acceptance](remote-0.2.43-release-acceptance.md)
+records this batch; publication, distribution and installation receipts are
+filled after the formal release closes.
+
+The [0.2.42 release acceptance](remote-0.2.42-release-acceptance.md) retains the
+turn-timing fix. Its final source and tag target were
 `b1a49bbccca0d5140ec9766631f5a84c86a1289d`; main CI `44853893449`,
 Runtime Packages `44854588388` and the manager plan `44854588412` passed.
-The latest Release contains both signed runtime pairs, and download Worker
-`e826ac9f-0550-4a12-95a2-6ff032bcf9dc` serves `v0.2.42`. The local transaction
+That Release contained both signed runtime pairs, and download Worker
+`e826ac9f-0550-4a12-95a2-6ff032bcf9dc` served `v0.2.42`. The local transaction
 backup is `output\manager-backup-84933633-c777-4f84-93c7-daf8a02928cc`.
-Domestic Caddy serves `releases/0.2.42` with `0.2.41` retained for rollback, and
+Domestic Caddy then served `releases/0.2.42` with `0.2.41` retained, and
 the `codex-remote-static` Worker version
-`2d4ef8c7-7456-4cb2-97a6-8485bdc852bb` serves the matching edge assets.
+`2d4ef8c7-7456-4cb2-97a6-8485bdc852bb` served the matching edge assets.
 Manager installers remain unchanged in `v0.2.41`.
 The [0.2.41 release acceptance](remote-0.2.41-release-acceptance.md)
 retains the preceding non-Cloudflare deployment and SSH supervisor evidence.
@@ -171,7 +174,7 @@ and real PTY lifecycle tests pass. Platform output uses bounded rotating logs;
 macOS controls use the same-PID background wrapper and retain ownership checks.
 Local synthetic checks do not establish signed-in macOS service behavior.
 
-The current implementation through `v0.2.42` adds complete cursor-following
+The current implementation through `v0.2.43` adds complete cursor-following
 model/project catalogs, explicit reasoning inherit/default semantics, ordered
 settings acknowledgements, isolated Office conversion workers, bounded SSE
 backpressure, a supervisor-owned dynamic tunnel metrics port, explicit client

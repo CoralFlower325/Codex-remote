@@ -18,6 +18,11 @@ export class OfficePreviewError extends Error {
 
 const TEMP_PREFIX = 'codex-remote-preview-';
 const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+const childEnvironment = /^(?:PATH|HOME|USERPROFILE|APPDATA|LOCALAPPDATA|TEMP|TMP|TMPDIR|SYSTEMROOT|WINDIR|LANG|LC_.*|FONTCONFIG_.*|LIBREOFFICE_PATH|PROGRAMFILES|PROGRAMFILES\(X86\)|PROGRAMW6432)$/i;
+
+export function officeProcessEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(source).filter(([key]) => childEnvironment.test(key)));
+}
 
 export async function cleanupStalePreviewDirectories(root = os.tmpdir(), now = Date.now()): Promise<number> {
   let removed = 0;
@@ -129,8 +134,7 @@ export async function convert(source: string, extension: string): Promise<Buffer
     const input = path.join(directory, `document${extension}`);
     await fs.copyFile(source, input);
     if ((await fs.stat(input)).size > MAX_BYTES) throw new OfficePreviewError('文档超过 32 MiB，请下载原文件。', 413);
-    const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
-      /^(?:PATH|HOME|USERPROFILE|APPDATA|LOCALAPPDATA|TEMP|TMP|TMPDIR|SYSTEMROOT|WINDIR|LANG|LC_.*|FONTCONFIG_.*)$/i.test(key)));
+    const environment = officeProcessEnvironment();
     await runOffice(binary, [
         `-env:UserInstallation=${pathToFileURL(path.join(directory, 'profile')).href}`,
         '--headless', '--nologo', '--nodefault', '--nofirststartwizard', '--norestore',
@@ -175,8 +179,7 @@ function isolatedWorkerCommand(): { command: string; args: string[] } {
 
 export function runIsolatedConversion(source: string, extension: string, timeout = TIMEOUT): Promise<Buffer> {
   const { command, args } = isolatedWorkerCommand();
-  const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
-    /^(?:PATH|HOME|USERPROFILE|APPDATA|LOCALAPPDATA|TEMP|TMP|TMPDIR|SYSTEMROOT|WINDIR|LANG|LC_.*|FONTCONFIG_.*)$/i.test(key)));
+  const environment = officeProcessEnvironment();
   return new Promise<Buffer>((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: process.cwd(),

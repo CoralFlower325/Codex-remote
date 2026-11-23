@@ -25,9 +25,10 @@ function storedUrl(url: string, document = false): boolean {
     /^data:image\/(?:png|jpe?g|gif|webp|avif|bmp);base64,[a-z0-9+/=\r\n]+$/i.test(url));
 }
 
-function safeContext(input: ComposerInput): Omit<StoredContext, 'updatedAt'> {
+function safeContext(input: ComposerInput) {
   const attachments: ComposerAttachment[] = [];
   const omitted: string[] = [];
+  const liveOmitted: string[] = [];
   let size = 0;
   for (const attachment of input.attachments.slice(0, 20)) {
     let saved: ComposerAttachment | undefined;
@@ -47,17 +48,29 @@ function safeContext(input: ComposerInput): Omit<StoredContext, 'updatedAt'> {
     }
     const bytes = saved ? JSON.stringify(saved).length * 2 : 0;
     if (saved && bytes + size <= maxContextBytes / 2) { attachments.push(saved); size += bytes; }
-    else omitted.push(attachment.name.slice(0, 160));
+    else {
+      const name = attachment.name.slice(0, 160);
+      omitted.push(name);
+      // Uploading and failed documents already have inline status. They are
+      // intentionally excluded from browser storage until ready, but this is
+      // not a recoverable omission the user needs to act on immediately.
+      if (!(attachment.kind === 'document' && attachment.status)) liveOmitted.push(name);
+    }
   }
   const skills = input.skills.slice(0, 40).filter(skill => {
     if (skill.name.length <= 512 && skill.path.length <= 4096) return true;
-    omitted.push(skill.name.slice(0, 160)); return false;
+    const name = skill.name.slice(0, 160);
+    omitted.push(name);
+    liveOmitted.push(name);
+    return false;
   }).map(skill => ({ name: skill.name, path: skill.path,
     description: skill.description.slice(0, 2000), enabled: skill.enabled,
     ...(skill.interface?.displayName ? { interface: { displayName: skill.interface.displayName.slice(0, 160) } } : {}) }));
-  omitted.push(...input.attachments.slice(20).map(entry => entry.name.slice(0, 160)),
-    ...input.skills.slice(40).map(entry => entry.name.slice(0, 160)));
-  return { attachments, skills, omitted: omitted.slice(0, 200) };
+  const overflow = [...input.attachments.slice(20).map(entry => entry.name.slice(0, 160)),
+    ...input.skills.slice(40).map(entry => entry.name.slice(0, 160))];
+  omitted.push(...overflow);
+  liveOmitted.push(...overflow);
+  return { attachments, skills, omitted: omitted.slice(0, 200), liveOmitted };
 }
 
 function readContexts(storage?: DraftStorage): { contexts: Record<string, StoredContext>; incomplete: boolean } {
@@ -91,7 +104,8 @@ function readContexts(storage?: DraftStorage): { contexts: Record<string, Stored
       context.omitted.every((entry: unknown) => typeof entry === 'string' && entry.length <= 160);
       if (valid) {
         const safe = safeContext(context);
-        contexts[key] = { ...safe, updatedAt: context.updatedAt, omitted: [...context.omitted, ...safe.omitted].slice(0, 200) };
+        contexts[key] = { attachments: safe.attachments, skills: safe.skills,
+          updatedAt: context.updatedAt, omitted: [...context.omitted, ...safe.omitted].slice(0, 200) };
       }
       else incomplete = true;
     }
@@ -131,7 +145,9 @@ export function createComposerDrafts(storage?: DraftStorage) {
           const previous = drafts.get(key)!;
           let next = change(previous);
           if (storage && (next.attachments !== previous.attachments || next.skills !== previous.skills)) {
-            contexts[key] = { ...safeContext(next), updatedAt: Date.now() };
+            const safe = safeContext(next);
+            contexts[key] = { attachments: safe.attachments, skills: safe.skills,
+              omitted: safe.omitted, updatedAt: Date.now() };
             for (const oldKey of Object.keys(contexts).filter(oldKey => oldKey !== key)
               .sort((a, b) => contexts[b]!.updatedAt - contexts[a]!.updatedAt).slice(29)) {
               delete contexts[oldKey];
@@ -151,7 +167,7 @@ export function createComposerDrafts(storage?: DraftStorage) {
             try {
               if (serialized.length * 2 > maxContextBytes) throw new Error('Draft context too large');
               storage.setItem(contextKey, serialized);
-              if (contexts[key]!.omitted.length) next = { ...next, recoveryNotice: recoveryMessage };
+              if (safe.liveOmitted.length) next = { ...next, recoveryNotice: recoveryMessage };
             } catch {
               // A failed write must not leave stale persisted attachment selections.
               try { storage.removeItem(contextKey); storage.setItem(omissionKey, '1'); } catch { /* Storage may be blocked. */ }
