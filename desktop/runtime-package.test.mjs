@@ -66,7 +66,9 @@ async function fixture() {
     release: { version: '0.1.14', tag: 'v0.1.14', assets } };
 }
 afterEach(async () => {
-  for (const root of temporary.splice(0)) await fs.rm(root, { recursive: true, force: true });
+  for (const root of temporary.splice(0)) {
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
 });
 describe('prebuilt runtime packages', () => {
   it('prepares and installs a verified runtime without Git, npm or a local build', async () => {

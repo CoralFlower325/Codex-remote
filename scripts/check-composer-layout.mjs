@@ -45,6 +45,7 @@ const older = [
 ];
 const send = (socket, body) => socket.readyState === 1 && socket.send(JSON.stringify(body));
 let submissions = [], pendingSend = null, historyReads = 0, actions = [];
+let documentUploads = 0, documentUploadDelay = 600;
 let syncEnabled = true, socketAttempts = 0;
 const httpPeers = new Map();
 const event = (method, params) => {
@@ -64,6 +65,17 @@ app.get('/api/thread/timings', (_q, r) => r.json({ turns, turnsCursor: null, act
 app.get('/api/thread/dock/goal', (_q, r) => r.json({ goal: null }));
 app.get('/api/thread/dock/queue', (_q, r) => r.json({ data: [], nextCursor: null }));
 app.get('/api/thread/outline', (_q, r) => r.json({ turns: [], nextCursor: null }));
+app.post('/api/attachments/:id', express.raw({ type: () => true, limit: '2mb' }), async (q, r) => {
+  documentUploads++;
+  if (documentUploadDelay) await new Promise(resolve => setTimeout(resolve, documentUploadDelay));
+  const name = decodeURIComponent(q.get('x-attachment-name') ?? 'synthetic.docx');
+  r.set('Cache-Control', 'no-store').status(201).json({
+    id: q.params.id,
+    name,
+    path: `C:/remote/uploads/${name}`,
+    size: Buffer.isBuffer(q.body) ? q.body.length : 0
+  });
+});
 function receive(socket, raw) {
     const m = JSON.parse(String(raw)), p = m.params || {};
     if (m.type === 'ping') return send(socket, { type: 'pong', at: new Date().toISOString() });
@@ -142,6 +154,7 @@ const results = [];
 try {
   for (const size of JSON.parse(await fs.readFile('scripts/acceptance-viewports.json', 'utf8'))) {
     submissions = []; pendingSend = null; historyReads = 0; syncEnabled = true; actions = [];
+    documentUploads = 0;
     const context = await browser.newContext({ viewport: { width: size.width, height: size.height },
       deviceScaleFactor: size.deviceScaleFactor, isMobile: size.mobile, hasTouch: size.mobile, serviceWorkers: 'block' });
     const page = await context.newPage(), errors = [];
@@ -152,11 +165,19 @@ try {
     await page.locator('.message-stream').getByText('A short final reply.', { exact: true }).waitFor();
     await page.waitForFunction(() => !document.querySelector('.composer textarea')?.disabled);
     await page.evaluate(() => document.fonts.ready);
+    const readingBeforeMenu = await page.evaluate(() => ({
+      window: scrollY,
+      stream: document.querySelector('.message-stream')?.scrollTop ?? null
+    }));
     const addButton = page.getByRole('button', { name: '添加文件和上下文', exact: true });
     await addButton.click();
     const addMenu = page.locator('.composer-popover--add');
     await addMenu.waitFor();
     await page.waitForTimeout(250);
+    assert.deepEqual(await page.evaluate(() => ({
+      window: scrollY,
+      stream: document.querySelector('.message-stream')?.scrollTop ?? null
+    })), readingBeforeMenu);
     for (const label of ['文件和文件夹', '目标', '计划模式', '绘图', 'Documents', 'PDF', 'Spreadsheets', 'Presentations']) {
       await addMenu.getByText(label, { exact: true }).waitFor();
     }
@@ -165,11 +186,16 @@ try {
       const plugins = menu.querySelector('.composer-add-plugins');
       const buttonHeights = [...menu.querySelectorAll('button')].filter(button => button.getClientRects().length)
         .map(button => button.getBoundingClientRect().height);
+      const scrollOwners = [menu, menu.querySelector('.composer-add-menu'), plugins]
+        .filter((element, index, values) => element && values.indexOf(element) === index)
+        .filter(element => /auto|scroll/.test(getComputedStyle(element).overflowY) &&
+          element.scrollHeight > element.clientHeight + 1)
+        .map(element => element.className);
       return {
         top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right,
         viewportHeight: innerHeight, viewportWidth: innerWidth,
         scrollHeight: plugins?.scrollHeight ?? 0, clientHeight: plugins?.clientHeight ?? 0,
-        minButtonHeight: Math.min(...buttonHeights)
+        minButtonHeight: Math.min(...buttonHeights), scrollOwners
       };
     });
     assert(addMenuGeometry.top >= -1 && addMenuGeometry.bottom <= addMenuGeometry.viewportHeight + 1,
@@ -178,12 +204,31 @@ try {
       `Add menu horizontal overflow: ${JSON.stringify(addMenuGeometry)}`);
     if (size.mobile) assert(addMenuGeometry.minButtonHeight >= 44,
       `Add menu touch target below 44px: ${JSON.stringify(addMenuGeometry)}`);
+    assert(addMenuGeometry.scrollOwners.length <= 1,
+      `Add menu has nested scroll owners: ${JSON.stringify(addMenuGeometry)}`);
     await page.screenshot({ path: `${directory}/${size.name}-add-menu.png` });
     const filesMenu = addMenu.getByRole('menuitem', { name: /文件和文件夹/ });
     await filesMenu.click();
     await addMenu.getByRole('menuitem', { name: '选择文件', exact: true }).waitFor();
     await addMenu.getByRole('menuitem', { name: '选择文件夹', exact: true }).waitFor();
-    await filesMenu.click();
+    const fileChooser = page.waitForEvent('filechooser');
+    await addMenu.getByRole('menuitem', { name: '选择文件', exact: true }).click();
+    await (await fileChooser).setFiles({
+      name: 'synthetic.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      buffer: Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00])
+    });
+    const uploadedDocument = page.locator('.composer-document');
+    await uploadedDocument.waitFor();
+    await uploadedDocument.getByText('正在上传', { exact: true }).waitFor();
+    assert.equal(await page.locator('.draft-recovery-notice').count(), 0);
+    await uploadedDocument.getByText('synthetic.docx', { exact: true }).waitFor();
+    assert.equal(documentUploads, 1);
+    await uploadedDocument.getByRole('button', { name: '移除 synthetic.docx', exact: true }).click();
+    await uploadedDocument.waitFor({ state: 'detached' });
+    await addButton.click();
+    await addMenu.waitFor();
+    await page.waitForTimeout(250);
     await addMenu.getByRole('menuitem', { name: /计划模式/ }).click();
     await page.locator('.composer-plan').waitFor();
     await addButton.click();

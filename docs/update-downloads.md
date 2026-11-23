@@ -24,8 +24,9 @@ Cloudflare 凭据，也不代理聊天、认证、终端或其他私有内容。
 本次不恢复 AU 功能；签名、公证和真实 Mac 登录环境验收仍是独立断点。
 未签名安装包可能需要按系统下载信誉或 Gatekeeper 流程确认。
 
-Remote 0.2.42 修复会话轮次计时在短暂 idle 状态或同线程静默刷新时提前停止，
-运行包位于 `v0.2.42`。管理器 0.2.10 无变更，安装包继续位于 `v0.2.41`。
+Remote 0.2.43 修复 Windows Office 文件上传后的预览环境、文档上传草稿提示和
+“+”菜单滚动，运行包位于 `v0.2.43`。管理器 0.2.10 无变更，安装包继续位于
+`v0.2.41`。
 运行包 Ed25519 清单签名已启用，与仍暂停的 AU 和 macOS 应用签名分别管理。
 
 English: install manager 0.2.10 manually over the old app, reopen it and select the same

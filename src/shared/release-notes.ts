@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.43', changes: [
+    '修复 Windows 上 Word、Excel、PowerPoint 等 Office 文件上传后预览误报“主机未安装 LibreOffice”：隔离转换进程现在保留 LibreOffice 路径发现所需的 Windows 环境和显式路径配置。',
+    '文档上传中的瞬时状态不再立即触发“部分附件未能保存”的草稿恢复警告；上传成功后附件继续正常显示、保存和提交。',
+    '输入栏“+”菜单改为单一滚动区域，打开菜单时不再让浏览器自动滚动；移动端会跟随可视视口与键盘变化重新定位，避免历史阅读位置跳动和内外层滚动争抢。',
+    '管理器 0.2.10 无变更。'
+  ] },
   { version: '0.2.42', changes: [
     '修复会话轮次计时偶发提前停止：线程状态短时回到 idle 时，以仍为 `inProgress` 的原生轮次记录为准，不再立即清空活动轮次。',
     '同一会话的静默刷新继续保留已确认的活动轮次；只有原生轮次完成、中断、失败，或没有可确认的进行中轮次时才停止计时。',

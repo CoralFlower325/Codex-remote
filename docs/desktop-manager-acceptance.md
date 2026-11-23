@@ -1,7 +1,7 @@
 # Desktop Manager Acceptance
 
-Historical manager acceptance records, reconciled 2026-11-21. The current
-Remote release pairing is recorded in the [0.2.42 release acceptance](remote-0.2.42-release-acceptance.md).
+Historical manager acceptance records, reconciled 2026-11-23. The current
+Remote release pairing is recorded in the [0.2.43 release acceptance](remote-0.2.43-release-acceptance.md).
 Manager 0.2.10 adds multi-public-origin health and explicit Windows SSH
 reverse-tunnel management; self-update work remains
 paused as [0.2.0AU](manager-self-update-checkpoints.md). Historical records below

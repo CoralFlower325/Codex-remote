@@ -201,7 +201,7 @@
   -webkit-line-clamp: 1;
 }
 .composer-popover--mobile .composer-add-submenu > button { min-height: 44px; font-size: 12px; }
-.composer-popover--mobile .composer-add-plugins { max-height: 30dvh; }
+.composer-popover--mobile .composer-add-plugins { max-height: none; }
 
 .slash-menu-backdrop {
   position: fixed;
