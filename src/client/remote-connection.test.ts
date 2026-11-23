@@ -53,7 +53,7 @@ describe('Remote connection recovery', () => {
     vi.stubGlobal('navigator', network);
     vi.stubGlobal('WebSocket', FakeSocket);
     vi.stubGlobal('EventSource', FakeEventSource);
-    vi.stubGlobal('sessionStorage', { getItem: () => null, setItem: vi.fn() });
+    vi.stubGlobal('sessionStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => '' }));
     onDisconnect = vi.fn<(error: Error) => void>();
     onMessage = vi.fn<(message: ServerMessage) => void>();
@@ -367,6 +367,71 @@ describe('Remote connection recovery', () => {
     expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'sync.ready' }));
     connection.dispose();
     expect(stream.close).toHaveBeenCalled();
+  });
+
+  it('retries WebSocket after a remembered HTTP fallback fails', async () => {
+    connection.dispose();
+    FakeSocket.instances = [];
+    FakeEventSource.instances = [];
+    const removeItem = vi.fn();
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => key === 'remote-http-transport' ? '1' : null,
+      setItem: vi.fn(),
+      removeItem
+    });
+    connection = new RemoteConnection({
+      url: 'wss://remote.test/ws', httpFallback: '/api/connection', readyType: 'sync.ready',
+      onSocket: socket => { current = socket; }, onOpen, onMessage, onDisconnect
+    });
+    connection.start();
+    const stream = FakeEventSource.instances[0]!;
+    stream.open();
+    stream.message({ type: 'sync.ready', epoch: 'test', sequence: 0, resumed: false });
+    stream.dispatchEvent(new Event('error'));
+    expect(removeItem).toHaveBeenCalledWith('remote-http-transport');
+    expect(FakeSocket.instances).toHaveLength(1);
+    expect(current).toBe(FakeSocket.instances[0]);
+    expect(onDisconnect).not.toHaveBeenCalled();
+  });
+
+  it('clears a stale HTTP preference after a WebSocket synchronizes', () => {
+    connection.dispose();
+    FakeSocket.instances = [];
+    connection = new RemoteConnection({
+      url: 'wss://remote.test/ws', httpFallback: '/api/connection', readyType: 'sync.ready',
+      onSocket: socket => { current = socket; }, onOpen, onMessage, onDisconnect
+    });
+    connection.start();
+    const socket = FakeSocket.instances[0]!;
+    socket.open();
+    socket.message({ type: 'sync.ready', epoch: 'test', sequence: 0, resumed: false });
+    expect(sessionStorage.removeItem).toHaveBeenCalledWith('remote-http-transport');
+  });
+
+  it('bounds transport alternation and backs off when both routes fail', async () => {
+    connection.dispose();
+    FakeSocket.instances = [];
+    FakeEventSource.instances = [];
+    const removeItem = vi.fn();
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => key === 'remote-http-transport' ? '1' : null,
+      setItem: vi.fn(),
+      removeItem
+    });
+    connection = new RemoteConnection({
+      url: 'wss://remote.test/ws', httpFallback: '/api/connection', readyType: 'sync.ready',
+      onSocket: socket => { current = socket; }, onOpen, onMessage, onDisconnect
+    });
+    connection.start();
+    FakeEventSource.instances[0]!.dispatchEvent(new Event('error'));
+    const socket = FakeSocket.instances[0]!;
+    socket.dispatchEvent(new Event('error'));
+    const retriedStream = FakeEventSource.instances[1]!;
+    retriedStream.dispatchEvent(new Event('error'));
+    expect(FakeSocket.instances).toHaveLength(1);
+    expect(FakeEventSource.instances).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(FakeSocket.instances).toHaveLength(2);
   });
 
   it('warms HTTP while WebSocket connects and isolates a failed action POST', async () => {

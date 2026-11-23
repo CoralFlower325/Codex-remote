@@ -56,15 +56,15 @@ describe('Tunnel recovery supervisor', () => {
 
   it('rebuilds a stuck tunnel after startup grace and outbound availability are confirmed', async () => {
     ready.mockResolvedValue(false);
-    await vi.advanceTimersByTimeAsync(7999);
+    await vi.advanceTimersByTimeAsync(21_999);
     expect(start).toHaveBeenCalledOnce();
     await vi.advanceTimersByTimeAsync(1);
     expect(start).toHaveBeenCalledTimes(2);
     expect(children[0]!.stop).toHaveBeenCalledOnce();
     expect(egressReady).toHaveBeenCalledOnce();
-    await vi.advanceTimersByTimeAsync(14_999);
+    await vi.advanceTimersByTimeAsync(19_999);
     expect(start).toHaveBeenCalledTimes(2);
-    await vi.advanceTimersByTimeAsync(1001);
+    await vi.advanceTimersByTimeAsync(1);
     expect(start).toHaveBeenCalledTimes(3);
   });
 

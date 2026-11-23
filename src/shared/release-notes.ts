@@ -2,6 +2,11 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.2.44', changes: [
+    '修复一次临时连接故障后标签页可能长期粘在 HTTP/SSE 回退通道的问题：回退连接失败时立即重试 WebSocket，并在 WebSocket 同步完成后清除回退偏好。',
+    'Cloudflare 隧道监管器在全部边缘连接中断后等待 20 秒再重建进程，给 cloudflared 自身的重连留出时间，减少不必要的整隧道重启。',
+    '管理器 0.2.10 无变更。'
+  ] },
   { version: '0.2.43', changes: [
     '修复 Windows 上 Word、Excel、PowerPoint 等 Office 文件上传后预览误报“主机未安装 LibreOffice”：隔离转换进程现在保留 LibreOffice 路径发现所需的 Windows 环境和显式路径配置。',
     '文档上传中的瞬时状态不再立即触发“部分附件未能保存”的草稿恢复警告；上传成功后附件继续正常显示、保存和提交。',

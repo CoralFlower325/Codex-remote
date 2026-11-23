@@ -3,6 +3,8 @@ export interface TunnelChild {
   stop: () => Promise<void>;
 }
 
+const REBUILD_AFTER_UNHEALTHY_MS = 20_000;
+
 interface SupervisorOptions {
   start: () => Promise<TunnelChild>;
   ready: () => Promise<boolean>;
@@ -77,7 +79,7 @@ export class TunnelSupervisor {
             this.unhealthySince ??= Date.now();
             // Keep surviving HA connections and give a new process time to register.
             if (Date.now() - this.startedAt >= 8000 &&
-                Date.now() - this.unhealthySince >= 4000 &&
+                Date.now() - this.unhealthySince >= REBUILD_AFTER_UNHEALTHY_MS &&
                 Date.now() >= this.cooldownUntil && await this.options.egressReady()) {
               // A connection may have recovered during the bounded outbound probe.
               if (!this.stopped && this.running && !await this.options.ready()) {

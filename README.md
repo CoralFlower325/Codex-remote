@@ -119,7 +119,7 @@ keeps it in the tray. Releases provide unsigned installers. Live macOS GUI accep
 remains pending. Manager 0.2.10 also monitors every configured public origin and
 can manage an explicitly configured Windows SSH reverse tunnel with automatic restart.
 
-Remote **0.2.43** pairs with manager **0.2.10**.
+Remote **0.2.44** pairs with manager **0.2.10**.
 Actual installed versions remain separately recorded in each deployment's acceptance. Install the manager
 manually over 0.2.0, select the same host directory and retry; updating Remote
 cannot replace the old manager's bundled updater. [Manager downloads](docs/update-downloads.md)
