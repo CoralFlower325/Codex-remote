@@ -26,12 +26,26 @@ interface Pending {
   reject: (error: Error) => void;
 }
 
+interface RelayTransfer {
+  parts: Array<string | undefined>;
+  received: number;
+  bytes: number;
+  updatedAt: number;
+}
+
 const DEFAULT_DEBUG_PORT = 9229;
 const configuredDebugPorts = (process.env.CODEX_DESKTOP_DEBUG_PORT ?? '')
   .split(',').map(value => Number.parseInt(value.trim(), 10))
   .filter(port => Number.isInteger(port) && port > 0 && port <= 65_535);
 const DEBUG_PORTS = [...new Set([...configuredDebugPorts, DEFAULT_DEBUG_PORT])];
 const BINDING = '__codexRemoteRelay';
+const MAX_NATIVE_RESPONSE_BYTES = 100 * 1024 * 1024;
+const MAX_PENDING_RELAY_BYTES = 128 * 1024 * 1024;
+const MAX_RELAY_CHUNK_LENGTH = 512 * 1024;
+const MAX_RELAY_CHUNKS = 2048;
+const MAX_PENDING_RELAY_TRANSFERS = 8;
+const MAX_COMPLETED_RELAY_TRANSFERS = 256;
+const RELAY_TRANSFER_TTL_MS = 60_000;
 const responseDeadline = Number(process.env.CODEX_DESKTOP_RPC_TIMEOUT_MS);
 const DEFAULT_RESPONSE_TIMEOUT = Number.isFinite(responseDeadline) && responseDeadline >= 1000 && responseDeadline <= 120_000
   ? responseDeadline : 30_000;
@@ -59,6 +73,26 @@ function transportError(method: string, error: Error): Error {
 const INSTALL_RELAY = `(() => {
   if (!window.electronBridge?.sendMessageFromView) return false;
   window.__codexRemotePendingRequests ??= new Map();
+  window.__codexRemoteRelayTransfer ??= 0;
+  const sendRelay = (value) => {
+    const payload = JSON.stringify(value);
+    const chunkLength = 64 * 1024;
+    if (payload.length <= chunkLength) {
+      window.${BINDING}(payload);
+      return;
+    }
+    const transferId = Date.now().toString(36) + ':' + (++window.__codexRemoteRelayTransfer);
+    const total = Math.ceil(payload.length / chunkLength);
+    for (let index = 0; index < total; index++) {
+      window.${BINDING}(JSON.stringify({
+        type: 'relay-chunk',
+        transferId,
+        index,
+        total,
+        chunk: payload.slice(index * chunkLength, (index + 1) * chunkLength)
+      }));
+    }
+  };
   if (window.__codexRemoteRelayListener) {
     window.removeEventListener('message', window.__codexRemoteRelayListener);
   }
@@ -75,7 +109,7 @@ const INSTALL_RELAY = `(() => {
         data.type === 'mcp-request' ||
         (data.type === 'mcp-response' &&
          String(data.message?.id).startsWith('codex-remote:'))) {
-      window.${BINDING}(JSON.stringify(data));
+      sendRelay(data);
     }
   };
   window.addEventListener('message', window.__codexRemoteRelayListener);
@@ -88,6 +122,9 @@ export class DesktopBridge extends EventEmitter {
   private nextId = 0;
   private commands = new Map<number, Pending>();
   private requests = new Map<string, Pending>();
+  private requestMethods = new Map<string, string>();
+  private relayTransfers = new Map<string, RelayTransfer>();
+  private completedRelayTransfers = new Map<string, number>();
   private approvals = new Map<string, { method: string; params: any; nativeId: string | number }>();
   private approvalClaims = new Set<string>();
   private retryAfter = 0;
@@ -96,6 +133,7 @@ export class DesktopBridge extends EventEmitter {
   private activePort: number | null = null;
   private discoveredPorts: number[] = [];
   private discoveryCheckedAt = 0;
+  private lastActivity = 'connect';
 
   constructor(debugPorts: number | number[] = DEBUG_PORTS, private readonly commandTimeoutMs = 5000,
     private readonly responseTimeoutMs = DEFAULT_RESPONSE_TIMEOUT,
@@ -164,13 +202,18 @@ export class DesktopBridge extends EventEmitter {
     socket.on('message', (raw) => {
       if (this.socket !== socket) return;
       try { this.handleMessage(JSON.parse(String(raw))); }
-      catch {
-        this.disconnectSocket(socket, new Error('Desktop 桥接收到无效数据，已断开并等待重新连接。'));
+      catch (error) {
+        const detail = error instanceof Error && error.message ? `：${error.message}` : '';
+        this.disconnectSocket(socket, new Error(`Desktop 桥接收到无效数据，已断开并等待重新连接${detail}`));
       }
     });
-    socket.on('error', () => socket.close());
-    socket.on('close', () => {
-      this.disconnectSocket(socket, new Error('Codex Desktop connection closed.'));
+    socket.on('error', (error) => {
+      console.warn('[desktop-bridge] socket error', { message: error.message });
+      socket.close();
+    });
+    socket.on('close', (code, reason) => {
+      const detail = reason.length > 0 ? reason.toString().slice(0, 200) : '';
+      this.disconnectSocket(socket, new Error('Codex Desktop connection closed.'), { code, detail });
     });
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => { socket.terminate(); reject(new Error('Desktop connection timed out.')); }, 2000);
@@ -188,6 +231,7 @@ export class DesktopBridge extends EventEmitter {
 
   async request(method: string, params: unknown): Promise<unknown> {
     if (!this.isConnected()) throw new Error('Codex Desktop is not connected.');
+    this.lastActivity = method;
     const id = `codex-remote:${randomUUID()}`;
     const readOnly = isAllowedRpcMethod(method) && rpcMethods[method] === 'read';
     const result = new Promise((resolve, reject) => {
@@ -196,6 +240,7 @@ export class DesktopBridge extends EventEmitter {
           const pending = this.requests.get(id);
           if (!pending) return;
           this.requests.delete(id);
+          this.requestMethods.delete(id);
           console.warn(`[desktop-bridge] native read timed out { method: '${method}' }`);
           pending.reject(new Error(`Desktop native read timed out: ${method}`));
           return;
@@ -207,6 +252,7 @@ export class DesktopBridge extends EventEmitter {
         resolve: (value) => { clearTimeout(timer); resolve(value); },
         reject: (error) => { clearTimeout(timer); reject(transportError(method, error)); }
       });
+      this.requestMethods.set(id, method);
     });
     // Use the desktop's owning App Server for visible and background tasks alike.
     void this.evaluate(`window.electronBridge.sendMessageFromView(${JSON.stringify({
@@ -218,6 +264,7 @@ export class DesktopBridge extends EventEmitter {
     })})`).catch((error) => {
       this.requests.get(id)?.reject(error);
       this.requests.delete(id);
+      this.requestMethods.delete(id);
     });
     return result;
   }
@@ -315,15 +362,28 @@ export class DesktopBridge extends EventEmitter {
     });
   }
 
-  private disconnectSocket(socket: WebSocket, error: Error): void {
+  private disconnectSocket(socket: WebSocket, error: Error,
+    close: { code: number; detail: string } | null = null): void {
     if (this.socket !== socket) return;
     this.socket = null;
     try { socket.close(); } catch { /* Already closed. */ }
+    const pendingCommands = this.commands.size;
+    const pendingRequests = this.requests.size;
     for (const pending of [...this.commands.values(), ...this.requests.values()]) pending.reject(error);
     this.commands.clear();
     this.requests.clear();
+    this.requestMethods.clear();
+    this.relayTransfers.clear();
+    this.completedRelayTransfers.clear();
     this.approvals.clear();
-    console.debug('[desktop-bridge] disconnected', { message: error.message });
+    console.debug('[desktop-bridge] disconnected', {
+      message: error.message,
+      closeCode: close?.code ?? null,
+      closeReason: close?.detail || null,
+      pendingCommands,
+      pendingRequests,
+      lastActivity: this.lastActivity
+    });
     this.emit('disconnected');
   }
 
@@ -346,7 +406,9 @@ export class DesktopBridge extends EventEmitter {
     if (!record(message.params) || typeof message.params.name !== 'string') throw new Error('Invalid binding event.');
     if (message.params.name !== BINDING) return;
     if (typeof message.params.payload !== 'string') throw new Error('Invalid binding payload.');
-    const data = JSON.parse(message.params.payload);
+    const payload = this.acceptRelayPayload(message.params.payload);
+    if (payload === null) return;
+    const data = JSON.parse(payload);
     if (!record(data)) throw new Error('Invalid relay payload.');
     if (data.type === 'mcp-notification') {
       if (typeof data.method !== 'string' || data.params !== undefined && !record(data.params)) throw new Error('Invalid notification.');
@@ -366,11 +428,74 @@ export class DesktopBridge extends EventEmitter {
       const response = data.message;
       if (!record(response) || !identifier(response.id) || response.error !== undefined &&
         (!record(response.error) || typeof response.error.message !== 'string')) throw new Error('Invalid native response.');
-      const pending = this.requests.get(String(response.id));
-      this.requests.delete(String(response.id));
+      const requestId = String(response.id);
+      const pending = this.requests.get(requestId);
+      this.requests.delete(requestId);
+      this.requestMethods.delete(requestId);
       if (response.error) pending?.reject(new NativeRpcError(response.error));
       else pending?.resolve(response.result);
     }
+  }
+
+  private acceptRelayPayload(payload: string): string | null {
+    let data: unknown;
+    try { data = JSON.parse(payload); } catch { throw new Error('Invalid relay payload.'); }
+    if (!record(data) || data.type !== 'relay-chunk') return payload;
+    const { transferId, index, total, chunk } = data;
+    if (typeof transferId !== 'string' || transferId.length === 0 || transferId.length > 128 ||
+        !Number.isSafeInteger(total) || total < 2 || total > MAX_RELAY_CHUNKS ||
+        !Number.isSafeInteger(index) || index < 0 || index >= total ||
+        typeof chunk !== 'string' || chunk.length > MAX_RELAY_CHUNK_LENGTH) {
+      throw new Error('Invalid relay chunk.');
+    }
+    const now = Date.now();
+    for (const [key, value] of this.relayTransfers) {
+      if (now - value.updatedAt > RELAY_TRANSFER_TTL_MS) this.relayTransfers.delete(key);
+    }
+    for (const [key, completedAt] of this.completedRelayTransfers) {
+      if (now - completedAt > RELAY_TRANSFER_TTL_MS) this.completedRelayTransfers.delete(key);
+    }
+    if (this.completedRelayTransfers.has(transferId)) return null;
+    let transfer = this.relayTransfers.get(transferId);
+    if (!transfer) {
+      if (this.relayTransfers.size >= MAX_PENDING_RELAY_TRANSFERS) {
+        throw new Error('Too many pending relay responses.');
+      }
+      transfer = { parts: Array.from({ length: total }), received: 0, bytes: 0, updatedAt: now };
+      this.relayTransfers.set(transferId, transfer);
+    }
+    if (transfer.parts.length !== total) {
+      throw new Error('Invalid relay chunk sequence.');
+    }
+    if (transfer.parts[index] !== undefined) {
+      if (transfer.parts[index] === chunk) {
+        transfer.updatedAt = now;
+        return null;
+      }
+      throw new Error('Conflicting relay chunk.');
+    }
+    const chunkBytes = Buffer.byteLength(chunk);
+    const pendingBytes = [...this.relayTransfers.values()]
+      .reduce((sum, value) => sum + value.bytes, 0);
+    if (pendingBytes + chunkBytes > MAX_PENDING_RELAY_BYTES) {
+      this.relayTransfers.delete(transferId);
+      throw new Error('Pending relay responses are too large.');
+    }
+    transfer.parts[index] = chunk;
+    transfer.received += 1;
+    transfer.bytes += chunkBytes;
+    transfer.updatedAt = now;
+    if (transfer.bytes > MAX_NATIVE_RESPONSE_BYTES) {
+      this.relayTransfers.delete(transferId);
+      throw new Error('Relay response is too large.');
+    }
+    if (transfer.received !== total) return null;
+    this.relayTransfers.delete(transferId);
+    this.completedRelayTransfers.set(transferId, now);
+    while (this.completedRelayTransfers.size > MAX_COMPLETED_RELAY_TRANSFERS) {
+      this.completedRelayTransfers.delete(this.completedRelayTransfers.keys().next().value!);
+    }
+    return transfer.parts.join('');
   }
 
   private retainApproval(request: { id: string | number; method: string; params: unknown }): void {

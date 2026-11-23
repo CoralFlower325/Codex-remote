@@ -4,6 +4,8 @@ export interface ReleaseNote { version: string; changes: string[] }
 export const releaseNotes: ReleaseNote[] = [
   { version: '0.2.44', changes: [
     '修复一次临时连接故障后标签页可能长期粘在 HTTP/SSE 回退通道的问题：回退连接失败时立即重试 WebSocket，并在 WebSocket 同步完成后清除回退偏好。',
+    '修复 Desktop 调试连接到原生应用短时重连时状态反复切到离线并触发所有页面重新加载目录和历史的问题：1.5 秒内的瞬时断开保持工作区稳定，只有持续不可用才进入离线状态。',
+    '修复大历史记录的原生响应以单个 CDP 帧传输后导致 Desktop 调试连接断开的问题：页面侧分块发送，主机侧有界重组，2 MB 以上会话记录不再挤爆调试通道。',
     'Cloudflare 隧道监管器在全部边缘连接中断后等待 20 秒再重建进程，给 cloudflared 自身的重连留出时间，减少不必要的整隧道重启。',
     '管理器 0.2.10 无变更。'
   ] },

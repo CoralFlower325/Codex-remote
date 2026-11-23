@@ -110,6 +110,37 @@ describe('desktop RPC transport', () => {
     });
   });
 
+  it('reassembles large native responses without closing the relay', async () => {
+    const { bridge, commands, relay } = await desktop([], undefined, { ignoreNativeResponses: true });
+    await bridge.connect();
+    const pending = bridge.request('thread/read', { threadId: 'large-history' });
+    await vi.waitFor(() => expect(commands.some(command =>
+      command.params?.expression?.includes('"method":"thread/read"'))).toBe(true));
+    const command = commands.find(entry => entry.params?.expression?.includes('"method":"thread/read"'))!;
+    const message = JSON.parse(command.params.expression.slice(
+      'window.electronBridge.sendMessageFromView('.length, -1));
+    const payload = JSON.stringify({ type: 'mcp-response', message: {
+      id: message.request.id, result: { threadId: 'large-history', body: 'x'.repeat(2 * 1024 * 1024) }
+    } });
+    const chunkLength = 64 * 1024;
+    const total = Math.ceil(payload.length / chunkLength);
+    for (let pass = 0; pass < 2; pass++) {
+      for (let index = 0; index < total; index++) {
+        relay({
+          type: 'relay-chunk',
+          transferId: 'large-response',
+          index,
+          total,
+          chunk: payload.slice(index * chunkLength, (index + 1) * chunkLength)
+        });
+      }
+    }
+    const result = await pending as { threadId: string; body: string };
+    expect(result.threadId).toBe('large-history');
+    expect(result.body).toHaveLength(2 * 1024 * 1024);
+    expect(bridge.isConnected()).toBe(true);
+  });
+
   it('forwards live desktop notifications and retains approvals across client reconnects', async () => {
     const { bridge, relay } = await desktop();
     await bridge.connect();

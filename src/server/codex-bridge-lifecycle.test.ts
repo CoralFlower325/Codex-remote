@@ -69,6 +69,40 @@ describe('Desktop-owned backend lifecycle', () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 
+  it('keeps the workspace ready and avoids a full recovery for a transient bridge close', async () => {
+    vi.mocked(desktopBridge.connect).mockResolvedValue(true);
+    desktopBridge.emit('connected');
+    const statuses: string[] = [];
+    const events: string[] = [];
+    bridge.on('status', status => statuses.push(status));
+    bridge.on('event', event => events.push(event.method));
+    desktopBridge.emit('disconnected');
+    expect(bridge.getStatus()).toBe('ready');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(desktopBridge.connect).toHaveBeenCalledOnce();
+    desktopBridge.emit('connected');
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(bridge.getStatus()).toBe('ready');
+    expect(statuses).toEqual([]);
+    expect(events).not.toContain('remote/connected');
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('reports a persistent bridge loss once the recovery grace expires', async () => {
+    vi.mocked(desktopBridge.connect).mockResolvedValue(true);
+    desktopBridge.emit('connected');
+    const statuses: string[] = [];
+    bridge.on('status', status => statuses.push(status));
+    vi.mocked(desktopBridge.connect).mockResolvedValue(false);
+    desktopBridge.emit('disconnected');
+    await vi.advanceTimersByTimeAsync(1_499);
+    expect(statuses).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(bridge.getStatus()).toBe('offline');
+    expect(statuses).toEqual(['offline']);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
   it('cancels reconnection on shutdown and rejects later requests', async () => {
     await expect(bridge.ensureStarted()).rejects.toThrow();
     bridge.shutdown();
