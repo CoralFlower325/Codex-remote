@@ -32,12 +32,36 @@
 
 ## 源码验证
 
-待本轮完整验证后补充测试总数、构建版本、入口构建标识和浏览器验收结果。
+- PR #47 CI `45245832567` 与 PR #48 CI `45251143064` 的 macOS、Windows、
+  Ubuntu 和浏览器合成验收全部通过。Ubuntu 作业运行 `149` 个测试文件，
+  `1201 passed / 5 skipped`。
+- `npm run typecheck`、生产构建和 release contract 检查通过。构建产品版本为
+  `0.2.44`，入口构建标识为 `assets/index-98koT1Ur.js`。
+- 现场日志确认约 `2.9 MB` 的 `thread/read` 响应后，旧 Desktop 调试连接立即以
+  `1006` 关闭；分块版本上线后连续 90 秒为 `0` 次断开、`0` 次上下文清空和
+  `0` 次无效帧，`/health` 始终保持 ready / desktop。
+- 公网浏览器会话主动从已记住的 HTTP/SSE 回退切到离线，再恢复网络：重新建立
+  `wss`，旧回退标记被清除，60 秒观察期间没有连接横幅。
+- 本机直接执行全量测试时出现既有 macOS PTY 临时目录 `ENOTEMPTY` 清理失败，
+  CI 同名 macOS 作业通过；该终端问题不属于本批网络改动。
 
 ## 发布与部署
 
-待正式源码、CI、签名运行包、GitHub Release、下载分发、本机升级和公网入口
-完成后补充。
+- 本机已构建并重启 Remote `0.2.44`，进程 PID `20691` 监听
+  `127.0.0.1:4545`；`/health` 为 ready / desktop，Desktop 与 cloudflared
+  进程未重启。升级前构建保留在
+  `output/deployment-backups/20261124-0318-pre-0.2.44` 与
+  `output/deployment-backups/20261124-0342-pre-final-0.2.44`。
+- 国内 Caddy 的 `current` 指向 `releases/0.2.44`，共 `118` 个文件；
+  `codex-remote-gateway.service` 为 active。Cloudflare
+  `codex-remote-static` Worker 版本为
+  `a190ae40-f85e-490e-ab4c-349041b539a1`，部署
+  `7414813b-05ea-45c7-b15c-6b07fa41cb24`。
+- 国内主入口 `codexmac.mmmmmzzzzzyyyyy.online` 与 Cloudflare 回退入口
+  `codexmacos.73916482.xyz` 的 `/version.json` 均返回 `0.2.44` /
+  `assets/index-98koT1Ur.js`，`/health` 均为 ready / desktop。
+- 正式标签、GitHub Release、签名运行包与下载分发快照在发布完成后由后续
+  closeout 记录补充。
 
 ## 边界
 
