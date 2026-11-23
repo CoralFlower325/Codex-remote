@@ -1,6 +1,6 @@
 {
   "name": "codex-remote",
-  "version": "0.2.43",
+  "version": "0.2.44",
   "private": true,
   "type": "module",
   "description": "Responsive remote control UI for the Codex desktop app.",

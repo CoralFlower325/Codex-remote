@@ -33,6 +33,7 @@ export class RemoteConnection<Message extends { type: string } = ServerMessage> 
   private probeSocket: RemoteChannel | null = null;
   private pingSentAtMs: number | undefined;
   private http = false;
+  private httpRetryAttempted = false;
   private suspended = false;
   private synchronized = false;
   private readonly networkInfo = (navigator as Navigator & { connection?: EventTarget }).connection;
@@ -62,6 +63,7 @@ export class RemoteConnection<Message extends { type: string } = ServerMessage> 
   reconnect(): void {
     if (this.stopped) return;
     this.failures = 0;
+    this.httpRetryAttempted = false;
     if (this.socket) this.disconnect(this.socket, 'Reconnecting to Remote...');
     this.connect();
   }
@@ -142,9 +144,11 @@ export class RemoteConnection<Message extends { type: string } = ServerMessage> 
         this.connectTimer = undefined;
         this.failures = 0;
         this.synchronized = true;
-        if (this.http) {
-          try { sessionStorage.setItem('remote-http-transport', '1'); } catch { /* Optional route preference. */ }
-        }
+        this.httpRetryAttempted = false;
+        try {
+          if (this.http) sessionStorage.setItem('remote-http-transport', '1');
+          else sessionStorage.removeItem('remote-http-transport');
+        } catch { /* Optional route preference. */ }
       }
       if (message.type === 'pong') {
         if (this.pingSentAtMs !== undefined && 'at' in message && typeof message.at === 'string') {
@@ -221,6 +225,18 @@ export class RemoteConnection<Message extends { type: string } = ServerMessage> 
       else this.connect();
       return;
     }
+    // The HTTP/SSE route is a fallback, not a permanent preference. If it
+    // becomes unstable, retry the preferred WebSocket instead of reconnecting
+    // the same failing stream for the lifetime of the tab.
+    if (this.http && !this.stopped && navigator.onLine) {
+      this.http = false;
+      try { sessionStorage.removeItem('remote-http-transport'); } catch { /* Optional route preference. */ }
+      if (!this.httpRetryAttempted) {
+        this.httpRetryAttempted = true;
+        this.connect();
+        return;
+      }
+    }
     fallback?.close();
     this.options.onDisconnect(typeof message === 'string' ? new Error(message) : message);
     window.clearTimeout(this.reconnectTimer);
@@ -230,7 +246,7 @@ export class RemoteConnection<Message extends { type: string } = ServerMessage> 
         this.attach(probe);
         return;
       }
-      if (!this.http && this.options.httpFallback) {
+      if (!this.http && this.options.httpFallback && !this.httpRetryAttempted) {
         this.http = true;
         this.connect();
         return;
