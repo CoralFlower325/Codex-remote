@@ -29,7 +29,7 @@
   `f7f5b88c-6874-45a8-b8b5-d0d84fea75ef`。
 - 公网 `/version.json` 返回 `0.2.28`，构建标识为
   `assets/index-ColwNQ7W.js`；`/health` 返回 `ready / desktop`。
-- 本机安装目录为 `F:\AAAAcodexremote\codex-remote-0.2.26`，目录名是历史标签，
+- 本机安装目录为 `<workspace>\codex-remote-0.2.26`，目录名是历史标签，
   安装内容已由预构建运行包更新为 `0.2.28`。更新前的备份保存在该目录的
   `output/manager-backup-*`。
 - 本机 `/version.json`、`/health` 与公网版本/健康一致。

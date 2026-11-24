@@ -83,6 +83,26 @@ Remote 0.2.16 与管理器 0.2.2 不再将已等于目标版本的文件误判�
 
 ## 维护分发服务
 
+2026-11-24 已完成 Remote **0.2.44** / manager **0.2.10** 的发布、Windows
+升级与分发收尾。正式标签和 Release 为 `v0.2.44`；PR #47、#48、#49 全绿，
+main CI `45254299198`、Runtime Packages `45254355807` 和 Desktop Manager
+`45254355802` 通过，管理器未改版。Release 为非草稿、非预发布 latest，共四个
+签名运行包附件。
+
+下载 Worker 版本 `a2b973b4-cca7-4d2b-a931-692057eb273c` 已刷新四附件快照，
+`/releases/latest` 返回 `v0.2.44`；完整下载的大小和摘要均与 Release 元数据
+一致。Windows 本机从 0.2.43 升级到 0.2.44，更新任务
+`2d384c21-691e-4351-b973-e483ed16988e` 完成，备份为
+`output/manager-backup-e16e1ffb-3f70-465e-8e4c-33a4bca34351`。Remote PID
+`42420` 的 `/health` 为 ready / desktop，入口构建为
+`assets/index-98koT1Ur.js`。
+
+国内 Caddy 的 `current` 指向 `releases/0.2.44`，共 118 个文件，旧 0.2.43
+目录保留；`codexwin.mmmmmzzzzzyyyyy.online` 与
+`codexwin.73916482.xyz` 均返回 0.2.44 和 ready / desktop。Remote、
+Cloudflare 与国内 SSH 三项任务保持运行，Desktop 未重启。管理器 0.2.10
+安装包继续从 `v0.2.41` 提供。
+
 2026-11-23 已完成 Remote **0.2.43** / manager **0.2.10** 的分发与部署。
 正式标签与 Release 为 `v0.2.43`，PR #46 合并发布源码。main CI
 `45138042290` 通过；Runtime Packages `45139094926` 完成双平台签名运行包、

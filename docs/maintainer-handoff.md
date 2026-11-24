@@ -24,24 +24,19 @@ Manager **0.2.10** has no changes. The
 [0.2.44 release acceptance](remote-0.2.44-release-acceptance.md) owns this
 batch's publication, distribution and installation receipts.
 
+The 2026-11-24 Windows closeout upgraded the live installation from 0.2.43 to
+0.2.44 through the standard signed runtime transaction. Update task
+`2d384c21-691e-4351-b973-e483ed16988e` completed with backup
+`output/manager-backup-e16e1ffb-3f70-465e-8e4c-33a4bca34351`; local PID `42420`
+reports 0.2.44, ready / desktop. The domestic Caddy current release and both
+Windows public origins return 0.2.44 with
+`assets/index-98koT1Ur.js`. Manager 0.2.10 is unchanged. Other-platform public
+origins remain separate deployment states and are not part of this Windows
+entry acceptance.
+
 The [0.2.43 release acceptance](remote-0.2.43-release-acceptance.md) retains the
 Office preview and composer add-menu fixes. Its Release is the preceding stable
 Remote build; manager installers remain unchanged in `v0.2.41`.
-
-Remote **0.2.43** preserved the LibreOffice discovery environment in the
-isolated conversion worker, removed a false draft-recovery warning during
-document uploads and consolidated the composer add menu into one
-viewport-aware scroll surface. Manager **0.2.10** had no changes. PR #46 merged
-its reviewed source, tag and Release `v0.2.43` published four signed runtime
-artifacts, and main CI `45138042290`, Runtime Packages `45139094926` and the
-manager workflow `45139094906` passed. Download Worker version
-`178906cd-dc09-414e-8b0f-81763a8e5a90` serves `v0.2.43`; local transaction
-`1be9e524-3e20-49f9-b032-888fb3969118` installed the release with its retained
-backup. Domestic Caddy serves `releases/0.2.43` with 0.2.42 still available,
-while static Worker version `e3a6bab5-5907-495f-bb4d-ad23f0991710` serves the
-matching edge shell. Both public origins returned 0.2.43,
-`assets/index-B1vKcnCJ.js` and ready / desktop health. Physical-device
-acceptance remains a separate boundary.
 
 The [0.2.42 release acceptance](remote-0.2.42-release-acceptance.md) retains the
 turn-timing fix. Its final source and tag target were
@@ -94,9 +89,9 @@ ready / desktop. Publication, Remote installation and edge deployment remain
 separate states. The release tag points to
 `d939828213e99483b3a27494065d6c0a3f722e0b`; main CI `43432391478`, Runtime
 Packages `43432431776` and the manager plan `43432428144` passed.
-The live installation, manager selection and both Windows tasks now use
-`F:\AAAAcodexremote\codex-remote-main`; the old version-named directory and
-private experimental residue were removed after the runtime data migration was
+The live installation, manager selection and both Windows tasks use the
+workspace's `codex-remote-main` directory; old version-named directories and
+private experimental residue were removed after runtime data migration was
 verified.
 Keep source publication, download distribution, installation and physical-device
 acceptance as separate states. Never start another App Server.

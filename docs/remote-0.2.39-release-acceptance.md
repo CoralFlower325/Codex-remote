@@ -63,7 +63,7 @@
 
 ## 本机安装
 
-- `F:\AAAAcodexremote\codex-remote-main` 已从 0.2.38 通过管理器相同的
+- `<workspace>\codex-remote-main` 已从 0.2.38 通过管理器相同的
   签名预构建运行包事务升级到 0.2.39，模式为 `runtime`，旧服务正常恢复为运行状态。
 - 事务备份为
   `output\manager-backup-4314a272-0056-4951-a6af-276d98ea3fdf`；没有未完成的

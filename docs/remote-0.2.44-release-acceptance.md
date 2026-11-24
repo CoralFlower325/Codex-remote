@@ -47,24 +47,33 @@
 
 ## 发布与部署
 
-- 本机已构建并重启 Remote `0.2.44`，进程 PID `20691` 监听
-  `127.0.0.1:4545`；`/health` 为 ready / desktop，Desktop 与 cloudflared
-  进程未重启。升级前构建保留在
-  `output/deployment-backups/20261124-0318-pre-0.2.44` 与
-  `output/deployment-backups/20261124-0342-pre-final-0.2.44`。
-- 国内 Caddy 的 `current` 指向 `releases/0.2.44`，共 `118` 个文件；
-  `codex-remote-gateway.service` 为 active。Cloudflare
-  `codex-remote-static` Worker 版本为
-  `a190ae40-f85e-490e-ab4c-349041b539a1`，部署
-  `7414813b-05ea-45c7-b15c-6b07fa41cb24`。
-- 国内主入口 `codexmac.mmmmmzzzzzyyyyy.online` 与 Cloudflare 回退入口
-  `codexmacos.73916482.xyz` 的 `/version.json` 均返回 `0.2.44` /
+- PR #47、#48、#49 均已合并，每个 PR 的 macOS、Windows、Ubuntu 与浏览器
+  合成检查全部通过。main CI `45254299198`、Runtime Packages `45254355807` 和
+  Desktop Manager `45254355802` 通过；管理器未改版，package job 按门禁跳过。
+- GitHub Release `v0.2.44` 已发布为非草稿、非预发布 latest，双平台签名运行包
+  清单与归档共四附件齐全。下载 Worker 版本
+  `a2b973b4-cca7-4d2b-a931-692057eb273c`（部署
+  `cc462718-30ba-4c14-b570-d43e8a81e3fa`）已刷新快照，`/releases/latest`
+  返回 `v0.2.44`；四附件完整下载的大小与摘要均和 Release 元数据一致。
+- Windows 本机通过正式网页更新事务从 0.2.43 升级到 0.2.44。更新任务
+  `2d384c21-691e-4351-b973-e483ed16988e` 完成，保留备份
+  `output/manager-backup-e16e1ffb-3f70-465e-8e4c-33a4bca34351`；Remote PID
+  `42420` 监听 `127.0.0.1:4545`，`/health` 为 ready / desktop，配套后端入口
+  为 `assets/index-98koT1Ur.js`。`CodexRemote`、`CodexRemoteTunnel` 和
+  `CodexRemoteDomesticTunnel` 三项任务均为 Running，Desktop 未重启。
+- 国内 Caddy 的 `current` 指向 `releases/0.2.44`，共 `118` 个文件，旧
+  `0.2.43` 目录保留。Windows 国内入口
+  `codexwin.mmmmmzzzzzyyyyy.online` 与 Cloudflare 入口
+  `codexwin.73916482.xyz` 的 `/version.json` 均返回 0.2.44 /
   `assets/index-98koT1Ur.js`，`/health` 均为 ready / desktop。
-- 正式标签、GitHub Release、签名运行包与下载分发快照在发布完成后由后续
-  closeout 记录补充。
+- 未登录 `/api/bootstrap` 返回 `workspace: null`。`/data/`、`/.env` 与
+  `/.git/config` 没有返回文件或目录内容；其中一个入口返回 404，另一个回退到
+  不含环境变量或凭据标记的 SPA 外壳。公开页面不含会话、附件、认证或私有配置
+  数据。
 
 ## 边界
 
 - 管理器 0.2.10 无变更，安装包继续从 `v0.2.41` 提供。
+- 其他平台的公网入口属于独立部署状态，不作为本 Windows 入口验收依据。
 - 浏览器合成测试不能替代物理 iPhone Safari、主屏和移动网络切换验收。
 - 现有诊断日志在明确授权前保留。

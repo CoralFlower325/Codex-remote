@@ -37,7 +37,7 @@
 ## 本机安装
 
 - 已选安装目录从历史名称迁移为
-  `F:\AAAAcodexremote\codex-remote-main`，其中 `package.json` 版本从 0.2.33
+  `<workspace>\codex-remote-main`，其中 `package.json` 版本从 0.2.33
   通过签名预构建运行包升级到 0.2.34。
 - 本地与公网 `/version.json` 均为 0.2.34，构建标识
   `assets/index-C3CJbpCT.js`；两端 `/health` 均为 `ready / desktop`，密码已配置。
@@ -52,7 +52,7 @@
   后密码配置、Desktop transport 和隧道 readiness 均保持正常。
 - 删除了旧 0.2.25 开发目录、旧国内网关实验、无关 Kaggle 虚拟环境、历史手动
   启停脚本、公共仓库生成物和除最新回滚点外的旧更新备份。
-- `F:\AAAAcodexremote` 现在只保留 `codex-remote-main` 与
+- `<workspace>` 现在只保留 `codex-remote-main` 与
   `Codex-Remote-Public` 两个目录，没有根目录散落文件。
 
 ## 边界

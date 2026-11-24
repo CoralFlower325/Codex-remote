@@ -13,10 +13,8 @@ Self-hosted React and Node.js workspace for Codex Desktop.
 
 - Develop and publish in this public repository on `main`. The sibling
   private Windows installation is deployment-only; never push or reset it.
-- On this Windows host, the public repository is
-  `F:\AAAAcodexremote\Codex-Remote-Public` and the live installation is
-  `F:\AAAAcodexremote\codex-remote-main`. Keep `F:\AAAAcodexremote` limited to
-  those two directories with no loose files or version-named copies.
+- Keep the deployment workspace limited to one public source checkout and one
+  live installation directory, with no loose files or version-named copies.
 - Before changing code or tests, read all
   [development contracts](docs/development-contracts.md). They preserve the
   detailed UI, loading, history, transport, terminal and manager constraints.
@@ -59,7 +57,7 @@ Self-hosted React and Node.js workspace for Codex Desktop.
   Runtime manifest authentication is separate: all new runtime releases require
   Ed25519 publisher signatures verified against pinned public keys. Source
   fallback must match a signed release commit; never bypass missing signatures.
-  Remote 0.2.43 / manager 0.2.10 are the current formal release.
+  Remote 0.2.44 / manager 0.2.10 are the current formal release.
   Verify each installation against its own current acceptance record.
 - After completing and validating project changes, push the public repository
   by default unless the user explicitly asks not to. Never push the separate

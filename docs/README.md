@@ -67,7 +67,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
-| [Remote 0.2.44 发布与部署验收](remote-0.2.44-release-acceptance.md) | 0.2.44 / manager 0.2.10：HTTP/SSE 回退失败后恢复 WebSocket、清除过期通道偏好、延长 cloudflared 全边缘中断后的重建宽限；真机边界保留 |
+| [Remote 0.2.44 发布与部署验收](remote-0.2.44-release-acceptance.md) | 0.2.44 / manager 0.2.10：HTTP/SSE 回退恢复、过期通道偏好、cloudflared 重建宽限、Windows 双入口升级与匿名脱敏复核；真机边界保留 |
 | [Remote 0.2.43 发布与部署验收](remote-0.2.43-release-acceptance.md) | 0.2.43 / manager 0.2.10：Windows Office 隔离转换环境、文档上传草稿状态、“+”菜单单滚动面与可视视口重排；真机边界保留 |
 | [Remote 0.2.42 发布与部署验收](remote-0.2.42-release-acceptance.md) | 0.2.42 / manager 0.2.10：轮次计时状态修复、三平台与八视口验收、签名运行包、下载分发、本机升级、国内 Caddy 与 Cloudflare 静态边缘同步；真机边界保留 |
 | [Remote 0.2.41 发布与部署验收](remote-0.2.41-release-acceptance.md) | 0.2.41 / manager 0.2.10：多入口健康监控、502 分层诊断、显式 SSH 反向隧道管理、自动重连与本机部署；真机边界保留 |
