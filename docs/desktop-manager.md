@@ -6,14 +6,14 @@ turns and exposes no network control API.
 
 ## Install And Open
 
-Remote 0.2.44 pairs with manager 0.2.10. Download the Windows installer or macOS
+Remote 0.3.0 pairs with manager 0.3.0. Download the Windows installer or macOS
 DMG/ZIP from the [project distribution or official fallback](update-downloads.md).
 Windows packages target x64; macOS packages target Apple Silicon (arm64).
 Initial packages are unsigned; normal Windows reputation/Gatekeeper approval may
 be required. Signing, notarization and live macOS GUI acceptance remain pending.
 
 To replace an older manager, quit the manager from its tray/menu-bar menu, install
-0.2.10 over the existing app, reopen it and select the same Remote installation
+0.3.0 over the existing app, reopen it and select the same Remote installation
 directory. Quitting the manager preserves the service. Retry the host update, or
 recover a recorded interrupted install first. Host updates cannot patch the old
 manager's bundled updater; checking for a Remote release does not upgrade the app.
@@ -83,13 +83,12 @@ shows only the target version and a short downtime/data-preservation notice.
   `node-22.19.0-127.exe` in Windows status and repair checks instead of accepting
   only `node.exe`, preventing a healthy backend from being reported as an
   unmanaged port owner.
-- Desktop diagnostics distinguish a missing debug endpoint, a missing Desktop
-  page and a pending native bridge. Ordinary Codex launches do not necessarily
-  enable a debug endpoint; Windows/macOS Remote 0.2.31 discovers the loopback
-  port from the current trusted installed process, while explicit arguments and 9229 remain
-  fallbacks. Another launcher such as Codex++ may therefore choose a different
-  port. Remote uses Desktop's endpoint, not the launcher's own local server.
-  Diagnostics clear on recovery.
+- Desktop diagnostics distinguish a missing private App Server endpoint from a
+  backend that is not running. Windows 0.3.0 installs the CLI adapter
+  automatically; after an upgrade the user must fully quit and reopen Desktop
+  once so it reads the new user environment. Remote does not probe a browser
+  debug port and never starts a second production App Server. Diagnostics clear
+  when the owning Desktop instance reconnects.
   Start can succeed with Desktop sync still pending; the overall health remains
   degraded until Desktop connects.
 - macOS LaunchAgent/daemon tunnels keep their existing configuration and management.
@@ -229,7 +228,7 @@ clean HEAD. Backups and older frontend chunks for open tabs remain available.
 This updates **the selected host installation**, not the manager executable.
 The manager and Remote display their own versions and may differ. Update checks
 compare the selected Remote installation with the release. Install a newer manager
-separately when its controls or updater need a fix. Stable manager 0.2.10 does not
+separately when its controls or updater need a fix. Stable manager 0.3.0 does not
 include manager self-update. Its paused 0.2.0AU development line and signing
 prerequisites are preserved in [the resume checkpoint](manager-self-update-checkpoints.md).
 The manager uses an independent version starting at 0.2.0. Remote-only updates

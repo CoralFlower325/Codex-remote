@@ -67,6 +67,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
+| [Remote 0.3.0 发布与部署验收](remote-0.3.0-release-acceptance.md) | 0.3.0 / manager 0.3.0：共享 App Server、令牌端点、双客户端广播、自动任务可靠性与 Windows 管理器打包；发布后部署状态另行更新 |
 | [Remote 0.2.44 发布与部署验收](remote-0.2.44-release-acceptance.md) | 0.2.44 / manager 0.2.10：HTTP/SSE 回退恢复、过期通道偏好、cloudflared 重建宽限、Windows 双入口升级与匿名脱敏复核；真机边界保留 |
 | [Remote 0.2.43 发布与部署验收](remote-0.2.43-release-acceptance.md) | 0.2.43 / manager 0.2.10：Windows Office 隔离转换环境、文档上传草稿状态、“+”菜单单滚动面与可视视口重排；真机边界保留 |
 | [Remote 0.2.42 发布与部署验收](remote-0.2.42-release-acceptance.md) | 0.2.42 / manager 0.2.10：轮次计时状态修复、三平台与八视口验收、签名运行包、下载分发、本机升级、国内 Caddy 与 Cloudflare 静态边缘同步；真机边界保留 |
@@ -88,7 +89,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 | [Remote 0.2.26 发布验收](remote-0.2.26-release-acceptance.md) | 0.2.26：完整目录、插话同步、终端隔离、预览/网络与发布治理；真机边界保留 |
 | [手机输入栏单行与单主操作](mobile-composer-single-action-0.2.25.md) | 0.2.25：移除听写、手机工具栏单行、运行中停止/引导单主按钮及八视口合成验收；真机边界保留 |
 | [0.2.22 对抗审查修复对账](adversarial-review-0.2.22-fixes.md) | 已发布 0.2.23 / manager 0.2.4：31 项对账、正式签名、三平台 CI、下载分发及 Windows 安装；真机边界保留 |
-| [Windows / macOS 调试端口自动发现](desktop-debug-discovery.md) | 0.2.24-rc：动态启动器端口、双平台可信路径、回环 CDP 校验与回退 |
+| [历史：Windows / macOS 调试端口自动发现](desktop-debug-discovery.md) | 0.2.24-rc 历史证据；0.3.0 已改用 Windows 私有 CLI 适配层与共享 App Server |
 | [PR #10 自动任务消息复核](pr-10-review.md) | 已发布 0.2.21：原生信封、通知决策、流式标签及八视口合成验收；主机升级、真实执行与真机待验收 |
 | [PR #8 原生自动任务复核](pr-8-review.md) | 已发布 0.2.20：原生服务桥接、回合时刻、八视口合成检查；真实执行与真机待验收，发布不代表主机已升级 |
 | [PR #7 后续与真机步骤](review-followup-acceptance.md) | 已发布 0.2.19：终端 cwd、多根目录、Windows 预览路径、说明与路径复制；原生 App Server 占用修复，iPhone/macOS 待验收 |

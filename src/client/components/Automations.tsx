@@ -225,8 +225,8 @@ export function Automations({ models, projects, onClose, onOpenThread }: {
               </div>
               <div className="automation-actions">
                 <button type="button" className="icon-button" aria-label="立即运行"
-                  disabled={Boolean(busyId) || automation.kind === 'heartbeat'}
-                  title={automation.kind === 'heartbeat' ? '请在 Desktop 确认聊天权限后运行' : '立即运行'}
+                  disabled={Boolean(busyId)}
+                  title="立即运行"
                   onClick={() => void act(automation.id, () => api(`/api/automations/${encodeURIComponent(automation.id)}/run`, { method: 'POST', body: mutation(automation) }))}>
                   {busyId === automation.id ? <LoaderCircle size={15} className="spin" /> : <Play size={15} />}
                 </button>

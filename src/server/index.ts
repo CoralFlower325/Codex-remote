@@ -24,13 +24,14 @@ import {
 } from './auth.js';
 import { codexBridge } from './codex-bridge.js';
 import { config } from './config.js';
-import { desktopBridge } from './desktop-bridge.js';
+import { ensureDesktopShim, type DesktopShimStatus } from './desktop-shim.js';
 import { MetadataReader, readWorkspaceBootstrap } from './bootstrap.js';
 import { WorkspaceSnapshots } from './workspace-snapshots.js';
 import { ThreadHistoryCache } from './thread-history-cache.js';
 import { TerminalManager } from './terminal-manager.js';
 import { handleTerminalSocket } from './terminal-socket.js';
 import { Automations } from './automations.js';
+import { RemoteAutomations } from './remote-automations.js';
 import { EphemeralChats } from './ephemeral-chats.js';
 import { QueueDispatcher } from './queue-dispatcher.js';
 import { QuestionTracker } from './question-tracker.js';
@@ -54,6 +55,17 @@ import { ActionLedger } from './action-ledger.js';
 import { installRotatingConsole } from './logging.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+let desktopShim: DesktopShimStatus = {
+  configured: false,
+  directory: path.resolve(process.cwd(), 'dist', 'desktop-shim'),
+  endpointFile: config.appServerEndpointFile
+};
+void ensureDesktopShim().then(status => {
+  desktopShim = status;
+  if (!status.configured) console.warn('[desktop-shim] unavailable', { error: status.error });
+}).catch(error => {
+  console.warn('[desktop-shim] configuration failed', { error: error instanceof Error ? error.message : String(error) });
+});
 const app = express();
 if (process.platform !== 'win32') installRotatingConsole(config.dataDir);
 const server = http.createServer(app);
@@ -94,12 +106,10 @@ const ephemeralChats = new EphemeralChats<RemotePeer>(threadId => codexBridge.re
 const queueDispatcher = new QueueDispatcher(<T,>(method: import('../shared/protocol.js').ClientRpcMethod, params: unknown) =>
   codexBridge.request(method, params) as Promise<T>, (threadId, message) =>
     broadcast({ type: 'error', error: { message: `队列 ${threadId}：${message}` } }));
-const automations = new Automations(
-  async (method, params) => {
-    await codexBridge.ensureStarted();
-    return desktopBridge.requestAutomation(method, params);
-  }
-);
+const remoteAutomations = new RemoteAutomations(config.dataDir,
+  (method, params) => codexBridge.request(method, params),
+  () => codexBridge.getStatus() === 'ready');
+const automations = new Automations((method, params) => remoteAutomations.request(method, params));
 const terminalWss = new WebSocketServer({ noServer: true, maxPayload: 128 * 1024 });
 const terminals = new TerminalManager(config.codexWorkdir);
 const sessionConnections = new SessionConnections();
@@ -315,14 +325,6 @@ app.get('/api/connections', requireAuth, (_req, res) => {
 });
 
 app.get(
-  '/api/desktop/status',
-  requireAuth,
-  asyncRoute(async (_req, res) => {
-    res.json(await desktopBridge.getStatus());
-  })
-);
-
-app.get(
   '/api/side-chat',
   requireAuth,
   asyncRoute((req, res) => {
@@ -450,7 +452,10 @@ codexBridge.on('server-request', ({ requestId, method, params }) => {
 });
 let bridgeWasReady = codexBridge.getStatus() === 'ready';
 codexBridge.on('status', (status) => {
-  if (status === 'ready') void queueDispatcher.recover();
+  if (status === 'ready') {
+    void queueDispatcher.recover();
+    remoteAutomations.wake();
+  }
   if (status !== 'ready' && bridgeWasReady) {
     eventJournal.reset();
     metadataReader.clear();
@@ -499,6 +504,7 @@ function shutdown(): void {
   for (const client of terminalWss.clients) client.close();
   terminals.dispose();
   for (const client of clients) client.close();
+  remoteAutomations.shutdown();
   codexBridge.shutdown();
   lanServer?.close();
   server.close(() => process.exit(0));

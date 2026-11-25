@@ -40,7 +40,7 @@ import path from 'node:path';
 const inheritedEnvironment = Object.fromEntries([
   'HOST', 'PORT', 'LAN_PORT', 'LAN_ADDRESS', 'LAN_CERT_FILE', 'LAN_KEY_FILE', 'LAN_ALLOW_HTTP',
   'DATA_DIR', 'PUBLIC_ORIGIN', 'ALLOWED_ORIGINS',
-  'CODEX_BINARY', 'CODEX_HOME', 'CODEX_WORKDIR', 'CODEX_DESKTOP_DEBUG_PORT',
+  'CODEX_BINARY', 'CODEX_HOME', 'CODEX_WORKDIR', 'CODEX_REMOTE_APP_SERVER_ENDPOINT_FILE',
   'TRUST_PROXY', 'SESSION_DAYS', 'DOTENV_CONFIG_PATH'
 ].filter((key) => process.env[key] !== undefined).map((key) => [key, process.env[key]]));
 await import('dotenv/config');

@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.3.0', changes: [
+    'Windows 端彻底移除对 Codex++、浏览器调试端口和 `9229` 的依赖。安装过程配置私有 CLI 适配层，让 Desktop 与 Remote 作为两个官方客户端连接同一个 App Server，普通启动 Desktop 即可共享会话、审批和实时事件。',
+    '适配层使用仅本机回环可访问的临时端口与 capability token，描述文件和令牌不下发浏览器；令牌文件权限限制为当前用户、SYSTEM 与 Administrators。Remote 只接受该描述文件声明的回环端点。',
+    '自动任务改为 Remote 持久化管理与调度：派发前保存运行认领，已有心跳线程先恢复，离线采用有界退避；结果不确定时不自动重放。',
+    '升级后需完全退出并重新打开一次 Codex Desktop，使其读取新的 `CODEX_CLI_PATH` 环境。管理器 0.3.0 同步升级，健康诊断改为检查共享 App Server 端点。'
+  ] },
   { version: '0.2.44', changes: [
     '修复一次临时连接故障后标签页可能长期粘在 HTTP/SSE 回退通道的问题：回退连接失败时立即重试 WebSocket，并在 WebSocket 同步完成后清除回退偏好。',
     '修复 Desktop 调试连接到原生应用短时重连时状态反复切到离线并触发所有页面重新加载目录和历史的问题：1.5 秒内的瞬时断开保持工作区稳定，只有持续不可用才进入离线状态。',

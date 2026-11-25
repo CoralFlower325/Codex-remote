@@ -1,6 +1,6 @@
 # Maintainer Handoff
 
-Last reconciled: 2026-11-24.
+Last reconciled: 2026-11-25.
 
 ## Authority
 
@@ -15,14 +15,19 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current published release is Remote **0.2.44** / manager **0.2.10**, tag
-`v0.2.44`. The matching tag and Release identify the exact source commit.
-Remote **0.2.44** returns a failed HTTP/SSE fallback to WebSocket, clears stale
-route preferences after WebSocket synchronization and gives cloudflared 20
-seconds to recover before rebuilding a tunnel whose edges are all unavailable.
-Manager **0.2.10** has no changes. The
-[0.2.44 release acceptance](remote-0.2.44-release-acceptance.md) owns this
-batch's publication, distribution and installation receipts.
+The current published release is Remote **0.3.0** / manager **0.3.0**. Remote
+removes the Codex++ and browser debug-port dependency. Windows setup installs a
+windowless CLI adapter that shares Desktop's one App Server over an authenticated
+loopback WebSocket, and Remote connects as a second official client. Scheduled
+tasks now persist a claim and run through App Server `thread/start` and
+`turn/start` with bounded offline backoff. The Windows adapter smoke test verifies
+two concurrent clients, event broadcast, token rejection and instance reuse in
+an isolated Codex home. Publication, manager packaging and live deployment remain
+separate completion states until their receipts are recorded.
+
+Remote **0.2.44** / manager **0.2.10**, tag `v0.2.44`, remains the previous
+published release. Its [release acceptance](remote-0.2.44-release-acceptance.md)
+owns the preceding HTTP/SSE recovery and cloudflared rebuild receipts.
 
 The 2026-11-24 Windows closeout upgraded the live installation from 0.2.43 to
 0.2.44 through the standard signed runtime transaction. Update task
