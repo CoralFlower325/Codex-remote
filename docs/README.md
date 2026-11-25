@@ -34,6 +34,7 @@ the authority for what is actually installed.
 - [Code organization / 代码分层与维护边界](code-organization.md)
 - [Maintainer handoff and release procedure / 开发交接与发布流程](maintainer-handoff.md)
 - [历史发布整理与组件版本说明](release-organization.md)
+- [Remote 0.3.0 暂停断点](remote-0.3.0-pause-checkpoint.md)
 - [0.2.0AU 暂停开发与签名断点](manager-self-update-checkpoints.md)
 - [更新分发 Worker、公开下载与部署](update-downloads.md#维护分发服务)
 - [Agent rules / 开发约束](../AGENTS.md)
