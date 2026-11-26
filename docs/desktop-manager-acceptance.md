@@ -1,13 +1,34 @@
 # Desktop Manager Acceptance
 
 Historical manager acceptance records, reconciled 2026-11-26. The current
-Remote **0.3.1** / manager **0.3.1** pairing is recorded in the
-[0.3.1 safety acceptance](remote-0.3.1-safety-acceptance.md). Windows has a live
-0.3.1 installation and packaged smoke result; Apple Silicon packages are built
-and tested by the shared macOS runner. Signed-in macOS GUI and LaunchAgent
+Remote **0.3.1** / manager **0.3.2** pair keeps the
+[0.3.1 safety acceptance](remote-0.3.1-safety-acceptance.md) as its Remote
+baseline. The 0.3.2 manager batch is recorded below. Signed-in macOS GUI and LaunchAgent
 acceptance remain separate. Self-update work remains paused as
 [0.2.0AU](manager-self-update-checkpoints.md). Historical records below retain
 their original scope and counts.
+
+## Manager 0.3.2 Fast Recovery
+
+Manager 0.3.2 returns local health before public-origin probes complete. Public
+entries refresh independently in the background; explicit refresh and diagnosis
+remain fresh reads. Repeated read-only Remote and SSH status observations share a
+four-second cache only, while mutations still perform fresh ownership checks.
+On the live Windows installation, the first uncached local observation took
+3.2 seconds and the next observations took 6–9 ms. The manager source suite and
+Electron smoke checks cover the split status, background public update, explicit
+Codex recovery confirmation and Codex++ no-restart path.
+
+The explicit Desktop recovery validates a top-level executable beneath a trusted
+Codex installation root, closes only that process, and relaunches it with loopback
+debugging arguments. A process that already has any debug port is never restarted.
+There is no automatic termination of a normally launched Codex. A live restart of
+the currently running acceptance thread was intentionally not performed. The
+Windows x64 0.3.2 package (121,804,843 bytes) passed the packaged Electron smoke
+suite and was installed into the current user's Programs directory. The installed
+executable reports file/product version 0.3.2, and the user-level login entry was
+repointed to that installation. The next actual user-triggered restart remains
+separate evidence.
 
 ## Manager 0.3.1 Safety Alignment
 

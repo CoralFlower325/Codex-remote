@@ -116,16 +116,20 @@ time. Standard installations prefer verified prebuilt runtimes; customized sourc
 installations retain isolated builds. Interrupted installs recover when the manager restarts.
 Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
-remains pending. Manager 0.3.1 also monitors every configured public origin and
+remains pending. Manager 0.3.2 also monitors every configured public origin and
 can manage an explicitly configured Windows SSH reverse tunnel with automatic restart.
+When Codex++ exposes a loopback debug endpoint, Remote reconnects in the background.
+A normally launched Codex is never terminated automatically; its Desktop row offers
+an explicit **restart Codex and recover** action.
 
-Remote **0.3.1** pairs with manager **0.3.1**. Version 0.3.0 is withdrawn
+Remote **0.3.1** pairs with manager **0.3.2**. Version 0.3.0 is withdrawn
 because its global CLI adapter could break Codex Desktop startup; 0.3.1
 removes the adapter and leaves Desktop's own configuration untouched.
 Actual installed versions remain separately recorded in each deployment's acceptance. Install the manager
 manually over 0.2.0, select the same host directory and retry; updating Remote
 cannot replace the old manager's bundled updater. [Manager downloads](docs/update-downloads.md)
-use the project's public distribution, with official GitHub alternatives.
+for this independent manager patch use the official GitHub Release; Remote runtime
+downloads keep the project-owned distribution with official fallback.
 Standard runtime updates need no direct GitHub, Git or npm connection when that
 distribution is reachable; customized source updates still need Git/npm network
 access. Actual host and network acceptance remains separate.

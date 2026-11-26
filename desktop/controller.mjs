@@ -72,7 +72,14 @@ export function commandEnvironment() {
   return env;
 }
 
-export async function serviceStatus(info, execute = run, platform = process.platform) {
+const serviceStatusCaches = new WeakMap();
+
+export async function serviceStatus(info, execute = run, platform = process.platform, { cacheMs = 0 } = {}) {
+  const key = `${platform}\0${info.root}`;
+  let cache = serviceStatusCaches.get(execute);
+  if (!cache) { cache = new Map(); serviceStatusCaches.set(execute, cache); }
+  const cached = cache.get(key);
+  if (cacheMs > 0 && cached && Date.now() - cached.at <= cacheMs) return cached.value;
   const [file, args] = controlCommand(platform, info.root, 'Status');
   const options = { cwd: info.root, env: commandEnvironment() };
   const script = fileURLToPath(new URL(platform === 'win32' ? './status-windows.ps1' : './status-macos.sh', import.meta.url))
@@ -82,7 +89,10 @@ export async function serviceStatus(info, execute = run, platform = process.plat
   let selectedStatus = null;
   try {
     selectedStatus = JSON.parse(await execute(file, args, options));
-    if (selectedStatus.running || selectedStatus.conflict) return selectedStatus;
+    if (selectedStatus.running || selectedStatus.conflict) {
+      cache.set(key, { at: Date.now(), value: selectedStatus });
+      return selectedStatus;
+    }
   } catch { /* Older selected installations may not support JSON status. */ }
   // Managed runtimes may have versioned executable names. If the selected
   // installation reports stopped, cross-check the current read-only ownership
@@ -90,16 +100,21 @@ export async function serviceStatus(info, execute = run, platform = process.plat
   if (platform === 'win32') {
     try {
       const bundledStatus = JSON.parse(await execute(file, bundled, options));
-      if (bundledStatus.running || bundledStatus.conflict) return bundledStatus;
-      if (selectedStatus) return selectedStatus;
-      return bundledStatus;
+      const result = bundledStatus.running || bundledStatus.conflict ? bundledStatus : selectedStatus || bundledStatus;
+      cache.set(key, { at: Date.now(), value: result });
+      return result;
     }
     catch { /* Fall through to the selected installation for older managers. */ }
   }
-  if (selectedStatus) return selectedStatus;
+  if (selectedStatus) {
+    cache.set(key, { at: Date.now(), value: selectedStatus });
+    return selectedStatus;
+  }
   // Earlier releases lack structured status. The bundled fallback only reads
   // ownership/process state; mutations still use the selected host's controls.
-  return JSON.parse(await execute(file, bundled, options));
+  const result = JSON.parse(await execute(file, bundled, options));
+  cache.set(key, { at: Date.now(), value: result });
+  return result;
 }
 
 export async function probe(url, json = true, fetcher = fetch, timeout = 2500) {
@@ -127,6 +142,31 @@ export function publicDiagnosis(result) {
   if (result.failure === 'timeout') return { state: 'unknown', detail: '本次探测超时，尚不能确认公网入口故障。可复检，或从其他设备打开入口。' };
   if (result.reachable) return { state: 'unexpected', detail: '入口已响应，但不是预期的 Remote 健康接口，请检查域名指向。' };
   return { state: 'unknown', detail: '本机未能完成公网请求，可能与 DNS、代理或网络有关。可复检，或从其他设备打开入口。' };
+}
+
+export function projectPublicEntries(info, results) {
+  return info.publicUrls.map((url, index) => {
+    const result = results[index];
+    return { url, configured: true, ms: result?.ms ?? null, httpStatus: result?.httpStatus ?? null,
+      reachable: externalEntry(result), ...publicDiagnosis(result) };
+  });
+}
+
+export async function probePublicEntries(info, fetcher = fetch, timeout = 2500) {
+  const results = await Promise.all(info.publicUrls.map(url => probe(`${url}/health`, true, fetcher, timeout)));
+  return projectPublicEntries(info, results);
+}
+
+function uncheckedPublicEntries(info) {
+  return info.publicUrls.map(url => ({ url, configured: true, reachable: false, ms: null, httpStatus: null,
+    state: 'unchecked', detail: '公网入口正在后台检测，本机服务与修复操作不受影响。' }));
+}
+
+export function mergePublicEntries(status, publicEntries) {
+  const publicEntry = publicEntries[0] ?? { configured: false, reachable: false, ...publicDiagnosis(null) };
+  const next = { ...status, publicEntries, publicEntry };
+  if (next.sshTunnel?.managed && ['http-error', 'unexpected'].includes(publicEntry.state)) next.state = 'degraded';
+  return { ...next, diagnostics: diagnostics(next) };
 }
 
 export function portListening(localUrl) {
@@ -169,7 +209,7 @@ export function diagnostics(status) {
   if (!status.desktop) {
     const address = `127.0.0.1:${status.desktopDebug.port}`;
     if (!status.desktopDebug.reachable) {
-      messages.push(`Desktop 调试端点 ${address} 未就绪。普通启动 Codex 不一定开启此端口；请确认 Desktop 的调试启动参数，或 Codex++ 的调试连接状态。`);
+      messages.push(`普通启动的 Codex Desktop 没有开放调试端点 ${address}，因此 Remote 无法同步会话。可在管理器点击“重启 Codex 并恢复”；Remote 服务无需重启。`);
     } else if (!status.desktopDebug.targetReady) {
       messages.push(`调试端点 ${address} 可达，但未找到 Codex Desktop 页面，请确认端口配置及 Desktop 是否已加载。`);
     } else messages.push('Desktop 调试页面可达，但原生会话桥尚未连接；Remote 会自动重试。');
@@ -195,23 +235,22 @@ export function startupReady(status, requireDesktop = true) {
     (!requireDesktop || status.desktop);
 }
 
-export async function health(directory, execute = run, platform = process.platform, fetcher = fetch, { publicTimeout = 5000 } = {}) {
+export async function health(directory, execute = run, platform = process.platform, fetcher = fetch,
+  { publicTimeout = 5000, includePublic = true, serviceCacheMs = 0, sshCacheMs = 0 } = {}) {
   const info = await installation(directory);
-  const tunnelPort = await tunnelMetricsPort(info.root);
-  const service = await serviceStatus(info, execute, platform);
-  const [local, tunnel, listening, sshTunnel, ...publicResults] = await Promise.all([
+  const servicePromise = serviceStatus(info, execute, platform, { cacheMs: serviceCacheMs });
+  const publicPromise = includePublic ? probePublicEntries(info, fetcher, publicTimeout)
+    : Promise.resolve(uncheckedPublicEntries(info));
+  const [service, tunnelPort, local, listening, sshTunnel, publicEntries] = await Promise.all([
+    servicePromise,
+    tunnelMetricsPort(info.root),
     probe(`${info.localUrl}/health`, true, fetcher),
-    service.tunnelManaged ? probe(`http://127.0.0.1:${tunnelPort}/ready`, false, fetcher)
-      : Promise.resolve({ reachable: false, body: null }),
     portListening(info.localUrl),
-    sshTunnelStatus(info, execute, platform),
-    ...info.publicUrls.map(url => probe(`${url}/health`, true, fetcher, publicTimeout))
+    sshTunnelStatus(info, execute, platform, { cacheMs: sshCacheMs }),
+    publicPromise
   ]);
-  const publicEntries = info.publicUrls.map((url, index) => {
-    const result = publicResults[index];
-    return { url, configured: true, ms: result?.ms ?? null, httpStatus: result?.httpStatus ?? null,
-      reachable: externalEntry(result), ...publicDiagnosis(result) };
-  });
+  const tunnel = service.tunnelManaged ? await probe(`http://127.0.0.1:${tunnelPort}/ready`, false, fetcher)
+    : { reachable: false, body: null };
   const publicEntry = publicEntries[0] ?? { configured: false, reachable: false, ...publicDiagnosis(null) };
   const desktop = local.body?.codex === 'ready' && local.body?.transport === 'desktop';
   const debug = local.body?.ok === true && !desktop

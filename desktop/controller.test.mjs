@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { controlCommand, summarize, probe, serviceStatus, externalEntry, health, diagnostics, startupReady,
-  publicDiagnosis, tunnelMetricsPort } from './controller.mjs';
+  publicDiagnosis, tunnelMetricsPort, mergePublicEntries } from './controller.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -82,6 +82,15 @@ describe('local manager control boundary', () => {
     expect(execute).toHaveBeenCalledTimes(1);
     expect(execute.mock.calls[0][1].some((arg) => arg.includes('remote-control-windows.ps1'))).toBe(true);
   });
+  it('reuses only explicitly requested short-lived status observations', async () => {
+    const execute = vi.fn().mockResolvedValue('{"running":true,"enabled":true,"conflict":false}');
+    const info = { root: 'cached installation' };
+    expect(await serviceStatus(info, execute, 'win32', { cacheMs: 4000 })).toMatchObject({ running: true });
+    expect(await serviceStatus(info, execute, 'win32', { cacheMs: 4000 })).toMatchObject({ running: true });
+    expect(execute).toHaveBeenCalledTimes(1);
+    await serviceStatus(info, execute, 'win32');
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
   it('falls back from an unreadable selected Windows status to the bundled probe', async () => {
     const execute = vi.fn().mockRejectedValueOnce(new Error('unknown JSON option'))
       .mockResolvedValueOnce('{"running":true,"conflict":false}');
@@ -130,9 +139,9 @@ describe('local manager control boundary', () => {
       expect(result.publicEntry).toMatchObject({ configured: true, reachable: true, state: 'reachable' });
       expect(result.tunnel).toEqual({ managed: false, ready: false });
       expect(result.state).toBe('healthy');
-      expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      expect(fetcher.mock.calls.map(([url]) => url).sort()).toEqual([
         'http://127.0.0.1:4545/health', 'https://remote.example.com/health'
-      ]);
+      ].sort());
       expect(execute.mock.calls.every(([, args]) => args.includes('Status'))).toBe(true);
       fetcher.mockImplementation(async (url) => {
         if (url.startsWith('https:')) throw new Error('offline');
@@ -143,6 +152,11 @@ describe('local manager control boundary', () => {
       fetcher.mockClear();
       expect((await health(root, execute, 'darwin', fetcher)).publicEntry.configured).toBe(false);
       expect(fetcher).toHaveBeenCalledTimes(1);
+      await fs.writeFile(path.join(root, '.env'), 'PUBLIC_ORIGIN=https://remote.example.com\n', 'utf8');
+      fetcher.mockClear();
+      const local = await health(root, execute, 'darwin', fetcher, { includePublic: false });
+      expect(local.publicEntry).toMatchObject({ configured: true, state: 'unchecked', reachable: false });
+      expect(fetcher.mock.calls.map(([url]) => url)).toEqual(['http://127.0.0.1:4545/health']);
     } finally { await fs.rm(root, { recursive: true, force: true }); }
   });
   it('reads every public origin and resolves a managed SSH tunnel without exposing its key', async () => {
@@ -200,6 +214,18 @@ describe('local manager control boundary', () => {
     expect(publicDiagnosis(gateway).detail).toContain('反向隧道');
     expect(publicDiagnosis({ reachable: true, body: { ok: true } }).state).toBe('unexpected');
     expect(publicDiagnosis(null).state).toBe('unconfigured');
+  });
+  it('merges a later public observation without discarding local Desktop state', () => {
+    const base = { state: 'degraded', service: { running: true }, backend: { ready: true },
+      desktop: false, desktopDebug: { port: 9229, reachable: false, targetReady: false },
+      passwordConfigured: true, tunnel: { managed: false, ready: false },
+      sshTunnel: { managed: true, ready: true }, diagnostics: [] };
+    const merged = mergePublicEntries(base, [{ configured: true, reachable: true, state: 'reachable', detail: 'ok' }]);
+    expect(merged.desktop).toBe(false);
+    expect(merged.publicEntry.reachable).toBe(true);
+    expect(merged.state).toBe('degraded');
+    expect(mergePublicEntries({ ...base, state: 'healthy' },
+      [{ configured: true, reachable: false, state: 'http-error', detail: 'bad' }]).state).toBe('degraded');
   });
   it('sends sensitive subprocess input through stdin without including it in argv', async () => {
     const password = 'synthetic-secret-with-spaces';

@@ -54,7 +54,8 @@ function App() {
   const canControl = Boolean(status) && !conflict && !state.healthError && !stale && !state.recoveryRequired;
   const canRepair = canControl && status?.service.running && status.service.enabled;
   const cloudflareIssue = status?.tunnel.managed && !status.tunnel.ready ||
-    status?.publicEntry.configured && !status.publicEntry.reachable && !status?.sshTunnel.managed;
+    status?.publicEntry.configured && status.publicEntry.state !== 'unchecked' &&
+      !status.publicEntry.reachable && !status?.sshTunnel.managed;
   const sshIssue = status?.sshTunnel.managed && (!status.sshTunnel.ready || !status.sshTunnel.supervised ||
     status?.publicEntry.configured && ['http-error', 'unexpected'].includes(status.publicEntry.state));
   const repairTunnel = () => { setDiagnosing(true); void perform(() => window.manager.repair('Tunnel')); };
@@ -64,8 +65,10 @@ function App() {
   const text = state.busy ? state.updateProgress ? state.updateProgress.status === 'recovering' ? '正在恢复' : '正在更新' : state.busy
     : state.healthError ? '检测未完成' : status ? labels[status.state] : state.root ? '正在检测' : '选择安装目录';
   const issue = error || state.error || state.healthError;
-  const publicValue = !status?.publicEntry.configured ? '未设置' : status.publicEntry.reachable ? '可达'
-    : status.publicEntry.state === 'unknown' ? '待确认' : '响应异常';
+  const publicValue = !status?.publicEntry.configured ? '未设置'
+    : status.publicEntry.state === 'unchecked' ? '检测中'
+      : status.publicEntry.reachable ? '可达'
+        : status.publicEntry.state === 'unknown' ? '待确认' : '响应异常';
   const report = state.connectionReport || status?.publicEntry;
   return <main>
     <header>
@@ -118,8 +121,8 @@ function App() {
             action={status && !status.backend.ready && <IconButton title={status.service.running ? '修复本地服务' : '开启 Remote'} disabled={disabled || !canControl}
               onClick={() => void perform(() => status.service.running ? window.manager.repair('Server') : window.manager.action('Start'))}><Wrench size={14} /></IconButton>} />
           <Row name="Desktop 同步" value={status ? status.desktop ? '已连接' : '未就绪' : '等待检测'} good={status?.desktop} stale={stale}
-            action={status && !status.desktop && <IconButton title="重连 Desktop 同步" disabled={disabled || !canRepair}
-              onClick={() => void perform(() => window.manager.repair('Server'))}><RotateCw size={14} /></IconButton>} />
+            action={status && !status.desktop && <IconButton title="重启 Codex 并恢复" disabled={disabled || !canRepair}
+              onClick={() => void perform(() => window.manager.repair('Desktop'))}><RotateCw size={14} /></IconButton>} />
           <Row name="访问密码" value={status ? status.passwordConfigured ? '已设置' : '未设置' : '等待检测'} good={status?.passwordConfigured} stale={stale}
             action={<IconButton title="修改访问密码" disabled={disabled || !state.root || state.recoveryRequired} onClick={() => devices(true)}><KeyRound size={14} /></IconButton>} />
           <Row name="Cloudflare 隧道" value={status?.tunnel.managed ? status.tunnel.ready ? '已连接' : '未就绪'
@@ -131,7 +134,8 @@ function App() {
             good={status?.sshTunnel.managed ? Boolean(status.sshTunnel.ready) : undefined} stale={stale}
             action={sshRepairable && sshIssue && <IconButton title="修复 SSH 反向隧道" disabled={disabled || !canRepair}
               onClick={repairSshTunnel}><Wrench size={14} /></IconButton>} />
-          <Row name="公网主入口" value={publicValue} good={status?.publicEntry.reachable ? true : status?.publicEntry.state === 'unknown' || !status?.publicEntry.configured ? undefined : false} stale={stale}
+          <Row name="公网主入口" value={publicValue} good={status?.publicEntry.reachable ? true
+            : ['unknown', 'unchecked'].includes(status?.publicEntry.state || '') || !status?.publicEntry.configured ? undefined : false} stale={stale}
             action={<>{tunnelRepairable && cloudflareIssue && <IconButton title="修复公网连接" disabled={disabled || !canRepair}
               onClick={repairTunnel}><Wrench size={14} /></IconButton>}
               {sshRepairable && sshIssue && <IconButton title="修复国内入口" disabled={disabled || !canRepair}
@@ -139,8 +143,10 @@ function App() {
               <IconButton title="诊断公网连接" disabled={disabled || !status?.publicEntry.configured} onClick={diagnose}><ScanSearch size={14} /></IconButton></>} />
           {(status?.publicEntries || []).slice(1).map((entry, index) => <Row key={entry.url || index}
             name={`公网备用 ${index + 1}`}
-            value={!entry.configured ? '未设置' : entry.reachable ? '可达' : entry.state === 'unknown' ? '待确认' : '响应异常'}
-            good={entry.reachable ? true : entry.state === 'unknown' || !entry.configured ? undefined : false} stale={stale} />)}
+            value={!entry.configured ? '未设置' : entry.state === 'unchecked' ? '检测中'
+              : entry.reachable ? '可达' : entry.state === 'unknown' ? '待确认' : '响应异常'}
+            good={entry.reachable ? true
+              : ['unknown', 'unchecked'].includes(entry.state) || !entry.configured ? undefined : false} stale={stale} />)}
           <Row name="Remote 登录启动" value={status ? status.service.enabled ? '已启用' : '未启用' : '等待检测'} stale={stale} />
         </dl>
         {diagnosing && <section className="connection-report" aria-label="连接诊断">

@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { run } from './process.mjs';
 
 const DEFAULT_TASK = 'CodexRemoteDomesticTunnel';
+const statusCaches = new WeakMap();
 
 function commandEnvironment() {
   const env = { ...process.env };
@@ -80,19 +81,28 @@ function unavailable(sshTunnel) {
   };
 }
 
-export async function sshTunnelStatus(info, execute = run, platform = process.platform) {
+export async function sshTunnelStatus(info, execute = run, platform = process.platform, { cacheMs = 0 } = {}) {
   if (!info.sshTunnel?.managed) return unavailable(info.sshTunnel ?? { configured: false, managed: false });
   if (platform !== 'win32') return unavailable(info.sshTunnel);
+  const key = info.root;
+  let cache = statusCaches.get(execute);
+  if (!cache) { cache = new Map(); statusCaches.set(execute, cache); }
+  const cached = cache.get(key);
+  if (cacheMs > 0 && cached && Date.now() - cached.at <= cacheMs) return cached.value;
   try {
     const output = await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass',
       '-File', sshTunnelScript(), '-Root', info.root, '-Action', 'Status'], {
       cwd: info.root, env: commandEnvironment(), timeout: 15_000
     });
-    return { ...info.sshTunnel, supported: true, error: '', ...JSON.parse(output) };
+    const result = { ...info.sshTunnel, supported: true, error: '', ...JSON.parse(output) };
+    cache.set(key, { at: Date.now(), value: result });
+    return result;
   } catch {
-    return { ...info.sshTunnel, supported: true, installed: false, enabled: false,
+    const result = { ...info.sshTunnel, supported: true, installed: false, enabled: false,
       taskState: '', running: false, ready: false, supervised: false, legacy: false,
       conflict: false, error: 'SSH 反向隧道状态读取失败；请检查配置、私钥文件与计划任务。' };
+    cache.set(key, { at: Date.now(), value: result });
+    return result;
   }
 }
 

@@ -11,7 +11,7 @@
 “验证与边界”排列。历史页首提供最新正式版入口，历史变更、源码、附件和验证
 仍描述该次发布，不改写为当前功能或当前验收。
 
-Remote 与管理器独立计版。当前安全修复版本为 Remote 0.3.1 / manager 0.3.1；
+Remote 与管理器独立计版。当前版本为 Remote 0.3.1 / manager 0.3.2；
 0.3.0 因全局 CLI 环境劫持导致 Codex Desktop 策略读取异常，已撤回。
 历史管理器 0.2.9 安装包继续保留在
 [v0.2.31](https://github.com/CoralFlower325/Codex-remote/releases/tag/v0.2.31)。

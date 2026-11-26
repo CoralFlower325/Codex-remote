@@ -328,6 +328,8 @@ try {
       ? Promise.reject(Object.assign(new Error('Synthetic timeout'), { name: 'TimeoutError' })) : original(url, options);
   });
   await page.evaluate(() => window.manager.refresh());
+  await until(() => page.evaluate(async () => (await window.manager.get()).value.status?.publicEntry.state),
+    'unknown', 'background public diagnosis');
   await page.getByText('待确认', { exact: true }).waitFor();
   await page.getByRole('button', { name: '诊断公网连接' }).click();
   await until(() => page.evaluate(async () => (await window.manager.get()).value.connectionReport?.state), 'unknown', 'uncertain public diagnosis');

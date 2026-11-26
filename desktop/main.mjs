@@ -206,6 +206,6 @@ else {
     (process.platform === 'darwin' && app.getLoginItemSettings().wasOpenedAsHidden))) {
     hideWindow(); void refresh();
   } else showWindow();
-  timer = setInterval(() => void refresh(), 5000);
+  timer = setInterval(() => void refresh({ fresh: false }), 5000);
   }).catch((error) => { console.error(error); app.exit(1); });
 }

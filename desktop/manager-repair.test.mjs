@@ -3,18 +3,22 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createManagerSession } from './manager-session.mjs';
-import { health } from './controller.mjs';
+import { health, probePublicEntries, mergePublicEntries } from './controller.mjs';
 import { repairControl } from './diagnostics.mjs';
 import { discoverMacTunnels } from './macos-tunnel.mjs';
 import { pendingUpdate } from './update-transaction.mjs';
+import { listDesktopProcesses, restartDesktopForRemote } from './desktop-recovery.mjs';
 
 vi.mock('./controller.mjs', () => ({
   health: vi.fn(), installation: vi.fn(), control: vi.fn(), serviceStatus: vi.fn(),
-  portListening: vi.fn(), startupReady: vi.fn()
+  portListening: vi.fn(), startupReady: vi.fn(), probePublicEntries: vi.fn(),
+  mergePublicEntries: vi.fn((status, publicEntries) => ({ ...status, publicEntries,
+    publicEntry: publicEntries[0] ?? status.publicEntry }))
 }));
 vi.mock('./diagnostics.mjs', () => ({ repairControl: vi.fn() }));
 vi.mock('./macos-tunnel.mjs', () => ({ discoverMacTunnels: vi.fn() }));
 vi.mock('./update-transaction.mjs', () => ({ pendingUpdate: vi.fn(), recoverPendingUpdate: vi.fn() }));
+vi.mock('./desktop-recovery.mjs', () => ({ listDesktopProcesses: vi.fn(), restartDesktopForRemote: vi.fn() }));
 
 const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
 const roots = [];
@@ -37,6 +41,9 @@ async function fixture() {
   pendingUpdate.mockResolvedValue(null);
   const publicEntry = { configured: true, reachable: false, detail: 'HTTP 530', state: 'http-error' };
   health.mockResolvedValue({ root, checkedAt: 1, state: 'healthy', publicEntry });
+  probePublicEntries.mockResolvedValue([publicEntry]);
+  listDesktopProcesses.mockResolvedValue([]);
+  restartDesktopForRemote.mockResolvedValue({ pid: 1, port: 9229 });
   discoverMacTunnels.mockResolvedValue([{ id: 'system/com.cloudflare.cloudflared', label: 'com.cloudflare.cloudflared', domain: 'system' }]);
   return { session, dialog, publicEntry };
 }
@@ -58,6 +65,7 @@ describe('manager external tunnel repair', () => {
     dialog.showMessageBox.mockResolvedValueOnce({ response: 2 }).mockResolvedValueOnce({ response: 1 });
     health.mockResolvedValue({ root: session.settings.root, checkedAt: 2, state: 'healthy',
       publicEntry: { ...publicEntry, reachable: true, detail: 'ok' } });
+    probePublicEntries.mockResolvedValue([{ ...publicEntry, reachable: true, detail: 'ok', state: 'reachable' }]);
     await session.repair('Tunnel');
     expect(dialog.showMessageBox).toHaveBeenCalledTimes(2);
     expect(repairControl).toHaveBeenCalledWith(expect.any(Object), 'Tunnel', undefined, 'darwin', chosen);
@@ -95,11 +103,49 @@ describe('manager external tunnel repair', () => {
     const publicEntry = { configured: true, reachable: true, detail: 'ok', state: 'reachable' };
     health.mockResolvedValue({ root, checkedAt: 1, state: 'healthy', publicEntry,
       sshTunnel: { configured: true, managed: true, ready: true } });
+    probePublicEntries.mockResolvedValue([publicEntry]);
     await session.repair('SshTunnel');
     expect(repairControl).toHaveBeenCalledWith(expect.objectContaining({
       sshTunnel: expect.objectContaining({ managed: true })
     }), 'SshTunnel', undefined, 'win32', undefined);
     expect(dialog.showMessageBox.mock.calls[0][1].message).toContain('SSH 反向隧道');
     expect(session.state.result).toContain('主入口复检通过');
+  });
+  it('fails fast when Desktop was started without a debug endpoint', async () => {
+    const { session } = await fixture();
+    health.mockResolvedValue({ root: session.settings.root, checkedAt: 2, state: 'degraded',
+      service: { running: true }, backend: { ready: true }, desktop: false,
+      desktopDebug: { port: 9229, reachable: false, targetReady: false },
+      publicEntry: { configured: true, reachable: false, state: 'unchecked', detail: 'pending' } });
+    await expect(session.repair('Server')).rejects.toThrow('由 Remote 重启 Codex');
+    expect(repairControl).not.toHaveBeenCalled();
+    expect(session.state.error).toContain('Remote 服务无需重启');
+  });
+  it('restarts direct Codex only after the explicit Desktop recovery action', async () => {
+    const { session, dialog } = await fixture();
+    health.mockResolvedValue({ root: session.settings.root, checkedAt: 2, state: 'degraded',
+      service: { running: true }, backend: { ready: true }, desktop: false,
+      desktopDebug: { port: 9229, reachable: false, targetReady: false },
+      publicEntry: { configured: true, reachable: true, state: 'reachable', detail: 'ok' } });
+    listDesktopProcesses.mockResolvedValue([{ pid: 123, executable: '/Applications/ChatGPT.app/Contents/MacOS/ChatGPT',
+      debugPort: 0, platform: 'darwin' }]);
+    await session.repair('Desktop');
+    expect(dialog.showMessageBox).toHaveBeenCalledTimes(1);
+    expect(restartDesktopForRemote).toHaveBeenCalledWith(expect.objectContaining({ pid: 123 }),
+      { port: 9229 });
+    expect(session.state.result).toContain('正在后台恢复');
+  });
+  it('does not restart an already-debuggable Codex while its bridge reconnects', async () => {
+    const { session, dialog } = await fixture();
+    health.mockResolvedValue({ root: session.settings.root, checkedAt: 2, state: 'degraded',
+      service: { running: true }, backend: { ready: true }, desktop: false,
+      desktopDebug: { port: 9229, reachable: false, targetReady: false },
+      publicEntry: { configured: true, reachable: true, state: 'reachable', detail: 'ok' } });
+    listDesktopProcesses.mockResolvedValue([{ pid: 456, executable: '/Applications/ChatGPT.app/Contents/MacOS/ChatGPT',
+      debugPort: 9444, platform: 'darwin' }]);
+    await session.repair('Desktop');
+    expect(dialog.showMessageBox).not.toHaveBeenCalled();
+    expect(restartDesktopForRemote).not.toHaveBeenCalled();
+    expect(session.state.result).toContain('自动重连');
   });
 });

@@ -82,4 +82,12 @@ describe('managed SSH reverse tunnel', () => {
       error: expect.stringContaining('状态读取失败')
     });
   });
+  it('reuses a short-lived SSH status only for read-only refreshes', async () => {
+    const execute = vi.fn().mockResolvedValue('{"ready":true,"installed":true,"enabled":true}');
+    expect(await sshTunnelStatus(info, execute, 'win32', { cacheMs: 4000 })).toMatchObject({ ready: true });
+    expect(await sshTunnelStatus(info, execute, 'win32', { cacheMs: 4000 })).toMatchObject({ ready: true });
+    expect(execute).toHaveBeenCalledTimes(1);
+    await sshTunnelStatus(info, execute, 'win32');
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
 });

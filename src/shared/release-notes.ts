@@ -2,6 +2,12 @@ export interface ReleaseNote { version: string; changes: string[] }
 
 // Public release metadata only; never include host paths or conversation data.
 export const releaseNotes: ReleaseNote[] = [
+  { version: '0.3.2', changes: [
+    '管理器 0.3.2 将本机状态与公网检查拆开：启动、更新校验和本机修复先返回，公网入口在后台使用短超时刷新；重复只读服务与 SSH 隧道状态使用四秒缓存，手动刷新仍读取最新状态。',
+    'Codex++ 已提供回环调试端点时，Remote 继续在后台自动发现并静默重连，不弹出恢复操作。普通启动的 Codex 不会被管理器自动关闭；“Desktop 同步”行提供明确的“重启 Codex 并恢复”按钮。',
+    '重启操作只接受受信任安装路径下的顶层 Codex 进程，先正常关闭，再仅以 `127.0.0.1` 调试地址和端口重新启动；Remote 服务保持运行，已经保存的会话记录和文件保留。',
+    'Remote 0.3.1 无代码变更；本批仅更新本机管理器。'
+  ] },
   { version: '0.3.1', changes: [
     '紧急撤回 0.3.0 的 Windows 全局 CLI 适配层。该版本会把用户级 `CODEX_CLI_PATH` 指向 Remote shim，导致 Codex Desktop 的策略读取握手失败，并出现“无法加载组织设置”。',
     'Remote 启动时不再写入用户级 `CODEX_CLI_PATH` 或 `PATH`，也不会启动或接管 Desktop 的 App Server。恢复已验证的 Desktop 现有连接路径，Desktop 的启动和配置读取保持独立。',

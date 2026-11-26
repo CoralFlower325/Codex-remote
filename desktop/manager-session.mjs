@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { health, installation, control, serviceStatus, portListening, startupReady, commandEnvironment } from './controller.mjs';
+import { health, installation, control, serviceStatus, portListening, startupReady, commandEnvironment,
+  probePublicEntries, mergePublicEntries } from './controller.mjs';
 import { latestRelease, prepareUpdate, installUpdate } from './updater.mjs';
 import { discoverInstallations, preferredInstallation } from './discovery.mjs';
 import { updateError, createUpdateProgress } from './update-progress.mjs';
@@ -11,10 +12,12 @@ import { repairControl } from './diagnostics.mjs';
 import { discoverMacTunnels } from './macos-tunnel.mjs';
 import { controlSshTunnel } from './ssh-tunnel.mjs';
 import { run } from './process.mjs';
+import { listDesktopProcesses, restartDesktopForRemote } from './desktop-recovery.mjs';
 // Installation state and serialized operations; the Electron shell owns windows.
 export function createManagerSession({ app, dialog, shell, fetchRelease, getWindow, publish, here }) {
   const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
   let polling = null;
+  let publicPolling = null;
   let healthError = '';
   const settings = { root: '', launchAtLogin: false };
   const state = { status: null, busy: '', error: '', release: null, result: '', events: [], installations: [],
@@ -30,17 +33,38 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
     await fs.mkdir(path.dirname(settingsFile()), { recursive: true });
     await fs.writeFile(settingsFile(), JSON.stringify(settings), 'utf8');
   }
-  async function refresh() {
+  function refreshPublic(status = state.status) {
+    if (!status || state.busy) return null;
+    if (publicPolling) return publicPolling;
+    const selectedRoot = settings.root;
+    publicPolling = (async () => {
+      const info = await installation(selectedRoot);
+      const publicEntries = await probePublicEntries(info, fetchRelease, 2500);
+      if (settings.root !== selectedRoot || !state.status) return;
+      state.status = mergePublicEntries(state.status, publicEntries);
+      publish();
+    })().catch(() => {
+      // A public origin probe is an independent observation. Local health and
+      // repair actions must not fail because one public request is unavailable.
+    }).finally(() => { publicPolling = null; });
+    return publicPolling;
+  }
+  async function refresh({ fresh = true } = {}) {
     if (polling) return polling;
     if (state.busy || !settings.root) return;
     polling = (async () => {
       try {
-        state.status = await health(settings.root, undefined, process.platform, fetchRelease);
+        state.status = await health(settings.root, undefined, process.platform, fetchRelease,
+          { includePublic: false, serviceCacheMs: fresh ? 0 : 4000, sshCacheMs: fresh ? 0 : 4000 });
         healthError = '';
       } catch (error) {
         healthError = error.message;
         state.status = null;
-      } finally { polling = null; publish(); }
+      } finally {
+        polling = null;
+        publish();
+        void refreshPublic();
+      }
     })();
     return polling;
   }
@@ -55,7 +79,7 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
     state.busy = label; state.error = ''; state.result = ''; state.updateProgress = null; event(label); publish();
     try { return await fn(); }
     catch (error) { showError(error); throw error; }
-    finally { state.busy = ''; await refresh(); publish(); }
+    finally { state.busy = ''; await refresh({ fresh: false }); publish(); }
   }
   async function waitStopped() {
     for (let i = 0; i < 30; i++) {
@@ -100,7 +124,7 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
   async function verify({ requireDesktop = true } = {}) {
     let status;
     for (let i = 0; i < 6; i++) {
-      status = await health(settings.root);
+      status = await health(settings.root, undefined, process.platform, fetchRelease, { includePublic: false });
       if (startupReady(status, true)) return status;
       if (i < 5) await new Promise((resolve) => setTimeout(resolve, 1000));
     }
@@ -135,19 +159,53 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
   }
   async function diagnose() {
     return exclusive('正在复检连接', async () => {
-      const status = await health(settings.root, undefined, process.platform, fetchRelease, { publicTimeout: 12_000 });
+      const local = await health(settings.root, undefined, process.platform, fetchRelease, { includePublic: false });
+      const info = await installation(settings.root);
+      const publicEntries = await probePublicEntries(info, fetchRelease, 12_000);
+      const status = mergePublicEntries(local, publicEntries);
       state.status = status;
       state.connectionReport = { checkedAt: status.checkedAt, ...status.publicEntry };
       event(status.publicEntry.reachable ? '公网复检通过' : '公网复检完成，需查看诊断结果');
     });
   }
   async function repair(target) {
-    if (!['Server', 'Tunnel', 'SshTunnel'].includes(target)) throw new Error('未知修复目标。');
+    if (!['Server', 'Desktop', 'Tunnel', 'SshTunnel'].includes(target)) throw new Error('未知修复目标。');
     const selectedRoot = settings.root;
     return exclusive('正在修复连接', async () => {
       await requireCompletedUpdate();
-      const status = await health(settings.root, undefined, process.platform, fetchRelease);
+      const status = await health(settings.root, undefined, process.platform, fetchRelease, { includePublic: false });
       if (['conflict', 'unowned'].includes(status.state)) throw new Error('请先解决服务归属或端口冲突。');
+      if (target === 'Desktop') {
+        if (status.desktop) {
+          state.result = 'Desktop 同步已经连接，无需重启。';
+          event(state.result);
+          return;
+        }
+        const processes = await listDesktopProcesses();
+        if (processes.some(candidate => candidate.debugPort > 0)) {
+          state.result = '当前 Codex 已带调试端口，Remote 正在后台自动重连；无需重启。';
+          event(state.result);
+          return;
+        }
+        const candidate = processes[0];
+        if (!candidate) throw new Error('未找到可恢复的 Codex Desktop 进程。');
+        const { response } = await dialog.showMessageBox(getWindow(), {
+          type: 'warning', title: '重启 Codex 并恢复 Remote',
+          message: '关闭并重启当前 Codex？',
+          detail: '正在生成的回复可能中断；已保存会话和文件不受影响。Remote 服务保持运行。',
+          buttons: ['取消', '重启 Codex'], defaultId: 0, cancelId: 0
+        });
+        if (response !== 1) return;
+        await restartDesktopForRemote(candidate, { port: status.desktopDebug.port });
+        state.result = 'Codex 已重启，Remote 正在后台恢复连接。';
+        event(state.result);
+        return;
+      }
+      if (target === 'Server' && status.service.running && status.backend.ready && !status.desktop) {
+        throw new Error(status.desktopDebug.reachable
+          ? 'Desktop 调试页面可达，但会话桥尚未连接。请稍候重试；Remote 服务无需重启。'
+          : '当前 Codex 是普通启动，没有开放 Remote 所需的调试端点。请点击“Desktop 同步”右侧的重启按钮，由 Remote 重启 Codex；Remote 服务无需重启。');
+      }
       let selectedTunnel;
       if (target === 'SshTunnel') {
         if (process.platform !== 'win32' || !status.sshTunnel?.managed) {
@@ -184,13 +242,26 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
       if (settings.root !== selectedRoot) throw new Error('安装目录已改变，请重新确认修复。');
       state.connectionReport = null;
       await repairControl(status, target, undefined, process.platform, selectedTunnel);
-      if (target === 'Server') await verify({ requireDesktop: false });
+      if (target === 'Server') {
+        const checked = await verify({ requireDesktop: false });
+        state.status = checked;
+        state.result = checked.desktop ? 'Remote 已重新启动，Desktop 同步已恢复。'
+          : 'Remote 已重新启动，但 Desktop 仍未提供调试连接。请在“Desktop 同步”右侧点击“重启 Codex 并恢复”。';
+        event(state.result);
+        void refreshPublic(checked);
+        return;
+      }
+      const info = await installation(settings.root);
       let checked;
       for (let attempt = 0; attempt < (target === 'Tunnel' ? 4 : target === 'SshTunnel' ? 5 : 1); attempt++) {
-        checked = await health(settings.root, undefined, process.platform, fetchRelease, { publicTimeout: 5000 });
+        const [local, publicEntries] = await Promise.all([
+          health(settings.root, undefined, process.platform, fetchRelease, { includePublic: false }),
+          probePublicEntries(info, fetchRelease, 1500)
+        ]);
+        checked = mergePublicEntries(local, publicEntries);
         if (checked.publicEntry.reachable) break;
-        if (target === 'Tunnel' && attempt < 3) await new Promise(resolve => setTimeout(resolve, 2000));
-        if (target === 'SshTunnel' && attempt < 4) await new Promise(resolve => setTimeout(resolve, 2000));
+        if (target === 'Tunnel' && attempt < 3) await new Promise(resolve => setTimeout(resolve, 1000));
+        if (target === 'SshTunnel' && attempt < 4) await new Promise(resolve => setTimeout(resolve, 1000));
       }
       state.status = checked;
       state.connectionReport = { checkedAt: checked.checkedAt, ...checked.publicEntry };
@@ -223,7 +294,7 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
     return exclusive(request.action === 'list' ? '正在读取已认证设备' : '正在更新设备认证', async () => {
       if (settings.root !== selectedRoot) throw new Error('安装目录已改变，请重新确认认证操作。');
       await requireCompletedUpdate();
-      const status = await health(settings.root, undefined, process.platform, fetchRelease);
+      const status = await health(settings.root, undefined, process.platform, fetchRelease, { includePublic: false });
       if (['conflict', 'unowned'].includes(status.state)) throw new Error('请先解决服务归属或端口冲突。');
       state.security = await manageAuthentication(settings.root, {
         action: request.action, ...(request.action === 'password' ? { password: request.password } : {}),
@@ -257,7 +328,7 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
     if (response !== 1) return;
     return exclusive('正在准备更新', async () => {
       await requireCompletedUpdate();
-      const current = await health(settings.root);
+      const current = await health(settings.root, undefined, process.platform, fetchRelease, { includePublic: false });
       if (['conflict', 'unowned'].includes(current.state)) throw new Error('请先解决服务归属或端口冲突。');
       const progress = (message, detail) => {
         state.busy = message; state.updateProgress = detail;
@@ -270,7 +341,7 @@ export function createManagerSession({ app, dialog, shell, fetchRelease, getWind
       try { result = await installUpdate(prepared, {
         stop, start, verify: () => verify({ requireDesktop }),
         isRunning: async () => {
-          const status = await health(settings.root);
+          const status = await health(settings.root, undefined, process.platform, fetchRelease, { includePublic: false });
           requireDesktop = status.desktop;
           return status.service.running;
         }, progress, requireDesktop

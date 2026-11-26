@@ -11,7 +11,7 @@ See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
-Remote 0.3.1 pairs with manager 0.3.1, using manual installer upgrades.
+Remote 0.3.1 pairs with manager 0.3.2, using manual installer upgrades.
 Version 0.3.0 is withdrawn because its global CLI adapter could break Codex
 Desktop organization-policy loading. Install 0.3.1 over the old app and select
 the same host root.
@@ -309,7 +309,7 @@ ssh -N -i C:\path\to\edge_key `
   -R 127.0.0.1:14545:127.0.0.1:4545 codexremote@edge.example.com
 ```
 
-Desktop Manager 0.3.1 can manage that SSH process when the configuration is
+Desktop Manager 0.3.2 can manage that SSH process when the configuration is
 explicitly marked. It migrates a matching legacy task to a stable hidden
 supervisor under private `data`, restarts SSH after any exit, and includes the
 tunnel in Start/Stop, repair and manager updates. An unmarked SSH process remains
@@ -461,8 +461,9 @@ current-version checks never refresh. Main-chat text survives, while unsent
 images, skills and temporary chats clear on refresh. It updates Remote, leaving
 the manager at its own version. A missing task keeps its ID and offers an explicit
 status retry without resubmitting installation. A separate update check can observe
-the host's current task. Remote 0.3.1 and manager 0.3.1 prefer the project-owned
-distribution, then official GitHub. Metadata allows 15 seconds per source; each
+the host's current task. Remote 0.3.1 prefers the project-owned distribution,
+then official GitHub; manager 0.3.2 downloads from its independent GitHub Release.
+Metadata allows 15 seconds per source; each
 asset attempt allows 30 seconds for headers, 60 seconds without body data and
 600 seconds overall, retaining bounded retries and full checksum checks.
 See [recovery and hosting details](web-backend-update.md).

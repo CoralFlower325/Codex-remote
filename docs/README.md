@@ -67,6 +67,7 @@ Physical iPhone and signed-in macOS acceptance remain pending.
 
 | Evidence / 记录 | Scope / 范围 |
 | --- | --- |
+| [Manager 0.3.2 快速恢复验收](desktop-manager-acceptance.md#manager-032-fast-recovery) | 0.3.1 / manager 0.3.2：本机与公网检测解耦、只读状态短缓存、Codex++ 静默重连、普通 Codex 手动确认重启、源码与打包版冒烟 |
 | [Remote 0.2.44 发布与部署验收](remote-0.2.44-release-acceptance.md) | 0.2.44 / manager 0.2.10：HTTP/SSE 回退恢复、过期通道偏好、cloudflared 重建宽限、Windows 双入口升级与匿名脱敏复核；真机边界保留 |
 | [Remote 0.3.1 安全撤回与部署验收](remote-0.3.1-safety-acceptance.md) | 0.3.1 / manager 0.3.1：撤回全局 CLI 环境劫持、恢复 Desktop 现有连接、三平台源码门禁、Windows 本机与管理器安装、国内 Caddy 和双入口验收 |
 | [Remote 0.2.43 发布与部署验收](remote-0.2.43-release-acceptance.md) | 0.2.43 / manager 0.2.10：Windows Office 隔离转换环境、文档上传草稿状态、“+”菜单单滚动面与可视视口重排；真机边界保留 |
