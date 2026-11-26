@@ -43,9 +43,7 @@ delivery or display on a physical device.
 ## Deployment
 
 - Use HTTPS and a strong access password.
-- Keep the shared App Server descriptor, its adjacent capability-token file and
-  the web origin's upstream listener private. The endpoint is loopback-only and
-  cannot replace the web access password.
+- Keep the Desktop debug endpoint and the web origin's upstream listener private.
 - Publish the password-protected web origin through a configured tunnel or
   trusted reverse proxy.
 - Keep runtime secrets and logs outside source control.

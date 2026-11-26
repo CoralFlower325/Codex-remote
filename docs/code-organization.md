@@ -14,9 +14,7 @@ This map describes ownership boundaries. It does not change product behavior.
 | Styles | `styles.css` | Ordered imports from `styles/`; declaration order is significant |
 | Host assembly | `src/server/index.ts` | `thread-router.ts` handles bounded reads; `peer-hub.ts` shares peer policy across WS and SSE |
 | Native RPC policy | `src/shared/rpc-methods.ts` | Both protocol typing and the host allowlist derive from this catalog |
-| Native transport | `src/server/app-server-bridge.ts` | Connects only to the Desktop adapter's authenticated loopback endpoint; `codex-bridge.ts` owns status and recovery |
-| Native automations | `src/server/automations.ts`, `src/server/remote-automations.ts` | HTTP input/projection; Remote persists schedules and executes them through the shared App Server's official `thread/start` and `turn/start` methods |
-| CLI adapter | `desktop/shim/desktop-cli-proxy.mjs` | Bridges Desktop stdio to one shared App Server, reuses an existing instance and publishes a private endpoint descriptor |
+| Native automations | `src/server/automations.ts` | HTTP input/projection; `desktop-bridge.ts` loads the bundled `src/desktop-relay/automations.ts` host-service client; Desktop owns persistence and execution |
 | Manager window | `desktop/main.mjs` | Trusted IPC, window and tray/menu-bar lifecycle; `tray-state.mjs` maps owned service state to native images |
 | Manager operations | `desktop/manager-session.mjs` | Installation selection, serialization, health, security, update and recovery operations |
 | Updates | `release.mjs`, `update-inputs.mjs`, `update-prepare.mjs` | Release lookup, input validation and preparation; `updater.mjs` installs; `update-transaction.mjs` owns crash recovery |

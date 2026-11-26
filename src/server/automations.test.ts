@@ -86,14 +86,14 @@ describe('Desktop-owned automations', () => {
     expect(params).not.toHaveProperty('projectId');
   });
 
-  it('retains heartbeat ownership and delegates a manual run to the shared scheduler', async () => {
+  it('retains heartbeat ownership and refuses to guess its live chat permissions for manual runs', async () => {
     const task: Automation = { ...sample(), kind: 'heartbeat', targetThreadId: 'chat-1' };
     const { call, request } = await harness([task]);
     await call('/native-1', 'PATCH', { status: 'PAUSED' });
     expect(request.mock.calls.at(-1)?.[1]).toMatchObject({ kind: 'heartbeat', targetThreadId: 'chat-1' });
     const response = await call('/native-1/run', 'POST', {});
-    expect(response.status).toBe(200);
-    expect(request.mock.calls.some(c => c[0] === 'runNow')).toBe(true);
+    expect(response.status).toBe(409);
+    expect(request.mock.calls.some(c => c[0] === 'runNow')).toBe(false);
   });
 
   it('rejects stale edits without writing over Desktop changes', async () => {

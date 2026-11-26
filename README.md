@@ -48,19 +48,40 @@ Mobile attachment and conversation-index controls use 24px sizing; model control
 
 Use **Windows 10/11 or macOS**, **Node.js 22.19+ with npm**, and an installed, signed-in Codex Desktop.
 
-### 1. Use A Normal Desktop Launch
+### 1. Enable Desktop Sync
 
-Windows setup installs a private CLI adapter for Codex Desktop. It connects the
-Desktop client and Remote to one shared App Server, so no browser debug port,
-Codex++, or special launch command is needed. After setup, fully quit Codex
-Desktop once and reopen it normally; the new user environment is read on that
-next launch.
+Save your work and fully quit Codex Desktop once, then launch it with its debug endpoint bound to loopback.
 
-The adapter is bound to loopback, uses an ephemeral port and requires a
-capability token stored with current-user-only file permissions. Remote never
-opens the browser debug endpoint and never starts a second production App
-Server. Linux and macOS shared-App-Server adapters are not part of this 0.3.0
-Windows release.
+<details open>
+<summary><strong>Windows · PowerShell</strong></summary>
+
+For a Windows Store installation:
+
+```powershell
+$package = Get-AppxPackage -Name "*Codex*" | Select-Object -First 1
+& (Join-Path $package.InstallLocation "app\Codex.exe") --remote-debugging-port=9229 --remote-debugging-address=127.0.0.1
+```
+
+For another installation, pass the same arguments to its actual `Codex.exe`. Package paths can vary.
+
+</details>
+
+<details>
+<summary><strong>macOS · Terminal</strong></summary>
+
+```bash
+open -a Codex --args --remote-debugging-port=9229 --remote-debugging-address=127.0.0.1
+```
+
+</details>
+
+Keep port **9229 private**. The [setup guide](docs/guide.md#2-enable-desktop-synchronization) includes debug-target verification.
+
+Ordinary Codex launches do not necessarily enable this endpoint. Launch with the
+arguments above, or use an existing launcher configured to supply them.
+On Windows and macOS, Remote also discovers the loopback debug port supplied to
+the current installed Codex/ChatGPT process, so a wrapper that chooses another
+port does not require matching it in `.env`.
 
 ### 2. Install And Run
 
@@ -78,7 +99,7 @@ Run the setup command for your host, then start Remote:
 
 Setup installs locked dependencies, builds the app and asks for an access password. Initial password setup is accepted only on the host.
 
-Open **http://127.0.0.1:4545** and sign in. `/health` must report `codex: ready` and `transport: desktop`. Remote uses only Desktop's existing App Server. If its endpoint is unavailable, Remote stays offline and reconnects; it never starts a separate production App Server or replays failed sends.
+Open **http://127.0.0.1:4545** and sign in. `/health` must report `codex: ready` and `transport: desktop`. Remote uses only Desktop's existing App Server. If its bridge is unavailable, Remote stays offline and reconnects; it never starts a separate App Server or replays failed sends.
 
 ### 3. Use It From Another Device
 
@@ -95,10 +116,12 @@ time. Standard installations prefer verified prebuilt runtimes; customized sourc
 installations retain isolated builds. Interrupted installs recover when the manager restarts.
 Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
-remains pending. Manager 0.3.0 also monitors every configured public origin and
+remains pending. Manager 0.2.10 also monitors every configured public origin and
 can manage an explicitly configured Windows SSH reverse tunnel with automatic restart.
 
-Remote **0.3.0** pairs with manager **0.3.0**.
+Remote **0.3.1** pairs with manager **0.3.1**. Version 0.3.0 is withdrawn
+because its global CLI adapter could break Codex Desktop startup; 0.3.1
+removes the adapter and leaves Desktop's own configuration untouched.
 Actual installed versions remain separately recorded in each deployment's acceptance. Install the manager
 manually over 0.2.0, select the same host directory and retry; updating Remote
 cannot replace the old manager's bundled updater. [Manager downloads](docs/update-downloads.md)
@@ -124,7 +147,7 @@ HTTP status codes and Codex retry state. See [runtime errors](docs/native-runtim
 - **Update the connected host.** Settings can check and update the Windows x64 or Apple Silicon Remote backend, show its version and live progress, then refresh the matching web client. See [remote updates](docs/web-backend-update.md).
 - **Keep native conversation context.** A skill can be sent on its own and remains visible in both clients. Steering keeps the work timer at the first response and preserves the native turn start.
 - **Receive device notifications.** Opt into completed-task, question and approval Web Push. Payloads include titles and bounded reply/question previews; they may appear on a lock screen.
-- **Automations.** Manage scheduled tasks from the sidebar, with shared definitions, schedules, projects and run links. Remote records each claimed run before dispatch and executes it through the shared App Server's official thread and turn methods.
+- **Automations.** Manage Desktop's native scheduled tasks from the sidebar, with shared definitions, schedules, projects and run links. Desktop owns persistence and execution; manually running an existing-chat heartbeat still requires Desktop.
 - **Open a host terminal.** Remote-owned interactive shells run as the host user, separately from Desktop terminals and outside model permission profiles.
 
 [Full user guide](docs/guide.md) · [Notifications](docs/guide.md#device-notifications) · [Updates and recovery](docs/manual-version-update.md) · [Summary panel](docs/native-summary-panel.md)
@@ -140,7 +163,7 @@ HTTP status codes and Codex retry state. See [runtime errors](docs/native-runtim
 
 The interface currently uses **Simplified Chinese**. Internal Desktop interfaces can change between releases. Some approval forms, real native question submission and physical OS notification display still need dedicated live acceptance. Model/project catalogs follow native cursors to a complete snapshot and refresh on reconnection; model defaults can still differ from global overrides.
 
-Remote is for **one trusted operator controlling their own machine**. Use a strong password and HTTPS. Keep `.env`, `data/`, credentials, logs and the private App Server descriptor/token private. Public app caches exclude conversations and APIs; the separate authenticated device snapshot has bounded retention. Review [Security](SECURITY.md) and the [complete limits](docs/guide.md#known-limits) before exposing a host.
+Remote is for **one trusted operator controlling their own machine**. Use a strong password and HTTPS. Keep `.env`, `data/`, credentials, logs and debug ports private. Public app caches exclude conversations and APIs; the separate authenticated device snapshot has bounded retention. Review [Security](SECURITY.md) and the [complete limits](docs/guide.md#known-limits) before exposing a host.
 
 ## Documentation And Contributing
 

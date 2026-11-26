@@ -23,17 +23,12 @@ Release and privacy policy remains in AGENTS.md.
 - `src/client/components/{ThreadTimeline,TurnResponse,TimelineActivity,MarkdownText}.tsx`:
   viewport/history anchoring, response rendering, activity details and Markdown.
 - `src/client/styles/`: ordered style sections; preserve declaration order.
-- `src/server/`: authentication, HTTP/WebSocket transport and native App Server
-  transport. `app-server-bridge.ts` accepts only the Desktop adapter's
-  authenticated loopback descriptor; no browser debug-port discovery is valid.
+- `src/server/`: authentication, HTTP/WebSocket transport, native desktop bridge.
 - `src/server/thread-router.ts` and `peer-hub.ts`: bounded thread HTTP reads and
   the shared WS/SSE peer policy, assembled by `index.ts`.
 - `src/shared/rpc-methods.ts`: the native RPC allowlist; classification never
   authorizes automatic action retries.
 - `src/server/thread-history.ts`: native bounded history pagination.
-- `src/server/remote-automations.ts`: durable schedule claims, bounded retry
-  backoff and official App Server execution; a claimed occurrence is never
-  replayed automatically after an uncertain write.
 - `src/server/thread-history-cache.ts`: bounded host cache and low-priority
   background prewarm for completed history pages, with turn-timing coverage.
 - `src/server/origin-policy.ts`: canonical HTTP(S) origin parsing, multi-public
@@ -351,10 +346,8 @@ Release and privacy policy remains in AGENTS.md.
   project native retry progress and JSON messages for display only. Top transport
   recovery uses explicit connection state and monochrome Reconnecting/Retry.
 - Permissions apply per chat. Do not rewrite global Codex config to change them.
-- Never start a standalone production App Server, including as a fallback when
-  the Desktop adapter is unavailable. Stay offline and reconnect the owning
-  endpoint. The Windows adapter may start the one shared instance when Desktop
-  invokes its normal CLI; Remote is never its owner.
+- Never start a standalone App Server, including as a fallback when the
+  Desktop bridge fails. Stay offline and reconnect the owning Desktop bridge.
 - Starting or stopping Remote must not terminate Codex Desktop.
 - The desktop manager reuses owned platform controls. Close/minimize hides to the
   tray/menu bar; quitting preserves service state. Manager operations stay local;

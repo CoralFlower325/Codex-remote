@@ -7,8 +7,9 @@ Remote 保留切换会话时的待发图片与技能草稿，输入框上方提�
 详见[输入草稿与布局验收](composer-layout-acceptance.md)。
 Remote 将晚到的原生事件留在所属轮次，随后原生读取校准不重复条目，
 保留消息内容和原生时间锚点。
-详见[原生聊天顺序](native-history-order.md)。Remote 0.3.0 配套正式管理器 0.3.0，
-通过安装包手动覆盖旧管理器，选择原主机目录后重试更新。单独更新 Remote
+详见[原生聊天顺序](native-history-order.md)。Remote 0.3.1 配套管理器 0.3.1，
+通过安装包手动覆盖旧管理器，选择原主机目录。0.3.0 的全局 CLI 适配层会导致
+Codex Desktop 组织策略读取异常，已撤回。单独更新 Remote
 不能修改旧管理器内置的更新器。管理器自更新保存为暂停的 0.2.0AU 开发线，
 详见[开发断点](manager-self-update-checkpoints.md)。
 
@@ -72,7 +73,7 @@ Remote 将晚到的原生事件留在所属轮次，随后原生读取校准不�
 | 主机 | Windows 10/11 或 macOS |
 | 运行环境 | Node.js **22.19 及以上**，包含 npm |
 | Codex | 已安装并登录的 Codex Desktop / 兼容的内置 CLI |
-| 桌面同步 | Windows CLI 适配层与一个受令牌保护的共享 App Server；不依赖浏览器调试端口 |
+| 桌面同步 | 回环地址上的 Desktop 调试端点；Windows/macOS 自动发现当前可信进程端口，并回退到 `9229` |
 | 公网访问 | 可选安装 `cloudflared`；Windows 助手需要 Cloudflare 管理的域名 |
 | Windows 隧道助手 | PowerShell 7，以及已登录的 `cf` CLI |
 
@@ -89,22 +90,48 @@ cd Codex-remote
 
 ### 2. 开启桌面同步
 
-Windows 安装过程会配置无窗口 CLI 适配层，并把当前用户的
-`CODEX_CLI_PATH` 指向它。下一次正常启动 Desktop 时，Desktop 与 Remote
-会连接同一个共享 App Server。安装完成后先保存工作、完全退出一次 Codex
-Desktop，再用普通快捷方式打开；不要传入浏览器调试参数，也不要依赖启动器的调试端口。
+先保存工作并完全退出 Codex Desktop，再使用调试参数启动。正常使用过程中，Remote 不需要重启桌面客户端。
 
-适配层在 `DATA_DIR/desktop-shim` 写入私有描述文件，只有 App Server 就绪后
-才发布。描述文件只包含本机回环端点；capability token 单独保存，权限仅限当前用户、
-SYSTEM 与 Administrators。适配层使用临时端口，只维护一个共享实例，并把
-Desktop 的 stdio 流量转发到该实例。
+普通启动不保证开启 9229。Codex++ 等启动器可能已代为传入调试参数；
+Remote 与启动器可以使用同一个 Desktop 调试端点，它与启动器自己的本地服务不同。
+如果端点已经就绪，保持当前 Desktop 运行即可。
 
-Remote 只接受描述文件中的 `ws://127.0.0.1`、`ws://localhost` 或
-`ws://[::1]`，拒绝凭据、路径、查询串和不可信端点。不再依赖浏览器调试端口或 `9229`。
+Windows 与 macOS 上，Remote 会从可信应用路径下当前运行的最高层 Codex/ChatGPT
+进程读取 `--remote-debugging-port`。只有调试地址为回环地址、`/json/list` 中存在
+Desktop 页面，且该页面的 WebSocket 仍指向同一回环端口时才会连接。因此 Codex++ 等
+启动器可以自行选择端口，无需再让 `.env` 跟随变化；显式
+`CODEX_DESKTOP_DEBUG_PORT` 候选项与 `9229` 继续作为回退。
 
-0.3.0 的共享适配层仅覆盖 Windows；Linux 与 macOS 不在本版传输验收范围。
-升级后若 `/health` 显示 `offline`，请完全退出并重新打开一次 Desktop，再查看本机服务日志。
-Remote 会持续重试，但不会启动第二个生产 App Server。
+Windows 商店安装版，可在 PowerShell 中执行：
+
+```powershell
+$package = Get-AppxPackage -Name "*Codex*" | Select-Object -First 1
+& (Join-Path $package.InstallLocation "app\Codex.exe") --remote-debugging-port=9229 --remote-debugging-address=127.0.0.1
+```
+
+其他 Windows 安装方式，请对实际的 `Codex.exe` 使用相同参数；不同安装包的路径可能有所差异。
+
+macOS：
+
+```bash
+open -a Codex --args --remote-debugging-port=9229 --remote-debugging-address=127.0.0.1
+```
+
+在本机检查：
+
+Windows：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:9229/json/list
+```
+
+macOS：
+
+```bash
+curl --fail http://127.0.0.1:9229/json/list
+```
+
+结果中应包含 URL 带有 `app://-/index.html` 的页面。该端口能控制本地应用，必须保持本机私有访问。
 
 ### 3. 安装并启动
 
@@ -263,7 +290,7 @@ ssh -N -i C:\path\to\edge_key `
   -R 127.0.0.1:14545:127.0.0.1:4545 codexremote@edge.example.com
 ```
 
-管理器 0.3.0 可以在配置显式标记后管理该 SSH 进程。它会把匹配的旧任务迁移为
+管理器 0.2.10 可以在配置显式标记后管理该 SSH 进程。它会把匹配的旧任务迁移为
 私有 `data` 下的稳定隐藏监管任务，SSH 退出后自动重连，并在启停、修复和本机更新
 时一起处理；没有标记的 SSH 进程仍由外部工具管理，不会被自动接管。
 修改 `.env` 后重启 Remote：
@@ -323,7 +350,7 @@ cp .env.example .env
 | `CODEX_BINARY` | 自动发现 | 显式指定内置 Codex CLI 路径 |
 | `CODEX_HOME` | `~/.codex` | Codex 状态和配置目录 |
 | `CODEX_WORKDIR` | 用户主目录 | 默认工作目录 |
-| `CODEX_REMOTE_APP_SERVER_ENDPOINT_FILE` | `DATA_DIR/desktop-shim/app-server.json` | 可选的 Windows Desktop CLI 适配层私有描述文件 |
+| `CODEX_DESKTOP_DEBUG_PORT` | 空 | 可选的逗号分隔桌面调试候选；Windows/macOS 还会自动发现当前可信进程端口，并回退到 `9229` |
 | `TRUST_PROXY` | `1` | 仅信任回环代理；`0` 关闭；其他值为逗号分隔的可信 IP/CIDR |
 | `LIBREOFFICE_PATH` | 探测标准安装位置 | 可选的主机 LibreOffice 程序路径，用于 Office 预览 |
 | `LAN_PORT` | `0` | 可选的局域网／VPN 第二监听入口，使用 `npm run setup:lan` 配置 |
@@ -334,8 +361,7 @@ cp .env.example .env
 
 使用本地隧道或反向代理时，应保持回环监听。管理器 SSH 隧道默认转发到 `4545`；
 如修改 `PORT`，应同步设置 `SSH_TUNNEL_LOCAL_PORT`。
-描述文件旁的 `.token` 文件是私有 capability 凭据，不要复制、记录到日志或发布。
-Remote 不再探测浏览器调试端口。
+显式配置和自动发现的桌面调试端口都失效时，Remote 还会探测标准端口 `9229`。
 
 Windows 会依次探测应用包、独立安装目录和 `PATH` 中的 CLI；macOS 会探测支持的应用位置、独立安装目录及 `PATH`。发现失败时可设置 `CODEX_BINARY`。
 
@@ -406,7 +432,7 @@ Windows 会依次探测应用包、独立安装目录和 `PATH` 中的 CLI；mac
 此入口只更新 Remote，管理器保留自己的版本。找不到任务时保留编号，
 可点击 **重新查询更新任务** 读取原任务，不会重新提交安装；
 单独点击 **检查 Remote 更新** 可查看主机当前任务。
-Remote 0.3.0 和管理器 0.3.0 优先使用项目自有分发，失败后尝试官方 GitHub。
+Remote 0.2.10 和管理器 0.2.1 优先使用项目自有分发，失败后尝试官方 GitHub。
 版本元数据每个来源限时 15 秒；附件每次下载等待响应头最多 30 秒、
 连续无数据最多 60 秒、整体最多 600 秒，沿用有限重试与完整校验。
 恢复及托管边界见[网页后端更新](web-backend-update.md)。

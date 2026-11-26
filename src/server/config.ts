@@ -22,8 +22,6 @@ export interface AppConfig {
   codexWorkdir: string;
   codexBinary: string;
   codexBinaryCandidates: string[];
-  appServerEndpointFile: string;
-  appServerEndpointCandidates: string[];
   lanPort: number;
   lanOrigins: string[];
   lanCertificate: string | null;
@@ -101,14 +99,6 @@ const { publicOrigin, publicOrigins } = resolvePublicOrigins(
   process.env.PUBLIC_ORIGINS
 );
 const binaryCandidates = codexBinaryCandidates();
-const appServerEndpointFile = path.resolve(
-  process.env.CODEX_REMOTE_APP_SERVER_ENDPOINT_FILE?.trim() ||
-  path.join(dataDir, 'desktop-shim', 'app-server.json')
-);
-// A descriptor is written by the Desktop CLI adapter only after its
-// authenticated loopback App Server is ready. Do not discover unrelated Codex
-// daemons: sharing their writers would bypass Desktop ownership.
-const appServerEndpointCandidates = [appServerEndpointFile];
 const lanPort = Number.parseInt(process.env.LAN_PORT?.trim() || '0', 10);
 const lanAddresses = Object.values(os.networkInterfaces()).flat().filter(
   (address): address is os.NetworkInterfaceInfo => Boolean(address && !address.internal && address.family === 'IPv4'));
@@ -140,7 +130,5 @@ export const config: AppConfig = {
   codexHome,
   codexWorkdir: path.resolve(process.env.CODEX_WORKDIR?.trim() || os.homedir()),
   codexBinary: resolveCodexBinary(binaryCandidates),
-  codexBinaryCandidates: binaryCandidates,
-  appServerEndpointFile,
-  appServerEndpointCandidates
+  codexBinaryCandidates: binaryCandidates
 };

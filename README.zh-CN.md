@@ -47,15 +47,38 @@ Remote 连接 **Codex Desktop 自己的 App Server**，让浏览器与桌面共�
 
 需要 **Windows 10/11 或 macOS**、**Node.js 22.19+（含 npm）**，以及已安装并登录的 Codex Desktop。
 
-### 1. 正常启动 Desktop
+### 1. 开启桌面同步
 
-Windows 安装过程会为 Codex Desktop 配置一个私有 CLI 适配层，让 Desktop
-客户端与 Remote 连接同一个 App Server。无需浏览器调试端口、Codex++ 或特殊启动参数。
-安装完成后完全退出一次 Codex Desktop，再正常打开，使其读取新的用户环境。
+先保存工作并完全退出一次 Codex Desktop，再通过调试参数启动，将调试端口绑定到本机回环地址。
 
-适配层只监听本机回环地址，使用临时端口与 capability token，令牌文件仅允许当前用户、
-系统和管理员访问。Remote 不会打开浏览器调试端口，也不会启动第二个生产 App Server。
-0.3.0 的共享 App Server 适配仅覆盖 Windows，Linux 与 macOS 不在本版范围。
+<details open>
+<summary><strong>Windows · PowerShell</strong></summary>
+
+Windows 商店安装版：
+
+```powershell
+$package = Get-AppxPackage -Name "*Codex*" | Select-Object -First 1
+& (Join-Path $package.InstallLocation "app\Codex.exe") --remote-debugging-port=9229 --remote-debugging-address=127.0.0.1
+```
+
+其他安装方式请向实际的 `Codex.exe` 传入相同参数；安装包路径可能有所不同。
+
+</details>
+
+<details>
+<summary><strong>macOS · 终端</strong></summary>
+
+```bash
+open -a Codex --args --remote-debugging-port=9229 --remote-debugging-address=127.0.0.1
+```
+
+</details>
+
+**9229 端口必须保持私有**。[安装指南](docs/guide.zh-CN.md#2-开启桌面同步)提供调试页面的检查方法。
+
+普通启动 Codex 不保证开启此端点，需使用上述参数启动，或使用已经配置这些参数的启动器。
+Windows 与 macOS 上，Remote 还会从当前已安装、正在运行的 Codex/ChatGPT 顶层进程读取
+回环调试端口；启动器选择其他端口时无需再把同一个端口写进 `.env`。
 
 ### 2. 安装并启动
 
@@ -73,7 +96,7 @@ cd Codex-remote
 
 安装会按锁文件安装依赖、构建应用，并要求设置访问密码。首次密码初始化仅接受主机上的请求。
 
-打开 **http://127.0.0.1:4545** 并登录。`/health` 应显示 `codex: ready` 和 `transport: desktop`。Remote 只使用 Desktop 原有 App Server；端点不可用时保持离线并重连，不启动第二个生产 App Server，也不自动重发失败的消息。
+打开 **http://127.0.0.1:4545** 并登录。`/health` 应显示 `codex: ready` 和 `transport: desktop`。Remote 只使用 Desktop 原有 App Server；桌面桥不可用时保持离线并重连，不启动独立 App Server，也不自动重发失败的消息。
 
 ### 3. 从另一台设备访问
 
@@ -88,10 +111,12 @@ Windows 常驻右下通知区域，macOS 常驻顶部菜单栏。
 更新显示中文步骤、百分比和耗时；标准安装优先使用校验后的预构建运行包，
 源码定制安装保留隔离构建。管理器重启后可恢复中断的安装。
 选择现有安装目录，关闭窗口后继续常驻。Release 提供未签名安装包；
-macOS GUI 的实机验收仍待完成。管理器 0.3.0 可逐项监控所有公网入口，
+macOS GUI 的实机验收仍待完成。管理器 0.2.10 可逐项监控所有公网入口，
 并能显式管理带自动重连的 Windows SSH 反向隧道。
 
-Remote **0.3.0** 为当前版本，配套管理器 **0.3.0**。
+Remote **0.3.1** 为当前版本，配套管理器 **0.3.1**。0.3.0 已撤回：它的全局
+CLI 适配层会导致 Codex Desktop 启动和策略读取异常；0.3.1 已移除适配层，
+不再修改 Desktop 自身的启动与配置。
 各主机实际安装版本以部署验收记录为准。请手动下载安装包覆盖旧管理器，
 选择原主机目录重试；单独更新 Remote 不能替换旧管理器内置的更新器。
 [管理器下载](docs/update-downloads.md)优先走项目自有公共分发，另有官方 GitHub 备用地址。
@@ -115,7 +140,7 @@ Codex 原生运行错误会保留在对应轮次，展示已有的 HTTP 状态�
 - **远程更新后端**：设置中检查当前连接的 Windows x64 或 Apple Silicon Remote，新版只显示版本号和更新按钮；映射更新进度，成功后自动刷新配套网页。详见[网页后端更新](docs/web-backend-update.md)。
 - **保留原生对话上下文**：可以只发送一个技能，两端均保留可见消息；同轮引导不移动计时位置，处理时长继续从该轮最初开始计算。
 - **接收设备通知**：按需开启任务结束、提问和审批 Web Push，载荷含标题及有限长度的答复或提问预览，可能显示在锁屏上。
-- **自动任务**：侧栏管理计划任务，两端共享任务、计划、项目与运行会话。Remote 在派发前持久化本次认领，再通过共享 App Server 的官方线程与回合方法执行。
+- **自动任务**：侧栏管理 Desktop 原生自动任务，两端共享任务、计划、项目与运行会话。持久化和执行由 Desktop 负责；继续现有聊天的任务仍需在 Desktop 手动立即运行。
 - **打开主机终端**：Remote 独立管理的交互式 shell 以宿主用户身份运行，与 Desktop 终端分开，不受模型权限配置限制。
 
 [完整使用指南](docs/guide.zh-CN.md) · [设备通知](docs/guide.zh-CN.md#设备通知) · [更新与恢复](docs/manual-version-update.md) · [摘要面板](docs/native-summary-panel.md)
@@ -131,7 +156,7 @@ Codex 原生运行错误会保留在对应轮次，展示已有的 HTTP 状态�
 
 界面目前为**简体中文**。Desktop 内部接口可能随版本变化。部分审批表单、真实原生答案提交和系统通知显示仍需专项实机验收。
 
-Remote 面向**可信操作者控制自己的电脑**。使用强密码与 HTTPS，保持 `.env`、`data/`、凭据、日志以及私有 App Server 描述文件和令牌私有。公共应用缓存不包含会话与 API；独立的已认证设备快照有容量和时效限制。公开主机入口前请阅读[安全说明](SECURITY.md)和[完整限制](docs/guide.zh-CN.md#已知限制)。模型与项目目录会沿原生游标读完整快照，并在重连时刷新；模型默认值仍可能受全局配置覆盖影响。
+Remote 面向**可信操作者控制自己的电脑**。使用强密码与 HTTPS，保持 `.env`、`data/`、凭据、日志和调试端口私有。公共应用缓存不包含会话与 API；独立的已认证设备快照有容量和时效限制。公开主机入口前请阅读[安全说明](SECURITY.md)和[完整限制](docs/guide.zh-CN.md#已知限制)。模型与项目目录会沿原生游标读完整快照，并在重连时刷新；模型默认值仍可能受全局配置覆盖影响。
 
 ## 文档与参与贡献
 

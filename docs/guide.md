@@ -11,8 +11,10 @@ See [composer and spacing acceptance](composer-layout-acceptance.md).
 Remote keeps late native events inside their owning turn and reconciles
 subsequent native reads without duplicates, preserving message content and time
 anchors. See [native history ordering](native-history-order.md).
-Remote 0.3.0 pairs with stable manager 0.3.0, using manual installer upgrades.
-Install 0.3.0 over the old app, select the same host root and retry the update.
+Remote 0.3.1 pairs with manager 0.3.1, using manual installer upgrades.
+Version 0.3.0 is withdrawn because its global CLI adapter could break Codex
+Desktop organization-policy loading. Install 0.3.1 over the old app and select
+the same host root.
 Updating Remote cannot change the old manager's bundled updater.
 Manager self-update is preserved on the paused 0.2.0AU development line;
 see [the checkpoint](manager-self-update-checkpoints.md).
@@ -83,7 +85,7 @@ Detailed setup, everyday controls and operating limits. Screenshots use syntheti
 | Host | Windows 10/11, or macOS |
 | Runtime | Node.js **22.19 or later**, with npm |
 | Codex | Installed and authenticated Codex Desktop / compatible bundled CLI |
-| Desktop sync | Windows CLI adapter plus one authenticated loopback App Server; no browser debug port |
+| Desktop sync | Loopback Desktop debug endpoint; Windows/macOS discover the current trusted process port, with `9229` as fallback |
 | Public access | Optional Cloudflare, or a Windows SSH reverse tunnel managed by Desktop Manager |
 | Windows tunnel helper | PowerShell 7 and an authenticated `cf` CLI |
 
@@ -100,27 +102,51 @@ cd Codex-remote
 
 ### 2. Enable Desktop Synchronization
 
-Windows setup installs a windowless CLI adapter and adds it to the current user's
-`CODEX_CLI_PATH` environment. On the next normal Desktop launch, Desktop and
-Remote connect to one shared App Server. Save your work, fully quit Codex
-Desktop once after setup, then reopen it by its normal shortcut. Do not pass a
-browser debugging flag and do not use a launcher-specific debug port.
+Save your work and fully quit Codex Desktop before launching it with the debug argument. This setup does not require Remote to restart Desktop during normal use.
 
-The adapter writes a private descriptor under `DATA_DIR/desktop-shim`. The
-descriptor is published only after the App Server is ready. It contains a
-loopback-only endpoint; the capability token is a separate file with
-current-user, SYSTEM and Administrators access only. The adapter binds to an
-ephemeral port, accepts one shared App Server instance and forwards Desktop's
-stdio traffic to it.
+Ordinary launches do not necessarily open port 9229. A launcher such as Codex++
+may supply the debug argument; Remote and that launcher can use Desktop's
+endpoint. It is separate from the launcher's own local server. If the endpoint
+is already available, leave the current Desktop running.
 
-Remote accepts only `ws://127.0.0.1`, `ws://localhost` or `ws://[::1]` from that
-descriptor. It rejects credentials, paths, queries and untrusted endpoints.
-There is no browser debug endpoint or port `9229` dependency.
+On Windows and macOS, Remote reads the `--remote-debugging-port` argument from the
+current top-level Codex/ChatGPT process installed from a trusted app path. It
+accepts only a loopback debugging address, verifies the page at `/json/list`, and
+requires its WebSocket URL to remain on the same loopback port. Codex++ or another
+launcher can therefore choose a different port without requiring a matching
+`.env` edit. The explicit `CODEX_DESKTOP_DEBUG_PORT` candidates and `9229` remain
+fallbacks.
 
-The 0.3.0 shared adapter is Windows-only. Linux and macOS are not validated for
-this transport in the release. If `/health` reports `offline` after upgrading,
-fully quit and reopen Desktop once, then verify the local service log. Remote
-will keep retrying but will never start a second production App Server.
+For a Windows Store installation, in PowerShell:
+
+```powershell
+$package = Get-AppxPackage -Name "*Codex*" | Select-Object -First 1
+& (Join-Path $package.InstallLocation "app\Codex.exe") --remote-debugging-port=9229 --remote-debugging-address=127.0.0.1
+```
+
+For another Windows installation, launch its actual `Codex.exe` with the same arguments. Package layouts can vary.
+
+On macOS:
+
+```bash
+open -a Codex --args --remote-debugging-port=9229 --remote-debugging-address=127.0.0.1
+```
+
+Verify locally:
+
+Windows:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:9229/json/list
+```
+
+macOS:
+
+```bash
+curl --fail http://127.0.0.1:9229/json/list
+```
+
+The result should include a page whose URL contains `app://-/index.html`. Keep this endpoint private; it can control the local app.
 
 ### 3. Install and Run
 
@@ -283,7 +309,7 @@ ssh -N -i C:\path\to\edge_key `
   -R 127.0.0.1:14545:127.0.0.1:4545 codexremote@edge.example.com
 ```
 
-Desktop Manager 0.3.0 can manage that SSH process when the configuration is
+Desktop Manager 0.2.10 can manage that SSH process when the configuration is
 explicitly marked. It migrates a matching legacy task to a stable hidden
 supervisor under private `data`, restarts SSH after any exit, and includes the
 tunnel in Start/Stop, repair and manager updates. An unmarked SSH process remains
@@ -345,7 +371,7 @@ cp .env.example .env
 | `CODEX_BINARY` | Auto-detected | Explicit path to the bundled Codex CLI |
 | `CODEX_HOME` | `~/.codex` | Codex state and configuration directory |
 | `CODEX_WORKDIR` | Home directory | Default working directory |
-| `CODEX_REMOTE_APP_SERVER_ENDPOINT_FILE` | `DATA_DIR/desktop-shim/app-server.json` | Optional private descriptor written by the Windows Desktop CLI adapter |
+| `CODEX_DESKTOP_DEBUG_PORT` | empty | Optional comma-separated Desktop debug candidates; Windows/macOS also discover the current trusted process port and fall back to `9229` |
 | `TRUST_PROXY` | `1` | Trust loopback proxies only; `0` disables trust; otherwise comma-separated trusted IPs/CIDRs |
 | `LIBREOFFICE_PATH` | Standard install detection | Optional host LibreOffice executable for Office previews |
 | `LAN_PORT` | `0` | Optional secondary LAN/VPN listener; configure with `npm run setup:lan` |
@@ -355,8 +381,7 @@ cp .env.example .env
 | `SESSION_IDLE_HOURS` | `24` | Idle timeout, maximum 168 hours |
 
 Keep `HOST` on loopback when using a local tunnel or reverse proxy. The Windows tunnel helper assumes port `4545` unless you pass its `-LocalUrl` parameter.
-The descriptor's adjacent `.token` file is a private capability credential. Do
-not copy, log or publish either file. Remote never probes a browser debug port.
+Remote also probes the standard Desktop port `9229` when explicit and discovered endpoints are stale.
 
 Codex CLI detection checks Windows app packages, local standalone installations, and `PATH`. On macOS it checks supported app locations, the local standalone installation, and `PATH`. Set `CODEX_BINARY` if auto-detection does not find your installation.
 
@@ -436,7 +461,7 @@ current-version checks never refresh. Main-chat text survives, while unsent
 images, skills and temporary chats clear on refresh. It updates Remote, leaving
 the manager at its own version. A missing task keeps its ID and offers an explicit
 status retry without resubmitting installation. A separate update check can observe
-the host's current task. Remote 0.3.0 and manager 0.3.0 prefer the project-owned
+the host's current task. Remote 0.2.10 and manager 0.2.1 prefer the project-owned
 distribution, then official GitHub. Metadata allows 15 seconds per source; each
 asset attempt allows 30 seconds for headers, 60 seconds without body data and
 600 seconds overall, retaining bounded retries and full checksum checks.

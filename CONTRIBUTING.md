@@ -11,12 +11,9 @@ npm ci
 npm run dev
 ```
 
-Configure a local Codex installation. Windows setup installs the private CLI
-adapter that shares Desktop's App Server; no browser debug port is used. Stop
-another Remote backend before attaching this one to the same Desktop process.
-Run `npm run check:desktop-shim` on Windows after adapter changes; it uses an
-isolated Codex home and verifies two concurrent clients, event broadcast,
-capability-token rejection and endpoint reuse.
+Configure a local Codex installation and, for live synchronization, its private
+desktop debug endpoint. Stop another Remote backend before attaching this one
+to the same Desktop process.
 
 Before submitting:
 

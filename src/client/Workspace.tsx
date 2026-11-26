@@ -584,7 +584,7 @@ export function Workspace({ authenticated, onAuthExpired, bootstrap, bootstrapRe
           </div>
         )}
         {remote.connected && remote.bridgeStatus.status !== 'ready' && <div className="connection-banner" role="status">
-          <span>{remote.bridgeStatus.message || 'Desktop 共享 App Server 尚未就绪，请确认 Codex 已正常启动。'}</span>
+          <span>{remote.bridgeStatus.message || 'Desktop 调试连接尚未就绪，请在主机检查 Codex 是否运行以及调试端口设置。'}</span>
           <a href="https://github.com/CoralFlower325/Codex-remote/blob/main/docs/guide.zh-CN.md"
             target="_blank" rel="noreferrer">查看主机连接步骤</a>
           <button type="button" onClick={remote.reconnect}>重新检查连接</button>

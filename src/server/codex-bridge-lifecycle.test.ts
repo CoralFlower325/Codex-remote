@@ -1,97 +1,115 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./config.js', () => ({ config: {
-  codexBinary: 'synthetic-codex',
-  codexWorkdir: '/synthetic',
-  appServerEndpointCandidates: ['/synthetic/app-server.json']
-} }));
-
-const mocked = vi.hoisted(async () => {
+vi.mock('./config.js', () => ({ config: { codexBinary: 'synthetic-codex', codexWorkdir: '/synthetic' } }));
+vi.mock('node:child_process', () => ({ spawn: vi.fn(() => { throw new Error('A second backend must never start.'); }) }));
+vi.mock('./desktop-bridge.js', async () => {
   const { EventEmitter } = await import('node:events');
-  return {
-    bridge: Object.assign(new EventEmitter(), {
-      connect: vi.fn(async () => false),
-      request: vi.fn(async (_method: string, _params: unknown) => ({})),
-      shutdown: vi.fn(),
-      getPendingServerRequests: vi.fn(() => []),
-      respondToServerRequest: vi.fn(async () => {})
-    })
-  };
+  return { desktopBridge: Object.assign(new EventEmitter(), {
+    connect: vi.fn(async () => false),
+    request: vi.fn(async (_method: string, _params: unknown) => ({})),
+    shutdown: vi.fn(),
+    getPendingServerRequests: vi.fn(() => []),
+    respondToServerRequest: vi.fn(async () => {})
+  }) };
 });
 
-vi.mock('./app-server-bridge.js', async () => {
-  const { bridge } = await mocked;
-  return {
-    AppServerBridge: class {
-      constructor() { return bridge; }
-    }
-  };
-});
-
+import { spawn } from 'node:child_process';
+import { desktopBridge } from './desktop-bridge.js';
 import { CodexBridge } from './codex-bridge.js';
 
-const appBridge = (await mocked).bridge;
 let bridge: CodexBridge;
-
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
-  appBridge.removeAllListeners();
-  appBridge.connect.mockResolvedValue(false);
+  desktopBridge.removeAllListeners();
+  vi.mocked(desktopBridge.connect).mockResolvedValue(false);
   bridge = new CodexBridge();
 });
-
 afterEach(() => {
   bridge.shutdown();
   vi.useRealTimers();
 });
 
-describe('shared App Server lifecycle', () => {
-  it('stays offline without starting another App Server', async () => {
-    await expect(bridge.ensureStarted()).rejects.toThrow('App Server');
-    await expect(bridge.request('thread/resume', { threadId: 'synthetic' })).rejects.toThrow('App Server');
+describe('Desktop-owned backend lifecycle', () => {
+  it('stays offline without creating an App Server when Desktop is unavailable', async () => {
+    await expect(bridge.ensureStarted()).rejects.toThrow('Desktop');
+    await expect(bridge.request('thread/resume', { threadId: 'synthetic' })).rejects.toThrow('Desktop');
     await vi.advanceTimersByTimeAsync(9_000);
     expect(bridge.getStatus()).toBe('offline');
     expect(bridge.getTransport()).toBe('desktop');
-    expect(appBridge.request).not.toHaveBeenCalled();
+    expect(desktopBridge.request).not.toHaveBeenCalled();
+    expect(spawn).not.toHaveBeenCalled();
   });
 
-  it('recovers the owning transport without replaying a failed write', async () => {
+  it('recovers the original Desktop transport without replaying a failed send or archive', async () => {
     for (const method of ['turn/start', 'thread/archive'] as const) {
-      await expect(bridge.request(method, { threadId: 'synthetic' })).rejects.toThrow('App Server');
+      await expect(bridge.request(method, { threadId: 'synthetic' })).rejects.toThrow('Desktop');
     }
-    appBridge.connect.mockImplementation(async () => {
-      appBridge.emit('connected');
+    vi.mocked(desktopBridge.connect).mockImplementation(async () => {
+      desktopBridge.emit('connected');
       return true;
     });
     await vi.advanceTimersByTimeAsync(3_000);
     expect(bridge.getStatus()).toBe('ready');
-    expect(appBridge.request).not.toHaveBeenCalled();
+    expect(desktopBridge.request).not.toHaveBeenCalled();
     await bridge.request('thread/archive', { threadId: 'synthetic' });
-    expect(appBridge.request).toHaveBeenCalledExactlyOnceWith(
-      'thread/archive', { threadId: 'synthetic' });
+    expect(desktopBridge.request).toHaveBeenCalledExactlyOnceWith('thread/archive', { threadId: 'synthetic' });
+    expect(spawn).not.toHaveBeenCalled();
   });
 
-  it('keeps ready during a transient reconnect and marks persistent loss offline', async () => {
-    appBridge.connect.mockResolvedValue(true);
-    appBridge.emit('connected');
+  it('marks a bridge loss offline and does not switch a send to another backend', async () => {
+    vi.mocked(desktopBridge.connect).mockResolvedValue(true);
+    desktopBridge.emit('connected');
+    await bridge.request('thread/read', { threadId: 'synthetic' });
+    desktopBridge.emit('disconnected');
+    vi.mocked(desktopBridge.connect).mockResolvedValue(false);
+    await expect(bridge.request('turn/start', { threadId: 'synthetic' })).rejects.toThrow('Desktop');
+    expect(bridge.getStatus()).toBe('offline');
+    expect(desktopBridge.request).toHaveBeenCalledTimes(1);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('keeps the workspace ready and avoids a full recovery for a transient bridge close', async () => {
+    vi.mocked(desktopBridge.connect).mockResolvedValue(true);
+    desktopBridge.emit('connected');
+    const statuses: string[] = [];
+    const events: string[] = [];
+    bridge.on('status', status => statuses.push(status));
+    bridge.on('event', event => events.push(event.method));
+    desktopBridge.emit('disconnected');
+    expect(bridge.getStatus()).toBe('ready');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(desktopBridge.connect).toHaveBeenCalledOnce();
+    desktopBridge.emit('connected');
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(bridge.getStatus()).toBe('ready');
+    expect(statuses).toEqual([]);
+    expect(events).not.toContain('remote/connected');
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('reports a persistent bridge loss once the recovery grace expires', async () => {
+    vi.mocked(desktopBridge.connect).mockResolvedValue(true);
+    desktopBridge.emit('connected');
     const statuses: string[] = [];
     bridge.on('status', status => statuses.push(status));
-    appBridge.emit('disconnected');
-    await vi.advanceTimersByTimeAsync(100);
-    expect(appBridge.connect).toHaveBeenCalledOnce();
-    expect(bridge.getStatus()).toBe('ready');
-    await vi.advanceTimersByTimeAsync(1_400);
+    vi.mocked(desktopBridge.connect).mockResolvedValue(false);
+    desktopBridge.emit('disconnected');
+    await vi.advanceTimersByTimeAsync(1_499);
+    expect(statuses).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
     expect(bridge.getStatus()).toBe('offline');
     expect(statuses).toEqual(['offline']);
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   it('cancels reconnection on shutdown and rejects later requests', async () => {
     await expect(bridge.ensureStarted()).rejects.toThrow();
     bridge.shutdown();
-    const attempts = appBridge.connect.mock.calls.length;
+    const attempts = vi.mocked(desktopBridge.connect).mock.calls.length;
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(appBridge.connect).toHaveBeenCalledTimes(attempts);
+    expect(desktopBridge.connect).toHaveBeenCalledTimes(attempts);
     await expect(bridge.request('thread/read', {})).rejects.toThrow();
+    expect(spawn).not.toHaveBeenCalled();
   });
 });

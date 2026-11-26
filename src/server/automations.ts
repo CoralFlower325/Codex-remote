@@ -22,8 +22,7 @@ function text(value: unknown, limit: number, label: string): string {
   return value.trim();
 }
 
-// Validates and projects automation settings; RemoteAutomations owns durable
-// schedules and execution through the shared App Server.
+// A projection of native fields only. There is no Remote store or scheduler.
 export class Automations {
   private readonly acting = new Set<string>();
   constructor(private readonly request: AutomationBridgeRequest) {}
@@ -131,6 +130,9 @@ export class Automations {
       const id = req.params.id as string;
       res.json(await this.act(id, async () => {
         const current = await this.current(id, record(req.body).updatedAt);
+        if (current.kind === 'heartbeat') {
+          throw new InputError('此任务继续现有聊天，请在 Codex Desktop 中确认聊天权限后运行。', 409);
+        }
         const result = record(await this.request('runNow', { id, collaborationMode: null, permissions: null }));
         if (result.success !== true) throw new Error('Desktop 未确认启动成功，请检查原生运行记录。');
         return result;

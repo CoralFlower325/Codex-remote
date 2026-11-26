@@ -58,7 +58,7 @@ try {
     `export const config = ${JSON.stringify({ dataDir: path.join(fixture, 'data'),
       authFile: path.join(fixture, 'data/auth.json'), secretFile: path.join(fixture, 'data/session-secret'), sessionDays: 30 })};\n`);
   await fs.writeFile(path.join(fixture, '.env'),
-    `PORT=${server.address().port}\nCODEX_REMOTE_APP_SERVER_ENDPOINT_FILE=F:/private/app-server.json\n`, 'utf8');
+    `PORT=${server.address().port}\nCODEX_DESKTOP_DEBUG_PORT=${server.address().port}\n`, 'utf8');
   const status = JSON.stringify({ running: true, installed: true, enabled: true, conflict: false, tunnelManaged: false });
   const statusFile = path.join(fixture, 'service-state.json');
   await fs.writeFile(statusFile, status, 'utf8');
@@ -81,7 +81,6 @@ try {
       `--user-data-dir=${path.join(fixture, 'profile')}`], cwd: fixture, env, timeout: 60_000
   });
   const page = await application.firstWindow();
-  page.setDefaultTimeout(60_000);
   if (packaged) {
     await until(() => page.evaluate(async () => Boolean((await window.manager.get()).value.root)), true, 'automatic installation discovery');
     await until(() => page.evaluate(async () => (await window.manager.get()).value.busy), '', 'discovery finished');
@@ -175,8 +174,7 @@ try {
     const state = (await window.manager.get()).value;
     return { messages: state.status.diagnostics, error: state.error };
   });
-  if (warning.messages.length !== 1 || warning.error ||
-      !warning.messages[0].includes('共享 App Server') || !warning.messages[0].includes('0.3.0')) {
+  if (warning.messages.length !== 1 || warning.error || !warning.messages[0].includes(`127.0.0.1:${server.address().port}`)) {
     throw new Error('Missing Desktop diagnostic');
   }
   await page.getByRole('status').filter({ hasText: warning.messages[0] }).waitFor();
