@@ -1,11 +1,23 @@
 # Desktop Manager Acceptance
 
-Historical manager acceptance records, reconciled 2026-11-24. The current
-Remote release pairing is recorded in the [0.2.44 release acceptance](remote-0.2.44-release-acceptance.md).
-Manager 0.2.10 adds multi-public-origin health and explicit Windows SSH
-reverse-tunnel management; self-update work remains
-paused as [0.2.0AU](manager-self-update-checkpoints.md). Historical records below
-retain their original scope and counts.
+Historical manager acceptance records, reconciled 2026-11-26. The current
+Remote **0.3.1** / manager **0.3.1** pairing is recorded in the
+[0.3.1 safety acceptance](remote-0.3.1-safety-acceptance.md). Windows has a live
+0.3.1 installation and packaged smoke result; Apple Silicon packages are built
+and tested by the shared macOS runner. Signed-in macOS GUI and LaunchAgent
+acceptance remain separate. Self-update work remains paused as
+[0.2.0AU](manager-self-update-checkpoints.md). Historical records below retain
+their original scope and counts.
+
+## Manager 0.3.1 Safety Alignment
+
+Manager 0.3.1 returns to the accepted Desktop health diagnostics and installer
+behavior after the withdrawn 0.3.0 global CLI adapter. It never writes
+`CODEX_CLI_PATH`, user `PATH` or Codex Desktop launch configuration. The Windows
+package was installed over 0.3.0 and passed automatic discovery, health,
+diagnostic recovery, tray, viewport, update, authentication and error-state
+smoke checks. The matching Apple Silicon DMG/ZIP are produced by the 0.3.1 CI
+release workflow.
 
 ## Manager 0.2.10 Non-Cloudflare And SSH Tunnel
 
