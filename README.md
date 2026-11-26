@@ -116,7 +116,7 @@ time. Standard installations prefer verified prebuilt runtimes; customized sourc
 installations retain isolated builds. Interrupted installs recover when the manager restarts.
 Choose the existing installation; closing the window
 keeps it in the tray. Releases provide unsigned installers. Live macOS GUI acceptance
-remains pending. Manager 0.2.10 also monitors every configured public origin and
+remains pending. Manager 0.3.1 also monitors every configured public origin and
 can manage an explicitly configured Windows SSH reverse tunnel with automatic restart.
 
 Remote **0.3.1** pairs with manager **0.3.1**. Version 0.3.0 is withdrawn

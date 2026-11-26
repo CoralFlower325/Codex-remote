@@ -309,7 +309,7 @@ ssh -N -i C:\path\to\edge_key `
   -R 127.0.0.1:14545:127.0.0.1:4545 codexremote@edge.example.com
 ```
 
-Desktop Manager 0.2.10 can manage that SSH process when the configuration is
+Desktop Manager 0.3.1 can manage that SSH process when the configuration is
 explicitly marked. It migrates a matching legacy task to a stable hidden
 supervisor under private `data`, restarts SSH after any exit, and includes the
 tunnel in Start/Stop, repair and manager updates. An unmarked SSH process remains
@@ -461,7 +461,7 @@ current-version checks never refresh. Main-chat text survives, while unsent
 images, skills and temporary chats clear on refresh. It updates Remote, leaving
 the manager at its own version. A missing task keeps its ID and offers an explicit
 status retry without resubmitting installation. A separate update check can observe
-the host's current task. Remote 0.2.10 and manager 0.2.1 prefer the project-owned
+the host's current task. Remote 0.3.1 and manager 0.3.1 prefer the project-owned
 distribution, then official GitHub. Metadata allows 15 seconds per source; each
 asset attempt allows 30 seconds for headers, 60 seconds without body data and
 600 seconds overall, retaining bounded retries and full checksum checks.

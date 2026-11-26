@@ -15,7 +15,7 @@ and operating limits. The [documentation index](README.md) separates these from
 historical evidence. Dated acceptance records retain
 their original scope and do not establish current physical-device performance.
 
-The current release candidate is Remote **0.3.1** / manager **0.3.1**. Version
+The current published release is Remote **0.3.1** / manager **0.3.1**. Version
 **0.3.0 is withdrawn**: its global `CODEX_CLI_PATH` adapter intercepted Codex
 Desktop's own CLI startup, caused a `policy-read` protocol failure and surfaced
 as "unable to load organization settings". The 0.3.1 source removes that adapter
@@ -27,7 +27,8 @@ verified published pairing.
 Remote **0.2.44** returns a failed HTTP/SSE fallback to WebSocket, clears stale
 route preferences after WebSocket synchronization and gives cloudflared 20
 seconds to recover before rebuilding a tunnel whose edges are all unavailable.
-Manager **0.2.10** has no changes. The
+Manager **0.3.1** restores the previously accepted Desktop health diagnostics
+and installer behavior while retaining the independent manager version. The
 [0.2.44 release acceptance](remote-0.2.44-release-acceptance.md) owns this
 batch's publication, distribution and installation receipts.
 
